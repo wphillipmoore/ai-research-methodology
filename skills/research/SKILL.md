@@ -136,9 +136,8 @@ already exists, append a sequence number: `{YYYY-MM-DD}-02/`,
 
 Launch a subagent with the following context:
 
-- The research methodology prompt for the mode:
-  - Claim: `skills/research/prompts/claim.md`
-  - Query: `skills/research/prompts/query.md`
+- The research methodology prompt: `skills/research/prompts/research.md`
+- The research mode (claim or query)
 - The output format specification:
   - `skills/research/output-formats/default.md`
 - The list of claims or queries
