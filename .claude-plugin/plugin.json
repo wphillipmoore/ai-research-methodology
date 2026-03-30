@@ -1,0 +1,24 @@
+{
+  "name": "ai-research-methodology",
+  "description": "Unified research methodology for AI agents combining ICD 203, GRADE, PRISMA, Cochrane, and five other frameworks into a 14-step evidence-based process. Anti-sycophantic by design.",
+  "version": "1.0.0",
+  "author": {
+    "name": "W. Phillip Moore",
+    "email": "w.phillip.moore@gmail.com"
+  },
+  "homepage": "https://github.com/wphillipmoore/ai-research-methodology",
+  "repository": "https://github.com/wphillipmoore/ai-research-methodology",
+  "license": "GPL-3.0-only",
+  "keywords": [
+    "research",
+    "methodology",
+    "fact-checking",
+    "evidence",
+    "ICD-203",
+    "GRADE",
+    "PRISMA",
+    "anti-sycophancy",
+    "claim-verification",
+    "intelligence-analysis"
+  ]
+}
