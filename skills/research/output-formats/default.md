@@ -319,3 +319,15 @@ represents what the source says.
 
 5. **The self-audit is mandatory.** All five domains must be assessed, even
    if the assessment is "no concerns."
+
+6. **The sections above are the minimum, not the maximum.** Once all required
+   sections are present and complete, you are encouraged to add additional
+   analysis that emerged during the investigation. Comparison tables,
+   unexpected patterns, connections between sources, alternative framings,
+   contextual observations, or anything else that would help the reader
+   understand the evidence landscape — include it. The required structure
+   ensures consistency and auditability. Anything beyond that structure is
+   a bonus that adds value. Do not suppress interesting findings just because
+   the spec doesn't have a section for them. Add a "## Notes" or
+   "## Additional Observations" section at the end of the assessment if
+   needed.
