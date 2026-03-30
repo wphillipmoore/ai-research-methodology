@@ -1,10 +1,10 @@
-# Unified Research Standard -- Query Mode (Question Answering)
+# Unified Research Methodology -- Query Mode (Question Answering)
 
-Version: 1.0-draft
-Date: 2026-03-17
-Parent: research-standard-claim.md (Claim Mode: Fact Verification)
-License: TBD
-Attribution: Derived from the Unified Research Standard. This document defines
+Version: 1.0.0
+Date: 2026-03-30
+Parent: claim.md (Claim Mode: Fact Verification)
+License: GPL-3.0-only
+Attribution: Derived from the Unified Research Methodology. This document defines
 only the delta from Claim mode. Layer 1 (Behavioral Constraints), the evidence
 engine (Steps 4-6), and Layer 3 (Output Structure) are inherited unchanged.
 
@@ -30,7 +30,7 @@ is identical and inherited from the parent prompt without modification.
 
 ## Layer 1: Behavioral Constraints
 
-Inherited from `research-standard-claim.md` without modification. All twelve
+Inherited from `claim.md` without modification. All twelve
 rules apply. The only terminology adjustment:
 
 - Where claim mode says "claim," read "question."
