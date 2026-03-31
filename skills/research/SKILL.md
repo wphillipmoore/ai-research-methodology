@@ -1,6 +1,6 @@
 ---
 name: research
-description: Run structured research — claim verification or query answering — with full evidence archive output.
+description: Run structured research — claim verification, query answering, and document fact-checking — with full evidence archive output.
 user_invocable: true
 ---
 
@@ -12,43 +12,35 @@ Run a structured research investigation. Produces a complete evidence archive
 with searches, sources, scorecards, evidence extracts, hypotheses, ACH
 matrices, and self-audits.
 
-Two modes:
+The input can contain claims (assertions to verify), queries (questions to
+answer), axioms (facts to assume true), or any combination. The research
+methodology determines how to handle each type automatically.
 
-- **claim** — verify a list of assertions (true/false/partially true)
-- **query** — answer a list of questions (hypotheses ranked by evidence)
+## Commands
 
-## Invocation
-
-### New research
-
-```
-/research claim [file=<path>] [id=<research-id>] [output=<directory>]
-/research query [file=<path>] [id=<research-id>] [output=<directory>]
-```
-
-The mode (claim or query) is required. All other parameters are optional —
-if provided on the command line, skip the interactive prompt for that
-parameter. If omitted, ask interactively.
-
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `file` | Path to a markdown file containing the claims or queries | `file=claims.md` |
-| `id` | Research instance ID | `id=R0005` |
-| `output` | Output directory (run directory created inside this) | `output=research/R0005-topic` |
-
-**Example — fully specified (no interactive prompts):**
+### run — Execute new research
 
 ```
-/research claim file=claims.md id=R0005 output=research/R0005-ai-trust
+/research run [file=<path>] [output=<directory>] [id=<research-id>]
 ```
 
-**Example — minimal (everything asked interactively):**
+| Parameter | Required | Description | Example |
+|-----------|----------|-------------|---------|
+| `file` | No | Path to a markdown file containing claims, queries, and/or axioms. If omitted, ask interactively. | `file=claims.md` |
+| `output` | No | Output directory. If omitted, ask interactively. | `output=research/ai-trust` |
+| `id` | No | Research instance ID. Only needed if your output format uses it. Auto-generated or `RXXXX` if omitted. | `id=R0005` |
+
+Any `key=value` parameter not listed above is ignored. If an unrecognized
+parameter is provided, do not ask about it — silently ignore it.
+
+**Examples:**
 
 ```
-/research claim
+/research run file=claims.md output=research/ai-trust
+/research run
 ```
 
-### Re-run existing research
+### rerun — Re-execute previous research
 
 ```
 /research rerun <path-to-research-directory>
@@ -67,11 +59,30 @@ evidence, or any other output). The subagent MUST NOT be given the path
 to prior runs. This is essential for reproducibility — reading prior results
 would bias the new research through anchoring and confirmation effects.
 
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `<path>` | Path to the research instance directory | `research/R0005-ai-trust` |
+### extract — Extract claims from a document (planned)
 
-## Workflow
+```
+/research extract <url-or-path>
+```
+
+Reads a document and produces a list of verifiable claims as a markdown file
+suitable for input to `/research run`. Respects the claim extraction blindness
+rule: reads only the document body, not references or bibliography sections.
+
+*Not yet implemented.*
+
+### check — Extract and verify in one step (planned)
+
+```
+/research check <url-or-path> [output=<directory>]
+```
+
+Combines `extract` and `run` into a single command. Extracts claims from the
+document, then immediately runs verification on them.
+
+*Not yet implemented.*
+
+## Workflow (for `run` and `rerun`)
 
 ### Step 1: Gather input
 
@@ -79,30 +90,34 @@ Parse any `key=value` parameters from the invocation. For any parameter NOT
 provided on the command line, ask the user interactively. For parameters
 that WERE provided, use them directly — do not re-ask.
 
-1. **Claims or queries** (`file=` parameter) — either:
-   - A file path was provided: read it and extract the list items
+1. **Input** (`file=` parameter) — either:
+   - A file path was provided: read it and extract the claims, queries,
+     and/or axioms
    - No file provided: ask the user to type them or provide a path
 
-2. **Research ID** (`id=` parameter) — e.g., `R0005`. If not provided and
-   the user doesn't have one, use `RXXXX` as a placeholder.
-
-3. **Output directory** (`output=` parameter) — where to write the results.
+2. **Output directory** (`output=` parameter) — where to write the results.
    If not provided, ask the user. If the user doesn't have one, suggest
-   `research/{Research ID}/` as a starting point.
+   `research/{slug}/` as a starting point.
+
+3. **Research ID** (`id=` parameter) — optional. If not provided, auto-generate
+   from the output directory slug or use `RXXXX` as a placeholder.
 
 ### Step 2: Confirm and save input spec
 
 Present a summary of what will be researched:
 
 ```
-Mode: claim
 Research ID: R0005
-Output directory: research/R0005-ai-trust/
-Run date: 2026-03-30
-Claims (5):
+Output directory: research/ai-trust/
+Run date: 2026-03-31
+Axioms: 0
+Claims: 5
+Queries: 2
   C001: First claim text...
   C002: Second claim text...
   ...
+  Q001: First query text...
+  Q002: Second query text...
 ```
 
 Ask the user to confirm before proceeding.
@@ -137,24 +152,23 @@ already exists, append a sequence number: `{YYYY-MM-DD}-02/`,
 Launch a subagent with the following context:
 
 - The research methodology prompt: `skills/research/prompts/research.md`
-- The research mode (claim or query)
 - The output format specification — check in this order:
   1. If the user has configured a custom `output_format` path (via plugin
      userConfig), read that file.
   2. Otherwise, use `skills/research/output-formats/default.md`.
-- The list of claims or queries
+- The input (axioms, claims, queries)
 - The output directory (the run directory created in Step 3)
 - The research ID and run date
 
 The subagent must read BOTH the methodology prompt AND the output format spec
 before beginning work. The methodology prompt defines HOW to investigate
-(search strategy, evidence evaluation, ACH analysis, self-audit). The output
-format spec defines WHAT to produce (directory structure, file contents).
+(search strategy, evidence evaluation, self-audit). The output format spec
+defines WHAT to produce (directory structure, file contents).
 
 The subagent then:
 
 1. Reads the methodology prompt and output format specification
-2. For each claim/query in the list, investigates it following the methodology
+2. For each claim/query in the input, investigates it following the methodology
 3. Writes all output files to the run directory following the output format spec
 4. After all individual investigations, produces the run-level index.md with
    collection analysis
@@ -166,25 +180,25 @@ When the subagent finishes, report to the user:
 ```
 ## Research Complete
 
-- **Claims/Queries investigated**: {n}
+- **Items investigated**: {n}
 - **Files produced**: {n}
 - **Output**: {path to run directory}
 - **Duration**: {wall clock time}
 
 ### Verdict Summary
 
-| Probability | Count | Claims |
-|-------------|-------|--------|
-| Almost certain | {n} | {C001, C002, ...} |
+| Probability | Count | Items |
+|-------------|-------|-------|
+| Almost certain | {n} | {list} |
 | Very likely | {n} | {list} |
 | Likely | {n} | {list} |
 | Unlikely | {n} | {list} |
 
 ### Flags for Attention
 
-| Claim | Issue |
-|-------|-------|
-| {C009} | {description of issue needing correction} |
+| Item | Issue |
+|------|-------|
+| {ID} | {description of issue needing correction} |
 ```
 
 ## Constraints
@@ -193,7 +207,7 @@ When the subagent finishes, report to the user:
 - Do not modify files outside the output directory
 - The output format spec is the source of truth for file structure
 - Every search result must be dispositioned (no silent drops)
-- Always produce a minimum of 3 hypotheses (both claim and query modes).
+- Always produce a minimum of 3 hypotheses per claim or query.
   The first three are mandatory: H1 (affirmative/accurate), H2 (negative/
   partially correct), H3 (nuanced/materially wrong). Additional hypotheses
   (H4, H5, ...) may be added when the evidence supports more than three
@@ -201,13 +215,12 @@ When the subagent finishes, report to the user:
 - **Run isolation**: The subagent MUST NOT read prior run results. On a rerun,
   read ONLY `research-input.md`. Do NOT pass prior run paths to the subagent.
   Prior results bias new research through anchoring and confirmation effects.
-- **Claim extraction blindness**: When extracting claims from an article for
-  verification, read ONLY the article body. Do NOT read or include the
-  References section — it is a cheat sheet that biases the fact-checker.
-  Claims should be extracted as they appear in the prose. If the prose names
-  a study or institution, that's fair game. If the only way to identify the
-  source is to read the reference list, the fact-checker must find it
-  independently.
+- **Claim extraction blindness**: When extracting claims from a document
+  (via `extract` or `check`), read ONLY the document body. Do NOT read or
+  include the References section — it biases the fact-checker. Claims should
+  be extracted as they appear in the prose.
+- **Unrecognized parameters**: Silently ignore any `key=value` parameter not
+  documented above. Do not ask about it.
 
 ## Customization
 
@@ -226,5 +239,6 @@ are presented without changing how research is conducted.
 ## Future extensions
 
 - **extract** command (claim extraction from documents)
+- **check** command (extract + run in one step)
 - **report** mode (topic exploration with facets)
 - Sub-agent architecture with structured output and deterministic rendering

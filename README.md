@@ -67,14 +67,24 @@ both the research methodology and the output format.
 ## Usage
 
 ```bash
-# Verify claims from a file
-/research claim file=claims.md id=R0001 output=research/R0001-topic
+# Run research from a file (claims, queries, axioms, or any combination)
+/research run file=claims.md output=research/ai-trust
 
-# Answer research questions interactively
-/research query
+# Run research interactively
+/research run
 
 # Re-run previous research (isolation enforced — no access to prior results)
-/research rerun research/R0001-topic
+/research rerun research/ai-trust
+```
+
+Coming soon:
+
+```bash
+# Extract verifiable claims from a document
+/research extract https://example.com/article
+
+# Extract and verify in one step
+/research check https://example.com/article output=research/article-check
 ```
 
 ## The 11-Step Process
