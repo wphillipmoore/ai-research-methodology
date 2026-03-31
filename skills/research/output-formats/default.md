@@ -16,12 +16,21 @@ directory containing the full evidence archive.
 ├── research-input.md                    # Input spec (enables reruns)
 ├── {YYYY-MM-DD}/                        # Run directory (date-stamped)
 │   ├── index.md                         # Run summary with all results
+│   ├── prompt-snapshot.md               # Copy of the methodology prompt used
 │   ├── {entity-slug}/                   # One directory per claim/query
 │   │   ├── assessment.md                # Full analytical product
 │   │   ├── sources.md                   # All source scorecards
 │   │   ├── searches.md                  # All search logs
 │   │   └── self-audit.md               # Process + source-back audit
 ```
+
+**prompt-snapshot.md**: Before beginning research, save the complete text of
+the research methodology prompt you are operating under into this file. If you
+were given the prompt as a file, copy its contents. If you were given the
+prompt as pasted text in a conversation, reproduce the full prompt text. This
+creates a permanent record of exactly which version of the methodology produced
+these results. The snapshot enables comparison between runs and eliminates
+ambiguity about which methodology was in effect.
 
 ## File Formats
 
