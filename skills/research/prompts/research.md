@@ -498,25 +498,45 @@ Produce the final report. The structure varies slightly by mode:
 2. Claim as received and clarified
 3. Competing hypotheses and their status
 4. Assessment with probability rating and reasoning chain
-4. Evidence summary with scorecard highlights
-5. Collection synthesis
-6. Gaps
-7. Self-audit results (all five domains)
-8. Researcher bias check
-9. Search methodology log
-
-**Query mode**:
-1. Axioms (if any) — listed as declared constraints
-2. Question as received and clarified
-3. Sub-questions and which were answered
-3. Hypotheses and their status (if generated), or thematic synthesis (if not)
-4. Answer with confidence and reasoning chain
 5. Evidence summary with scorecard highlights
 6. Collection synthesis
 7. Gaps
 8. Self-audit results (all five domains)
 9. Researcher bias check
-10. Search methodology log
+10. Revisit triggers
+11. Search methodology log
+
+**Query mode**:
+1. Axioms (if any) — listed as declared constraints
+2. Question as received and clarified
+3. Sub-questions and which were answered
+4. Hypotheses and their status (if generated), or thematic synthesis (if not)
+5. Answer with confidence and reasoning chain
+6. Evidence summary with scorecard highlights
+7. Collection synthesis
+8. Gaps
+9. Self-audit results (all five domains)
+10. Researcher bias check
+11. Revisit triggers
+12. Search methodology log
+
+**Revisit triggers** are a mandatory section, not optional. For each
+assessment, identify the specific conditions that would warrant re-running
+this research. These are not vague statements like "if new evidence emerges."
+They are specific, testable triggers:
+
+- Named studies that, if replicated or refuted, would change the assessment
+- Specific events that, if they occur, would invalidate a key assumption
+- Time-based triggers (e.g., "this prediction covers 6-12 months; revisit
+  after that window")
+- Data sources that, if updated, would provide newer figures than those used
+- Regulatory or policy changes that would shift the landscape
+- Named organizations whose public positions, if changed, would alter the
+  evidence base
+
+Each trigger should be specific enough that a future agent could check whether
+it has occurred without needing to understand the original research context.
+This enables automated or semi-automated monitoring of research currency.
 
 In both modes: every claim must be sourced. Every judgment must be
 distinguished from fact. Every reasoning chain must be explicit. If you

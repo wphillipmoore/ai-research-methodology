@@ -179,6 +179,15 @@ common upstream origins}
 
 **Declared biases**: {any biases identified}
 **Influence assessment**: {how they may have affected results}
+
+## Revisit Triggers
+
+Specific conditions that would warrant re-running this research:
+
+| Trigger | Type | Check |
+|---------|------|-------|
+| {specific event, study, update, or deadline} | {time / event / data / policy} | {how to check if this trigger has occurred} |
+
 ```
 
 ### sources.md (Per-Entity)
