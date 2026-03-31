@@ -20,5 +20,11 @@
     "anti-sycophancy",
     "claim-verification",
     "intelligence-analysis"
-  ]
+  ],
+  "userConfig": {
+    "output_format": {
+      "description": "Path to a custom output format specification (markdown file). Leave empty to use the default format included with the plugin.",
+      "sensitive": false
+    }
+  }
 }
