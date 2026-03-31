@@ -149,10 +149,12 @@ already exists, append a sequence number: `{YYYY-MM-DD}-02/`,
 
 ### Step 4: Save methodology snapshot
 
-Copy the research methodology prompt and the output format specification into
-the run directory as a single file: `methodology-snapshot.md`. Concatenate
-both files. This creates a permanent record of exactly what instructions were
-in effect for this research.
+Copy the files used to drive the research into the run directory:
+
+- `prompt-snapshot.md` — copy of the research methodology prompt
+- `output-format-snapshot.md` — copy of the output format specification
+
+This creates a permanent record of exactly what instructions were in effect.
 
 ### Step 5: Execute research
 

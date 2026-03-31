@@ -16,7 +16,8 @@ directory containing the full evidence archive.
 ├── research-input.md                    # Input spec (enables reruns)
 ├── {YYYY-MM-DD}/                        # Run directory (date-stamped)
 │   ├── index.md                         # Run summary with all results
-│   ├── methodology-snapshot.md          # Copy of all instructions used
+│   ├── prompt-snapshot.md               # Copy of the methodology prompt
+│   ├── output-format-snapshot.md        # Copy of the output format spec (if separate)
 │   ├── {entity-slug}/                   # One directory per claim/query
 │   │   ├── assessment.md                # Full analytical product
 │   │   ├── sources.md                   # All source scorecards
@@ -24,11 +25,17 @@ directory containing the full evidence archive.
 │   │   └── self-audit.md               # Process + source-back audit
 ```
 
-**methodology-snapshot.md**: Before beginning research, save the complete text
-of all instructions you are operating under — the research methodology and the
-output format specification — into this single file. If loaded from separate
-files, concatenate them. If pasted as a single document, reproduce the full
-text. This creates a permanent record of exactly what produced these results.
+**Methodology snapshots**: Before beginning research, save the instructions
+you are operating under:
+
+- If the methodology prompt and output format were loaded as **separate files**,
+  copy each into the run directory: `prompt-snapshot.md` and
+  `output-format-snapshot.md`. Two files.
+- If the instructions were provided as a **single pasted document**, save it as
+  `prompt-snapshot.md`. One file.
+
+This creates a permanent record of what produced these results. The number of
+snapshot files also indicates how the research was invoked (plugin vs paste).
 
 ## File Formats
 
