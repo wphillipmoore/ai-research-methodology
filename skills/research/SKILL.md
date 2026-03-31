@@ -147,16 +147,12 @@ Create `{output_directory}/{YYYY-MM-DD}/` using today's date. If the directory
 already exists, append a sequence number: `{YYYY-MM-DD}-02/`,
 `{YYYY-MM-DD}-03/`, etc.
 
-### Step 4: Save methodology and output format snapshots
+### Step 4: Save methodology snapshot
 
-Copy both files used to drive the research into the run directory:
-
-1. The research methodology prompt → `prompt-snapshot.md`
-2. The output format specification → `output-format-snapshot.md`
-
-These create a permanent record of exactly which methodology AND which output
-format were in effect for this research. The snapshots enable future comparison
-between runs and eliminate ambiguity about what produced a given set of results.
+Copy the research methodology prompt and the output format specification into
+the run directory as a single file: `methodology-snapshot.md`. Concatenate
+both files. This creates a permanent record of exactly what instructions were
+in effect for this research.
 
 ### Step 5: Execute research
 

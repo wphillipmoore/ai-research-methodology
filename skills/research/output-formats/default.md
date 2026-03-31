@@ -16,8 +16,7 @@ directory containing the full evidence archive.
 ├── research-input.md                    # Input spec (enables reruns)
 ├── {YYYY-MM-DD}/                        # Run directory (date-stamped)
 │   ├── index.md                         # Run summary with all results
-│   ├── prompt-snapshot.md               # Copy of the methodology prompt used
-│   ├── output-format-snapshot.md        # Copy of the output format spec used
+│   ├── methodology-snapshot.md          # Copy of all instructions used
 │   ├── {entity-slug}/                   # One directory per claim/query
 │   │   ├── assessment.md                # Full analytical product
 │   │   ├── sources.md                   # All source scorecards
@@ -25,19 +24,11 @@ directory containing the full evidence archive.
 │   │   └── self-audit.md               # Process + source-back audit
 ```
 
-**prompt-snapshot.md**: Before beginning research, save the complete text of
-the research methodology prompt you are operating under into this file. If you
-were given the prompt as a file, copy its contents. If you were given the
-prompt as pasted text in a conversation, reproduce the full prompt text.
-
-**output-format-snapshot.md**: Also save the complete text of the output format
-specification you are following into this file. If it was loaded from a file,
-copy its contents. If it was provided as part of a pasted prompt, reproduce the
-output format section.
-
-Together, these two snapshots create a permanent record of exactly which
-methodology AND which output format produced these results. They enable
-comparison between runs and eliminate ambiguity about what was in effect.
+**methodology-snapshot.md**: Before beginning research, save the complete text
+of all instructions you are operating under — the research methodology and the
+output format specification — into this single file. If loaded from separate
+files, concatenate them. If pasted as a single document, reproduce the full
+text. This creates a permanent record of exactly what produced these results.
 
 ## File Formats
 
