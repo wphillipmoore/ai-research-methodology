@@ -331,3 +331,46 @@ represents what the source says.
    the spec doesn't have a section for them. Add a "## Notes" or
    "## Additional Observations" section at the end of the assessment if
    needed.
+
+---
+
+## Output Delivery
+
+Choose the appropriate delivery mode based on your environment:
+
+### Mode A: File System Access (Claude Code, plugin, or any environment with write access)
+
+Write the directory structure directly to the specified output location. Use
+the directory layout and file formats defined above. Relative markdown links
+between files (e.g., `[assessment](entity-slug/assessment.md)`) will work in
+VS Code, GitHub, Obsidian, and most markdown viewers.
+
+### Mode B: No File System Access (web chat, API, or any environment without write access)
+
+Produce a single self-contained HTML file that includes all research output
+with internal navigation. The HTML file must:
+
+1. **Contain all content** — the run summary, every entity assessment, all
+   source scorecards, all search logs, and all self-audits. Nothing omitted.
+
+2. **Use anchor-based navigation** — a table of contents at the top with
+   clickable links to each section. Each entity, source, and search gets its
+   own anchor. The reader can click through the results the same way they
+   would navigate the directory structure.
+
+3. **Be self-contained** — no external CSS, no JavaScript dependencies, no
+   images to load. Just HTML with inline styles. It must render correctly
+   when opened from a local file in any browser.
+
+4. **Include basic styling** — readable typography, clear section separation,
+   table formatting, and visual distinction between headings. Keep it clean
+   and functional, not decorative.
+
+5. **Display the results in the conversation first** — present the full
+   research output as text in the conversation so the user can read through
+   it immediately. Then offer the HTML file as a downloadable artifact at
+   the end: "Download the complete research archive as a single HTML file."
+
+**How to detect which mode to use**: If you can write files (you have access
+to tools like Write, Bash, or file creation), use Mode A. If you cannot
+write files, use Mode B.

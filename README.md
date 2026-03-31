@@ -44,13 +44,25 @@ git clone https://github.com/wphillipmoore/ai-research-methodology.git
 /plugin install ai-research-methodology@wphillipmoore-ai-research-methodology
 ```
 
-### As a standalone skill
+### As a standalone skill (Claude Code)
 
 ```bash
 # Clone and symlink into your skills directory
 git clone https://github.com/wphillipmoore/ai-research-methodology.git
 ln -s /path/to/ai-research-methodology/skills/research ~/.claude/skills/research
 ```
+
+### As a standalone prompt (any Claude interface)
+
+Copy the contents of [`standalone/research.md`](standalone/research.md) and
+paste it into any Claude conversation — Claude.ai web chat, Claude Code, or
+the API. Then provide your claims, queries, and/or axioms. The prompt includes
+both the research methodology and the output format.
+
+- With file system access: results are written as a directory of linked
+  markdown files.
+- Without file system access: results are displayed in the conversation and
+  offered as a single downloadable HTML file with internal navigation.
 
 ## Usage
 
