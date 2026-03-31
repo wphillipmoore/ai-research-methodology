@@ -320,24 +320,7 @@ For the two conditional domains (randomization and protocol deviation), mark
 as "N/A -- not an RCT" when the source is not based on a randomized
 controlled trial.
 
-### Step 6: Citation Chain Analysis
-
-[Source: Net-new feature -- not present in any evaluated framework]
-
-For each significant source (defined as: any source rated High reliability
-or High relevance, or any source that is the sole support for a hypothesis),
-check the citing literature:
-- Has this source been replicated?
-- Has it been challenged or critiqued?
-- Has it been refuted or retracted?
-- Has subsequent work extended or modified its conclusions?
-
-Default depth: one level (direct citations of the source). Do not chase
-citations of citations unless specifically instructed.
-
-Report findings as: Supported / Challenged / Mixed / No citations found.
-
-### Step 7: Synthesize the Collection
+### Step 6: Synthesize the Collection
 
 [Source: IPCC two-axis confidence model]
 
@@ -371,7 +354,7 @@ Once all individual sources are scored, assess the collection as a whole:
 - **Emerging answer**: Based on the evidence, what answer is taking shape?
   State it as a draft finding, not a conclusion.
 
-### Step 8: Assess
+### Step 7: Assess
 
 [Source: ICD 203 calibrated probability scale]
 
@@ -409,7 +392,7 @@ Do not force the answer into the probability scale when it does not fit.
 For complex, multi-dimensional answers, confidence + reasoning is more
 appropriate than a probability percentage.
 
-### Step 9: Identify Gaps
+### Step 8: Identify Gaps
 
 [Source: NAS gap identification + PRISMA absence detection]
 
@@ -423,7 +406,7 @@ An absence is a finding. If you searched for contradictory evidence and
 found none, that strengthens the hypothesis. If you searched for supporting
 evidence and found none, that weakens it. State both explicitly.
 
-### Step 10: Self-Audit
+### Step 9: Self-Audit
 
 [Source: ROBIS four-domain bias assessment]
 
@@ -447,11 +430,11 @@ Also check the researcher profile: did any of the researcher's declared
 biases or conflicts of interest influence the questions asked, the searches
 designed, or the interpretation of results? If so, flag it.
 
-### Step 10b: Source-Back Verification
+### Step 9b: Source-Back Verification
 
 [Source: Net-new feature -- extends ROBIS self-audit with interpretation check]
 
-After completing the self-audit (Step 10), perform a source-back verification.
+After completing the self-audit (Step 9), perform a source-back verification.
 This step catches interpretation errors that the process-focused self-audit
 cannot detect.
 
@@ -487,7 +470,7 @@ For each source cited in the assessment:
 
 Write the results into the self-audit as "Domain 5: Source-Back Verification."
 
-### Step 11: Report
+### Step 10: Report
 
 [Source: ICD 203 tradecraft standards -- all nine]
 
@@ -543,7 +526,7 @@ distinguished from fact. Every reasoning chain must be explicit. If you
 cannot trace a conclusion back through the evidence to the sources, the
 conclusion does not belong in this report.
 
-### Step 12: Archive for Temporal Revisitation
+### Step 11: Archive for Temporal Revisitation
 
 [Source: Net-new feature -- extends ICD 203 change standard from passive
 to proactive]
@@ -566,7 +549,7 @@ re-examination without starting from scratch.
 
 ### Primary Deliverable: Research Report
 
-Use the structure defined in Step 11 for the appropriate mode.
+Use the structure defined in Step 10 for the appropriate mode.
 
 ### Secondary Deliverable: Search Methodology Log
 
@@ -649,7 +632,6 @@ Every component of this prompt traces to a specific source:
 | Discriminating searches | Chamberlin/Platt + PRISMA |
 | Search execution and logging | PRISMA + NAS |
 | Per-source scoring | GRADE + adapted Cochrane/RoB 2 |
-| Citation chain analysis | Net-new |
 | Collection-level synthesis | IPCC two-axis model |
 | Probability assessment | ICD 203 seven-point scale |
 | Gap identification | NAS + PRISMA |

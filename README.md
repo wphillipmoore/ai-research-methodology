@@ -1,7 +1,7 @@
 # AI Research Methodology
 
 A unified research methodology for AI agents combining nine intelligence and
-scientific frameworks into a 14-step evidence-based process. Implemented as a
+scientific frameworks into a 11-step evidence-based process. Implemented as a
 Claude Code plugin.
 
 ## What This Is
@@ -77,26 +77,25 @@ both the research methodology and the output format.
 /research rerun research/R0001-topic
 ```
 
-## The 14-Step Process
+## The 11-Step Process
 
 1. **Claim/query received and clarified** — ambiguities surfaced, assumptions
-   identified
+   identified, axioms acknowledged
 2. **Vocabulary exploration** — map terminology across domains before searching
 3. **Competing hypotheses generated** (Chamberlin/Platt) — minimum three
 4. **Discriminating searches designed** — what would disprove each hypothesis?
 5. **Searches executed and logged** (PRISMA) — every search documented
 6. **Per-source scoring** (GRADE + Cochrane) — reliability, relevance, six
    bias domains
-7. **Citation chain analysis** — has each source been replicated, challenged,
-   or refuted?
-8. **Collection-level synthesis** (IPCC) — evidence quality, source agreement,
+7. **Collection-level synthesis** (IPCC) — evidence quality, source agreement,
    independence
-9. **Probability assessment** (ICD 203) — seven-point calibrated scale
-10. **Gap identification** (NAS) — what's missing and what it means
-11. **Process self-audit** (ROBIS) — four-domain bias check
-12. **Source-back verification** — re-read sources, verify assessment accuracy
-13. **Report** (ICD 203) — every claim sourced, every judgment explicit
-14. **Temporal revisitation archive** — enable periodic re-execution
+8. **Probability assessment** (ICD 203) — seven-point calibrated scale
+9. **Gap identification** (NAS) — what's missing and what it means
+10. **Process self-audit + source-back verification** (ROBIS + net-new) —
+    five-domain bias check including interpretation verification
+11. **Report with revisit triggers** (ICD 203) — every claim sourced, every
+    judgment explicit, specific conditions for re-research identified
+12. **Temporal revisitation archive** — enable periodic re-execution
 
 ## Anti-Sycophancy by Design
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.1.0 — 2026-03-31
+
+### Changes
+
+- **Unified prompt**: Merged claim.md and query.md into single research.md
+- **Axiom support**: Three input types — axioms (assumed true), claims
+  (tested), queries (answered). Backward-compatible with Choe's approach.
+- **Revisit triggers**: Mandatory assessment section with specific, testable
+  conditions for re-research
+- **Removed citation chain analysis**: Not producing value in web-based
+  research; silently skipped or rubber-stamped in practice
+- **Standalone prompt**: standalone/research.md — single file for any Claude
+  interface, includes HTML output mode for web chat
+- **Minimum-not-maximum rule**: Required sections are the floor, additional
+  analysis is encouraged
+- **11-step process** (was 14): renumbered after citation chain removal and
+  step consolidation
+- All URLs must be clickable links (Rule 8 in output format)
+
 ## v1.0.0 — 2026-03-30
 
 Initial public release.
