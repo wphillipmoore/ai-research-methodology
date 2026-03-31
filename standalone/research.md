@@ -1,7 +1,5 @@
 # Unified Research Methodology -- AI Research Agent Prompt
 
-Version: 1.0.0
-Date: 2026-03-30
 License: GPL-3.0-only
 Attribution: This prompt was developed independently. The enforcement language
 approach was inspired by Joohn Choe's ICD 203 Intelligence Research Agent
