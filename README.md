@@ -20,15 +20,20 @@ present uncertain conclusions as settled. This methodology constrains that
 behavior through enforcement language — telling the AI not just what to do,
 but what it is prohibited from doing and why.
 
-## Two Modes
+## Three Input Types
 
-- **Claim verification** (`/research claim`) — verify a list of factual
-  assertions. Each claim is tested against competing hypotheses with evidence
-  scored for reliability, relevance, and bias.
-- **Query answering** (`/research query`) — answer research questions. Each
-  question generates hypotheses ranked by evidence strength.
+- **Claims** — factual assertions to verify. Each claim is tested against
+  competing hypotheses with evidence scored for reliability, relevance, and
+  bias.
+- **Queries** — research questions to answer. Each question generates
+  hypotheses ranked by evidence strength.
+- **Axioms** — facts declared by the researcher that must be assumed true
+  during the investigation. Not tested — they function as constraints that
+  frame the research.
 
-Both modes produce complete evidence archives: source scorecards, search logs,
+All three can be combined in a single research run using `/research run`.
+
+Research produces complete evidence archives: source scorecards, search logs,
 hypothesis evaluations, collection-level synthesis, gap identification,
 and a five-domain self-audit.
 
