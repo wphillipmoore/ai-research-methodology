@@ -1,8 +1,9 @@
 # AI Research Methodology
 
 A unified research methodology for AI agents combining nine intelligence and
-scientific frameworks into a 11-step evidence-based process. Implemented as a
-Claude Code plugin.
+scientific frameworks into an 11-step evidence-based process. Available as a
+Claude Code plugin or as a standalone prompt for any AI interface (Claude,
+ChatGPT, Gemini, or any capable LLM).
 
 ## What This Is
 
@@ -52,12 +53,13 @@ git clone https://github.com/wphillipmoore/ai-research-methodology.git
 ln -s /path/to/ai-research-methodology/skills/research ~/.claude/skills/research
 ```
 
-### As a standalone prompt (any Claude interface)
+### As a standalone prompt (any AI interface)
 
 Copy the contents of [`standalone/research.md`](standalone/research.md) and
-paste it into any Claude conversation — Claude.ai web chat, Claude Code, or
-the API. Then provide your claims, queries, and/or axioms. The prompt includes
-both the research methodology and the output format.
+paste it into any AI conversation — Claude, ChatGPT, Gemini, or any capable
+LLM. Then provide your claims, queries, and/or axioms. The prompt includes
+both the research methodology and the output format. It was developed and
+tested with Claude but uses no Claude-specific features.
 
 - With file system access: results are written as a directory of linked
   markdown files.
