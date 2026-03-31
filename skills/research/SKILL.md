@@ -147,7 +147,15 @@ Create `{output_directory}/{YYYY-MM-DD}/` using today's date. If the directory
 already exists, append a sequence number: `{YYYY-MM-DD}-02/`,
 `{YYYY-MM-DD}-03/`, etc.
 
-### Step 4: Execute research
+### Step 4: Save prompt snapshot
+
+Copy the research methodology prompt (`skills/research/prompts/research.md`)
+into the run directory as `prompt-snapshot.md`. This creates a permanent record
+of exactly which version of the prompt was used for this research. The snapshot
+enables future comparison between runs and eliminates ambiguity about which
+methodology produced a given set of results.
+
+### Step 5: Execute research
 
 Launch a subagent with the following context:
 
@@ -173,7 +181,7 @@ The subagent then:
 4. After all individual investigations, produces the run-level index.md with
    collection analysis
 
-### Step 5: Report completion
+### Step 6: Report completion
 
 When the subagent finishes, report to the user:
 
