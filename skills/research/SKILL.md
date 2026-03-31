@@ -162,9 +162,12 @@ Launch a subagent with the following context:
 
 - The research methodology prompt: `skills/research/prompts/research.md`
 - The output format specification — check in this order:
-  1. If the user has configured a custom `output_format` path (via plugin
-     userConfig), read that file.
-  2. Otherwise, use `skills/research/output-formats/default.md`.
+  1. Look for a project-local custom output format at
+     `skills/research/output-formats/custom.md` in the current working
+     directory. If this file exists, use it. This allows projects to
+     override the default output format without modifying the plugin.
+  2. Otherwise, use the plugin's default:
+     `skills/research/output-formats/default.md`.
 - The input (axioms, claims, queries)
 - The output directory (the run directory created in Step 3)
 - The research ID and run date
@@ -233,13 +236,14 @@ When the subagent finishes, report to the user:
 
 ## Customization
 
-The output format can be customized without modifying the plugin. When
-installing the plugin, you are prompted for an optional `output_format`
-path. Set this to the path of your own output format markdown file. Leave
-it empty to use the default format included with the plugin.
+The output format can be customized without modifying the plugin. Create a
+file at `skills/research/output-formats/custom.md` in your project directory.
+If this file exists, the skill uses it instead of the default format.
 
-Your custom output format file lives outside the plugin — in your own repo
-or wherever you choose. Plugin updates will not affect it.
+This follows the project-local override pattern: the plugin ships with a
+default, your project can override it by placing a file at the conventional
+path. Plugin updates will not affect your custom file because it lives in
+your project, not in the plugin cache.
 
 The research methodology prompt (`prompts/research.md`) defines the research
 process and is independent of the output format. You can change how results
