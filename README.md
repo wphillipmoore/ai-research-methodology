@@ -46,32 +46,64 @@ and a five-domain self-audit.
 
 ## Installation
 
-### As a Claude Code plugin
+### As a Claude Code plugin (recommended)
+
+From within a Claude Code session, run these two commands:
 
 ```bash
-# Clone the repository
-git clone https://github.com/wphillipmoore/ai-research-methodology.git
-
-# Install as a plugin
+# Add the marketplace (one-time setup)
 /plugin marketplace add wphillipmoore/ai-research-methodology
-/plugin install ai-research-methodology@wphillipmoore-ai-research-methodology
+
+# Install the plugin
+/plugin install ai-research-methodology@ai-research-methodology
 ```
 
-### As a standalone skill (Claude Code)
+The first command registers the marketplace. The second installs the plugin.
+After installation, the `/research` skill is available in all sessions.
+
+**Verify the install**: run `/plugin`, go to the **Installed** tab, and
+confirm `ai-research-methodology` appears with the expected version.
+
+Documentation:
+[Discover and install plugins](https://code.claude.com/docs/en/discover-plugins),
+[Plugin marketplaces](https://code.claude.com/docs/en/plugin-marketplaces)
+
+### Updating to a new version
+
+From within a Claude Code session:
 
 ```bash
-# Clone and symlink into your skills directory
-git clone https://github.com/wphillipmoore/ai-research-methodology.git
-ln -s /path/to/ai-research-methodology/skills/research ~/.claude/skills/research
+# Refresh the marketplace to pick up new versions
+/plugin marketplace update ai-research-methodology
+
+# Then update the plugin
+# Option A: use the interactive UI
+/plugin
+# Go to Installed tab → select the plugin → Update
+
+# Option B: from the shell (outside a session)
+claude plugin update ai-research-methodology@ai-research-methodology
 ```
+
+After updating, run `/reload-plugins` to activate the new version in your
+current session.
+
+Documentation:
+[Configure auto-updates](https://code.claude.com/docs/en/discover-plugins#configure-auto-updates),
+[CLI commands](https://code.claude.com/docs/en/plugins-reference#cli-commands-reference)
+
+**Note**: Auto-updates are disabled by default for third-party marketplaces.
+To enable them, go to `/plugin` → **Marketplaces** tab and configure
+auto-update for this marketplace.
 
 ### As a standalone prompt (any AI interface)
 
-Copy the contents of [`standalone/research.md`](standalone/research.md) and
-paste it into any AI conversation — Claude, ChatGPT, Gemini, or any capable
-LLM. Then provide your claims, queries, and/or axioms. The prompt includes
-both the research methodology and the output format. It was developed and
-tested with Claude but uses no Claude-specific features.
+Copy the contents of
+[`ai-research-methodology/standalone/research.md`](ai-research-methodology/standalone/research.md)
+and paste it into any AI conversation — Claude, ChatGPT, Gemini, or any
+capable LLM. Then provide your claims, queries, and/or axioms. The prompt
+includes both the research methodology and the output format. It was
+developed and tested with Claude but uses no Claude-specific features.
 
 - With file system access: results are written as a directory of linked
   markdown files.
@@ -112,7 +144,8 @@ tested with Claude but uses no Claude-specific features.
    bias domains
 7. **Collection-level synthesis** (IPCC) — evidence quality, source agreement,
    independence
-8. **Probability assessment** (ICD 203) — seven-point calibrated scale
+8. **Probability assessment** (ICD 203) — nine-point calibrated scale
+   (including deterministic endpoints)
 9. **Gap identification** (NAS) — what's missing and what it means
 10. **Process self-audit + source-back verification** (ROBIS + net-new) —
     five-domain bias check including interpretation verification
@@ -134,7 +167,9 @@ most dangerous default behaviors:
 
 ## Customization
 
-The output format (`output-formats/default.md`) can be replaced with a custom
+The output format
+(`ai-research-methodology/skills/research/output-formats/default.md`) can be
+replaced with a custom
 specification. The methodology prompts are independent of the output format —
 you can change how results are presented without changing how research is
 conducted.
