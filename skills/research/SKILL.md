@@ -21,14 +21,15 @@ methodology determines how to handle each type automatically.
 ### run — Execute new research
 
 ```
-/research run [file=<path>] [output=<directory>] [id=<research-id>]
+/research run [file=<path>] [output=<dir>] [id=<id>] [confirm=yes|no]
 ```
 
-| Parameter | Required | Description | Example |
-|-----------|----------|-------------|---------|
-| `file` | No | Path to a markdown file containing claims, queries, and/or axioms. If omitted, ask interactively. | `file=claims.md` |
-| `output` | No | Output directory. If omitted, ask interactively. | `output=research/ai-trust` |
-| `id` | No | Research instance ID. Only needed if your output format uses it. Auto-generated or `RXXXX` if omitted. | `id=R0005` |
+| Parameter | Required | Description | Default | Example |
+|-----------|----------|-------------|---------|---------|
+| `file` | No | Path to a markdown file containing claims, queries, and/or axioms. | Ask interactively | `file=claims.md` |
+| `output` | No | Output directory. | Ask interactively | `output=research/ai-trust` |
+| `id` | No | Research instance ID. Only needed if your output format uses it. | Auto-generated | `id=R0005` |
+| `confirm` | No | `yes`: confirm before running. `no`: batch mode, just run. | `yes` | `confirm=no` |
 
 Any `key=value` parameter not listed above is ignored. If an unrecognized
 parameter is provided, do not ask about it — silently ignore it.
@@ -62,16 +63,19 @@ would bias the new research through anchoring and confirmation effects.
 ### extract — Extract verifiable claims from a document
 
 ```
-/research extract <url-or-path> [output=<path>]
+/research extract <url-or-path> [output=<dir>]
 ```
 
 Reads a document and produces a numbered list of verifiable factual claims
 as a markdown file suitable for input to `/research run`.
 
-| Parameter | Required | Description | Example |
-|-----------|----------|-------------|---------|
-| `<url-or-path>` | Yes | URL or local file path to the document | `articles/A0005/drafts/draft-v1.md` or `https://example.com/article` |
-| `output` | No | Path to write the claims file. Default: `{document-name}-claims.md` in current directory | `output=research/claims.md` |
+| Parameter | Required | Description | Default | Example |
+|-----------|----------|-------------|---------|---------|
+| `<url-or-path>` | Yes | URL or local file path | — | `articles/A0005/drafts/draft-v1.md` |
+| `output` | No | Directory to write the claims file | Local path: dirname of input. URL: must specify. | `output=research/` |
+
+**Standard output file**: `extracted-claims.md` (placed in the output
+directory). This name is fixed — do not ask the user for a filename.
 
 **Extraction rules:**
 
@@ -97,11 +101,11 @@ as a markdown file suitable for input to `/research run`.
    chrome. If the page structure makes it unclear where the article body is,
    err on the side of including too much rather than too little.
 
-5. **Present the claims to the user for review** before saving. The user may
-   add, remove, or modify claims. The extraction is a starting point, not a
-   final product.
+5. **Present the claims to the user for review** before saving (unless
+   `confirm=no` — see below). The user may add, remove, or modify claims.
+   The extraction is a starting point, not a final product.
 
-**Output format:**
+**Output format** (`extracted-claims.md`):
 
 ```markdown
 # Claims extracted from {document name}
@@ -124,28 +128,43 @@ Extracted: {date}
 {empty by default — user may add queries before running verification}
 ```
 
-### check — Extract and verify in one step
+### fact-check — Extract and verify in one step
 
 ```
-/research check <url-or-path> [output=<directory>]
+/research fact-check <url-or-path> [output=<dir>] [confirm=yes|no]
 ```
 
-Combines `extract` and `run` into a single command:
+Extracts claims from a document and immediately runs verification on them.
 
-1. Extracts claims from the document (same rules as `extract`)
-2. Presents the claims to the user for review and confirmation
-3. On confirmation, immediately passes the claims to `run` for verification
-4. Saves both the claims file and the full research output to the output
-   directory
+| Parameter | Required | Description | Default | Example |
+|-----------|----------|-------------|---------|---------|
+| `<url-or-path>` | Yes | URL or local file path | — | `articles/A0005/drafts/draft-v1.md` |
+| `output` | No | Directory for all output (claims + research) | Local path: dirname of input. URL: must specify. | `output=research/A0005-claims/` |
+| `confirm` | No | `yes`: present claims for review before verifying. `no`: skip confirmation, just run. | `yes` | `confirm=no` |
 
-| Parameter | Required | Description | Example |
-|-----------|----------|-------------|---------|
-| `<url-or-path>` | Yes | URL or local file path | `articles/A0005/drafts/draft-v1.md` |
-| `output` | No | Output directory for research results. Default: ask interactively | `output=research/A0005-trust-chasm` |
+**Workflow:**
+
+1. Check if `{output}/extracted-claims.md` exists AND is newer than the
+   source document. If yes, skip extraction and use the existing claims file.
+   If no, run extraction.
+2. If `confirm=yes` (default): present the extracted claims to the user for
+   review. The user may add, remove, or modify claims before proceeding.
+3. If `confirm=no`: skip review, treat extracted claims as final.
+4. Pass the claims to `run` for verification. The full research output is
+   written to the output directory alongside the claims file.
+
+**`confirm=no` (batch mode):**
+- No confirmation prompt before extraction or verification
+- No clarification of input
+- Treat all input as final — the user specified everything on the command line
+- Just run
+- Still save research-input.md, snapshots, and all output artifacts
 
 This is a convenience command. It does nothing that `extract` followed by
-`run` doesn't do — it just chains them together. The user still reviews
-and confirms the claims before verification begins.
+`run` doesn't do — it chains them and adds smart caching of the extraction.
+
+**Future**: Support for directory input (collection of files) to fact-check
+documentation trees is planned but not yet implemented.
 
 ## Workflow (for `run` and `rerun`)
 

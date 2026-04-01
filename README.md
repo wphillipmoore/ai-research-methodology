@@ -89,16 +89,15 @@ tested with Claude but uses no Claude-specific features.
 
 # Re-run previous research (isolation enforced — no access to prior results)
 /research rerun research/ai-trust
-```
 
-Coming soon:
-
-```bash
 # Extract verifiable claims from a document
-/research extract https://example.com/article
+/research extract articles/my-article/drafts/draft.md
 
-# Extract and verify in one step
-/research check https://example.com/article output=research/article-check
+# Fact-check a document (extract claims + verify in one step)
+/research fact-check articles/my-article/drafts/draft.md output=research/my-article-claims
+
+# Fact-check in batch mode (no confirmation prompts)
+/research fact-check article.md output=research/check confirm=no
 ```
 
 ## The 11-Step Process
