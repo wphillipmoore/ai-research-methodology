@@ -358,10 +358,12 @@ Once all individual sources are scored, assess the collection as a whole:
 
 **With hypotheses** (claim mode, or query mode with enumerable answers):
 
-Apply the ICD 203 seven-point probability scale:
+Apply the extended probability scale (ICD 203 seven-point scale plus
+deterministic endpoints):
 
 | Term | Range |
 |------|-------|
+| Impossible / Definitively false | 0% |
 | Almost no chance / Remote | 01-05% |
 | Very unlikely / Highly improbable | 05-20% |
 | Unlikely / Improbable | 20-45% |
@@ -369,6 +371,19 @@ Apply the ICD 203 seven-point probability scale:
 | Likely / Probable | 55-80% |
 | Very likely / Highly probable | 80-95% |
 | Almost certain(ly) / Nearly certain | 95-99% |
+| Certain / Definitively true | 100% |
+
+**0% and 100% are reserved for deterministically verifiable claims.** These
+endpoints may ONLY be used when the claim can be verified by definition,
+measurement, computation, or reference to an authoritative primary source —
+and there is no possible evidence that could change the answer. Examples:
+counting items in a published document, checking geographic coordinates,
+evaluating a mathematical expression, confirming a date in a primary source.
+
+**The test**: could any new evidence change this answer? If yes, use the
+1-99% scale. If no, 0% or 100% is appropriate. If there is ANY doubt
+whatsoever, use Almost certain (95-99%) or Almost no chance (01-05%),
+not the deterministic endpoints.
 
 - Claim mode: State as "[Claim] is [probability term] ([range])."
 - Query mode with hypotheses: State which hypothesis is best supported and
