@@ -20,6 +20,13 @@ present uncertain conclusions as settled. This methodology constrains that
 behavior through enforcement language — telling the AI not just what to do,
 but what it is prohibited from doing and why.
 
+The detailed background behind this methodology — the framework evaluation,
+the design decisions, and the evidence for every feature — is discussed in a
+pair of articles:
+
+- [The Truth is Out There. But How Do You Find It?](https://theinfrastructuremindset.ghost.io/the-truth-is-out-there/) — the what and the why (Part 1)
+- [The Truth is Out There. Now Go Find It.](https://theinfrastructuremindset.ghost.io/the-truth-is-out-there-now-go-find-it/) — the how and how to get it (Part 2)
+
 ## Three Input Types
 
 - **Claims** — factual assertions to verify. Each claim is tested against
