@@ -59,28 +59,93 @@ evidence, or any other output). The subagent MUST NOT be given the path
 to prior runs. This is essential for reproducibility — reading prior results
 would bias the new research through anchoring and confirmation effects.
 
-### extract — Extract claims from a document (planned)
+### extract — Extract verifiable claims from a document
 
 ```
-/research extract <url-or-path>
+/research extract <url-or-path> [output=<path>]
 ```
 
-Reads a document and produces a list of verifiable claims as a markdown file
-suitable for input to `/research run`. Respects the claim extraction blindness
-rule: reads only the document body, not references or bibliography sections.
+Reads a document and produces a numbered list of verifiable factual claims
+as a markdown file suitable for input to `/research run`.
 
-*Not yet implemented.*
+| Parameter | Required | Description | Example |
+|-----------|----------|-------------|---------|
+| `<url-or-path>` | Yes | URL or local file path to the document | `articles/A0005/drafts/draft-v1.md` or `https://example.com/article` |
+| `output` | No | Path to write the claims file. Default: `{document-name}-claims.md` in current directory | `output=research/claims.md` |
 
-### check — Extract and verify in one step (planned)
+**Extraction rules:**
+
+1. **Read the document body only.** Do NOT read the References, Bibliography,
+   Sources, or Works Cited section. The references are a cheat sheet — claims
+   must be extracted as they appear in the prose. If the prose names a study,
+   institution, or statistic, that's fair game. If the only way to identify
+   the source is to read the reference list, skip it.
+
+2. **Extract verifiable factual claims only.** A claim is a statement that
+   can be checked against evidence. Skip:
+   - Opinions and editorial framing ("I believe...", "This is concerning...")
+   - Rhetorical questions
+   - Definitions that are being stipulated, not asserted as fact
+   - Structural statements about the article itself
+
+3. **Include named entities and categorizations.** Product names, tool names,
+   framework names, and categorization claims ("X is a type of Y") are
+   verifiable and MUST be extracted. Do not skip "simple" assertions.
+
+4. **If the input is a URL**, fetch the page content and extract the article
+   body. Strip navigation, headers, footers, ads, sidebars, and other HTML
+   chrome. If the page structure makes it unclear where the article body is,
+   err on the side of including too much rather than too little.
+
+5. **Present the claims to the user for review** before saving. The user may
+   add, remove, or modify claims. The extraction is a starting point, not a
+   final product.
+
+**Output format:**
+
+```markdown
+# Claims extracted from {document name}
+
+Source: {url or path}
+Extracted: {date}
+
+## Claims
+
+1. {first verifiable claim as it appears in the prose}
+2. {second claim}
+...
+
+## Axioms
+
+{empty by default — user may add axioms before running verification}
+
+## Queries
+
+{empty by default — user may add queries before running verification}
+```
+
+### check — Extract and verify in one step
 
 ```
 /research check <url-or-path> [output=<directory>]
 ```
 
-Combines `extract` and `run` into a single command. Extracts claims from the
-document, then immediately runs verification on them.
+Combines `extract` and `run` into a single command:
 
-*Not yet implemented.*
+1. Extracts claims from the document (same rules as `extract`)
+2. Presents the claims to the user for review and confirmation
+3. On confirmation, immediately passes the claims to `run` for verification
+4. Saves both the claims file and the full research output to the output
+   directory
+
+| Parameter | Required | Description | Example |
+|-----------|----------|-------------|---------|
+| `<url-or-path>` | Yes | URL or local file path | `articles/A0005/drafts/draft-v1.md` |
+| `output` | No | Output directory for research results. Default: ask interactively | `output=research/A0005-trust-chasm` |
+
+This is a convenience command. It does nothing that `extract` followed by
+`run` doesn't do — it just chains them together. The user still reviews
+and confirms the claims before verification begins.
 
 ## Workflow (for `run` and `rerun`)
 
@@ -251,7 +316,5 @@ are presented without changing how research is conducted.
 
 ## Future extensions
 
-- **extract** command (claim extraction from documents)
-- **check** command (extract + run in one step)
 - **report** mode (topic exploration with facets)
 - Sub-agent architecture with structured output and deterministic rendering
