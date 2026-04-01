@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "ai-research-methodology",
-      "source": "./",
+      "source": "./ai-research-methodology",
       "description": "Unified research methodology combining ICD 203, GRADE, PRISMA, Cochrane, and five other frameworks into an 11-step evidence-based process. Anti-sycophantic by design.",
       "version": "1.5.0",
       "author": {
