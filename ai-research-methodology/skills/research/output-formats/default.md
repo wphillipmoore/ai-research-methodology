@@ -51,9 +51,18 @@ snapshot files also indicates how the research was invoked (plugin vs paste).
 ## Claims / Queries
 
 1. {first claim or query text}
+
 2. {second claim or query text}
+
+   Candidate evidence:
+   - {url}
+     {description}
+
 ...
 ```
+
+Candidate evidence (when present) is preserved exactly as provided in the
+input. This enables reruns to include the same candidate evidence.
 
 ### index.md (Run Summary)
 
@@ -215,6 +224,7 @@ All source scorecards in one file.
 
 **URL**: <{url}>
 **Type**: {peer-reviewed | government | industry | media | blog | other}
+**Origin**: {search-discovered | researcher-provided}
 **Accessed**: {date}
 
 **Reliability**: {High | Medium | Low} — {rationale}
@@ -244,10 +254,28 @@ All source scorecards in one file.
 
 ### searches.md (Per-Entity)
 
-All search logs in one file.
+All search logs in one file. If the claim includes researcher-provided
+candidate evidence, list it first in a dedicated section before the
+search-generated results.
 
 ```markdown
 # {Entity ID} — Searches
+
+## Candidate Evidence (Researcher-Provided)
+
+{This section appears only when the claim includes candidate evidence.
+Omit entirely if no candidate evidence was provided.}
+
+| # | Title | URL | Rationale |
+|---|-------|-----|-----------|
+| CE01 | {title} | <{url}> | Researcher-provided: {brief description from input} |
+| CE02 | {title} | <{url}> | Researcher-provided: {brief description from input} |
+
+**Disposition**: Each candidate evidence item is included in the source
+selection for scoring. Candidate evidence is not associated with any
+search query — it was provided directly by the researcher.
+
+---
 
 ## S01: {search description}
 
