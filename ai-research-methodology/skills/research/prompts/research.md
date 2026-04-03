@@ -523,6 +523,34 @@ For each source cited in the assessment:
 
 Write the results into the self-audit as "Domain 5: Source-Back Verification."
 
+### Step 9c: Source Reading List
+
+[Source: Net-new feature — supports human review of evidence base]
+
+After completing the self-audit and source-back verification, produce a
+prioritized reading list of all scored sources for this claim or query.
+
+**Priority ranking** (derived from existing scorecard data):
+
+- **Must read** — High reliability AND High relevance. These are the
+  sources the human reviewer should read in full to validate the
+  assessment.
+- **Should read** — High reliability OR High relevance (but not both).
+  These are worth reading but less critical than the must-reads.
+- **Reference** — Everything else. Supporting or contextual sources that
+  the human may scan or skip.
+
+For each source in the reading list, include:
+- Source ID and name
+- URL
+- One-sentence summary of what this source contributes to the assessment
+- Priority ranking (must read / should read / reference)
+- Origin (search-discovered or researcher-provided)
+
+The reading list is the last artifact produced per claim/query, after the
+self-audit. It is the bridge between the AI's analysis and the human's
+own review of the evidence.
+
 ### Step 10: Report
 
 [Source: ICD 203 tradecraft standards -- all nine]

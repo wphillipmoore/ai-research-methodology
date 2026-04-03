@@ -22,7 +22,8 @@ directory containing the full evidence archive.
 │   │   ├── assessment.md                # Full analytical product
 │   │   ├── sources.md                   # All source scorecards
 │   │   ├── searches.md                  # All search logs
-│   │   └── self-audit.md               # Process + source-back audit
+│   │   ├── self-audit.md               # Process + source-back audit
+│   │   └── reading-list.md             # Prioritized source reading list
 ```
 
 **Methodology snapshots**: Before beginning research, save the instructions
@@ -120,6 +121,17 @@ common upstream origins}
 | Gap | Impact |
 |-----|--------|
 | {what's missing} | {how it affects conclusions} |
+
+### Consolidated Source Reading List
+
+Deduplicated across all claims/queries in this run. Sources appearing in
+multiple entities are listed once with all entity references.
+
+| Source | Entities | Priority | URL |
+|--------|----------|----------|-----|
+| {name} | C001, C003 | Must read | <{url}> |
+| {name} | Q001 | Should read | <{url}> |
+| {name} | C002 | Reference | <{url}> |
 
 ## Resources
 
@@ -352,6 +364,40 @@ represents what the source says.
 ## Researcher Bias Check
 
 {Assessment of whether declared biases influenced the research}
+```
+
+### reading-list.md (Per-Entity)
+
+Prioritized reading list of all scored sources, ranked by reliability and
+relevance. This is the last artifact per claim/query — the bridge between
+the AI's analysis and the human's own review.
+
+```markdown
+# {Entity ID} — Source Reading List
+
+## Must Read
+
+High reliability AND high relevance. Read these in full.
+
+| Source | URL | Summary |
+|--------|-----|---------|
+| SRC01: {name} | <{url}> | {one-sentence contribution to the assessment} |
+
+## Should Read
+
+High reliability OR high relevance. Worth reading but less critical.
+
+| Source | URL | Summary |
+|--------|-----|---------|
+| SRC02: {name} | <{url}> | {one-sentence contribution} |
+
+## Reference
+
+Supporting or contextual sources. Scan or skip.
+
+| Source | URL | Summary |
+|--------|-----|---------|
+| SRC03: {name} | <{url}> | {one-sentence contribution} |
 ```
 
 ## Rules
