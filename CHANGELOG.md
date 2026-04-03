@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.6.0 — 2026-04-03
+
+### Changes
+
+- **Candidate evidence**: Claims may now optionally include researcher-provided
+  URLs as candidate evidence. Scored on equal terms with search-discovered
+  sources. Appears in search logs as CE## entries with Origin: Researcher-provided
+  in source scorecards.
+- **Pre-fact-check gate**: Fact-check command audits the References section
+  before extraction, flagging unscored evidence references.
+- **Output format updates**: Both default and custom formats updated with
+  candidate evidence sections and Origin field in scorecards.
+- **Repo structure**: Added develop branch, branch protection ruleset
+  (no direct push to main/develop), PR-based workflow.
+
+## v1.5.0 — 2026-04-01
+
+### Changes
+
+- **Repo restructure**: Plugin content moved to `ai-research-methodology/`
+  subdirectory matching documented marketplace layout.
+- **Version management**: Version managed via marketplace.json only (removed
+  from plugin.json per docs).
+- **Install/update docs**: README rewritten with verified commands and
+  documentation links.
+- **fact-check command**: Extract claims and verify in one step.
+- **extract command**: Extract verifiable claims from a document.
+- **confirm=no batch mode**: Skip all interactive prompts.
+- **Extended probability scale**: Nine points including 0% and 100%
+  deterministic endpoints.
+
 ## v1.1.0 — 2026-03-31
 
 ### Changes
