@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.7.0 — 2026-04-03
+
+### Changes
+
+- **Source reading list**: New per-entity artifact (reading-list.md) with
+  prioritized sources ranked Must Read / Should Read / Reference based on
+  reliability × relevance scores. Placed after self-audit as the last
+  per-entity artifact.
+- **Consolidated reading list**: Run-level reading-list.md deduplicates
+  sources across all claims/queries with entity cross-references.
+- **Resources factored out**: Resources consumed moved from inline in
+  index.md to separate resources.md file. Keeps index focused on
+  analytical content.
+- **Collection Analysis restructured**: Source Reading List and Resources
+  Consumed linked from dedicated subsections with descriptions at the top
+  of Collection Analysis.
+
 ## v1.6.0 — 2026-04-03
 
 ### Changes
