@@ -27,16 +27,23 @@ question is a query.
 
 ## Input Types
 
-Research input may contain three types of items:
+Research input may contain four types of items:
 
 - **Claims** — assertions to be tested against evidence. The research agent
-  investigates whether each claim is true, false, or partially true.
+  investigates whether each claim is true, false, or partially true. Claims
+  may optionally include candidate evidence (see below).
 - **Queries** — questions to be answered with evidence. The research agent
   produces an answer with confidence and reasoning.
 - **Axioms** — facts declared by the researcher that MUST be assumed true
   for the duration of the research. Axioms are NOT tested, NOT
   fact-checked, and NOT subject to competing hypotheses. They function as
   constraints that frame the investigation.
+- **Candidate evidence** — URLs and descriptions of sources the researcher
+  believes may be relevant to a claim. Candidate evidence is attached to
+  specific claims and is treated as a pre-discovered search result. It
+  receives no special treatment — it is scored on equal terms with
+  search-discovered sources and may support, contradict, or be irrelevant
+  to the claim.
 
 Axioms exist because some facts cannot be verified through open-source
 research. In intelligence analysis, classified briefing points must be
@@ -61,6 +68,20 @@ of the investigation.
   embedded assumption is hidden in the framing; an axiom is stated openly by
   the researcher.
 
+**How the agent uses candidate evidence**:
+- Treat candidate evidence as a pre-discovered search result. It was not
+  found through a search — it was provided by the researcher.
+- Fetch the URL, read the content, and score it using the standard source
+  scorecard (reliability, relevance, six bias domains). No shortcuts.
+- Include it in the evidence base alongside search-discovered sources.
+- Evaluate it against ALL hypotheses, not just the one the researcher
+  expects it to support. Candidate evidence may contradict the claim.
+- In the search log, disposition candidate evidence as:
+  "Researcher-provided candidate evidence" with the URL, distinguished
+  from search-discovered results.
+- The researcher providing evidence does NOT mean the claim is confirmed.
+  The evidence competes on equal terms. The claim can still fail.
+
 **Input format**:
 
 ```markdown
@@ -73,14 +94,24 @@ of the investigation.
 
 1. [Assertion to be tested]
 
+2. [Another assertion to be tested]
+
+   Candidate evidence:
+   - [URL]
+     [Brief description of what this source contains and why the
+     researcher believes it is relevant]
+   - [Another URL]
+     [Brief description]
+
 ## Queries
 
 1. [Question to be answered]
 ```
 
-All three sections are optional. An input may contain only claims, only
+All four sections are optional. An input may contain only claims, only
 queries, only axioms with claims, or any combination. Claims and queries
-may be intermixed in a single research run.
+may be intermixed in a single research run. Candidate evidence is always
+attached to a specific claim — it cannot appear standalone.
 
 ---
 
@@ -287,6 +318,15 @@ The search must be comprehensive enough to be valid. A narrow or
 convenience-based search is disqualifying. If you searched only the
 first few results or only sources you were already aware of, the search
 is insufficient.
+
+**Candidate evidence**: If the claim includes researcher-provided candidate
+evidence, process it during this step alongside search results:
+- Fetch each candidate evidence URL
+- Log it as a search result with disposition "Researcher-provided candidate
+  evidence" (not associated with any search query)
+- Include it in the source selection for Step 5 scoring
+- Do NOT skip the normal search process because candidate evidence exists.
+  The candidate evidence supplements searches; it does not replace them.
 
 ### Step 5: Score Each Source
 

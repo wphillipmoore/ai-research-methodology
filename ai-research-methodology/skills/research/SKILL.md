@@ -147,10 +147,19 @@ Extracts claims from a document and immediately runs verification on them.
 1. Check if `{output}/extracted-claims.md` exists AND is newer than the
    source document. If yes, skip extraction and use the existing claims file.
    If no, run extraction.
-2. If `confirm=yes` (default): present the extracted claims to the user for
+2. **Pre-fact-check gate** (reference audit): Read the document's References
+   section. For each reference:
+   - If it has research evidence links (R/Q, SRC) → pass (already scored)
+   - If it is clearly informational (link to an organization homepage,
+     Wikipedia, regulatory text with no associated claim) → pass
+   - If it supports a factual claim but has no scorecard → **flag it**
+   Report any flagged references to the user. If flags exist and
+   `confirm=yes`: ask the user to resolve them before proceeding. If
+   `confirm=no`: report the flags as warnings but continue.
+3. If `confirm=yes` (default): present the extracted claims to the user for
    review. The user may add, remove, or modify claims before proceeding.
-3. If `confirm=no`: skip review, treat extracted claims as final.
-4. Pass the claims to `run` for verification. The full research output is
+4. If `confirm=no`: skip review, treat extracted claims as final.
+5. Pass the claims to `run` for verification. The full research output is
    written to the output directory alongside the claims file.
 
 **`confirm=no` (batch mode):**
@@ -176,7 +185,7 @@ that WERE provided, use them directly — do not re-ask.
 
 1. **Input** (`file=` parameter) — either:
    - A file path was provided: read it and extract the claims, queries,
-     and/or axioms
+     axioms, and any candidate evidence attached to claims
    - No file provided: ask the user to type them or provide a path
 
 2. **Output directory** (`output=` parameter) — where to write the results.
@@ -195,10 +204,10 @@ Research ID: R0005
 Output directory: research/ai-trust/
 Run date: 2026-03-31
 Axioms: 0
-Claims: 5
+Claims: 5 (2 with candidate evidence)
 Queries: 2
   C001: First claim text...
-  C002: Second claim text...
+  C002: Second claim text... [+1 candidate evidence URL]
   ...
   Q001: First query text...
   Q002: Second query text...
