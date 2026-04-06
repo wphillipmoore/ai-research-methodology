@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.8.0 — 2026-04-06
+
+### Changes
+
+- **Fact-check scorecard**: Collection-level scorecard as first section of
+  Collection Analysis for claim runs. Distribution table, pass rate, and
+  corrections needed.
+- **Rerun difference report**: Automatically generated after every rerun.
+  Compares new run against most recent prior run with per-entity and
+  collection-level comparison tables plus article impact summary. Preserves
+  isolation — diff is produced after rerun completes, not during.
+
 ## v1.7.0 — 2026-04-03
 
 ### Changes

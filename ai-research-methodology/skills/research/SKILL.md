@@ -60,6 +60,40 @@ evidence, or any other output). The subagent MUST NOT be given the path
 to prior runs. This is essential for reproducibility — reading prior results
 would bias the new research through anchoring and confirmation effects.
 
+**Difference report.** After the rerun completes (and ONLY after — the
+isolation rule must not be violated), the skill automatically generates a
+difference report comparing the new run against the most recent prior run.
+
+The diff is produced by a SEPARATE step that reads both runs AFTER the
+rerun subagent has finished. This preserves isolation — the rerun agent
+never sees prior results. Only the post-run comparison step reads both.
+
+The diff report is saved in `{research-directory}/diffs/` as
+`{prior-date}_vs_{new-date}.md`. If no prior run exists (first run),
+no diff is generated.
+
+The diff report contains:
+
+1. **Per-claim/query comparison**: for each entity that exists in both
+   runs, compare:
+   - Probability/confidence shift (old → new rating)
+   - Verdict change (which hypothesis prevailed)
+   - New sources found (in new run but not prior)
+   - Sources dropped (in prior but not new run)
+   - Evidence direction shift
+
+2. **Collection-level comparison**:
+   - Overall distribution shift (how many claims moved between ratings)
+   - New cross-cutting patterns
+   - Gap changes (gaps closed, new gaps identified)
+   - Source overlap (shared vs unique sources between runs)
+
+3. **Article impact summary**:
+   - Claims that strengthened (no action needed)
+   - Claims that weakened (may need softening)
+   - Claims that flipped (correction needed)
+   - New information that should be incorporated
+
 ### extract — Extract verifiable claims from a document
 
 ```

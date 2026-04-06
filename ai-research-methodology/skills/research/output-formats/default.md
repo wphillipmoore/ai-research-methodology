@@ -14,8 +14,12 @@ directory containing the full evidence archive.
 ```
 {output-directory}/
 ├── research-input.md                    # Input spec (enables reruns)
+├── diffs/                               # Difference reports (populated by reruns)
+│   └── {prior-date}_vs_{new-date}.md   # Comparison between two runs
 ├── {YYYY-MM-DD}/                        # Run directory (date-stamped)
 │   ├── index.md                         # Run summary with all results
+│   ├── reading-list.md                  # Consolidated source reading list
+│   ├── resources.md                     # Resources consumed
 │   ├── prompt-snapshot.md               # Copy of the methodology prompt
 │   ├── output-format-snapshot.md        # Copy of the output format spec (if separate)
 │   ├── {entity-slug}/                   # One directory per claim/query
@@ -97,6 +101,20 @@ probability ratings
 {Repeat for each claim/query}
 
 ## Collection Analysis
+
+### Fact-Check Scorecard
+
+{Include this section only when the run contains claims. Omit for
+query-only runs.}
+
+| Rating | Count | % | Claims |
+|--------|-------|---|--------|
+| {rating} | {n} | {pct} | {claim IDs} |
+
+**Pass rate** (Likely or above): {n}% ({passed}/{total})
+
+**Corrections needed**: {list of claims below Likely with one-line issue
+and suggested fix, or "No corrections needed."}
 
 ### Cross-Cutting Patterns
 
@@ -434,6 +452,58 @@ Supporting or contextual sources. Scan or skip.
 ## Output Delivery
 
 Choose the appropriate delivery mode based on your environment:
+
+### diffs/{prior-date}_vs_{new-date}.md (Rerun Difference Report)
+
+Generated automatically after a rerun completes. Compares the new run
+against the most recent prior run. Not produced on first runs.
+
+```markdown
+# {Research ID} — Difference Report: {prior-date} vs {new-date}
+
+## Per-Entity Comparison
+
+### {Entity ID} — {title}
+
+| Dimension | {prior-date} | {new-date} | Change |
+|-----------|-------------|-----------|--------|
+| Probability/Confidence | {old rating} | {new rating} | {shift description} |
+| Verdict | {old hypothesis} | {new hypothesis} | {change description} |
+| Sources | {n} | {n} | {+/- count, new/dropped} |
+
+**New sources found**: {list of sources in new run not in prior}
+
+**Sources dropped**: {list of sources in prior not in new run}
+
+---
+
+{Repeat for each entity}
+
+## Collection-Level Comparison
+
+| Metric | {prior-date} | {new-date} | Change |
+|--------|-------------|-----------|--------|
+| Total sources | {n} | {n} | {delta} |
+| Claims at Almost certain+ | {n} | {n} | {delta} |
+| Claims at Likely+ | {n} | {n} | {delta} |
+| Claims below Likely | {n} | {n} | {delta} |
+
+**New cross-cutting patterns**: {patterns in new run not in prior}
+
+**Gap changes**: {gaps closed, new gaps identified}
+
+## Article Impact
+
+**Strengthened** (no action needed): {list}
+
+**Weakened** (may need softening): {list}
+
+**Flipped** (correction needed): {list}
+
+**New information**: {list of findings to consider incorporating}
+```
+
+---
 
 ### Mode A: File System Access (Claude Code, plugin, or any environment with write access)
 

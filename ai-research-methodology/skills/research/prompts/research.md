@@ -607,6 +607,31 @@ distinguished from fact. Every reasoning chain must be explicit. If you
 cannot trace a conclusion back through the evidence to the sources, the
 conclusion does not belong in this report.
 
+**Fact-check scorecard** (claim mode, collection level):
+
+When the research run contains multiple claims (typical for fact-checking),
+produce a scorecard as the first section of the collection-level report.
+The scorecard provides an immediate read on the article's factual health.
+
+The scorecard contains:
+
+1. **Distribution table**: count and percentage of claims at each
+   probability rating (Certain, Almost certain, Very likely, Likely,
+   Roughly even, Unlikely, Very unlikely, Remote, Impossible). Include
+   only ratings that have claims. List the claim IDs for each rating.
+
+2. **Pass rate**: percentage of claims rated Likely or above. This is
+   the primary health metric. Format: "Pass rate (Likely or above):
+   {n}% ({passed}/{total})".
+
+3. **Corrections needed**: if any claims are rated below Likely, list
+   them with a one-line description of the issue and suggested fix.
+   If none, state "No corrections needed."
+
+The scorecard is derived from the individual claim assessments — it
+adds no new analysis, only aggregation. It goes at the top of the
+collection analysis, before cross-cutting patterns.
+
 ### Step 11: Archive for Temporal Revisitation
 
 [Source: Net-new feature -- extends ICD 203 change standard from passive
