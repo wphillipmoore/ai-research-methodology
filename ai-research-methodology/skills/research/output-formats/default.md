@@ -98,6 +98,20 @@ probability ratings
 
 ## Collection Analysis
 
+### Fact-Check Scorecard
+
+{Include this section only when the run contains claims. Omit for
+query-only runs.}
+
+| Rating | Count | % | Claims |
+|--------|-------|---|--------|
+| {rating} | {n} | {pct} | {claim IDs} |
+
+**Pass rate** (Likely or above): {n}% ({passed}/{total})
+
+**Corrections needed**: {list of claims below Likely with one-line issue
+and suggested fix, or "No corrections needed."}
+
 ### Cross-Cutting Patterns
 
 {Narrative identifying themes that span multiple claims/queries}
