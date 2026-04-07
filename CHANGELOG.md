@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.9.1 — 2026-04-07
+
+### Changes
+
+- **Parameter renamed**: `n` → `runs` (no single-character variables)
+- **Timestamp precision**: YYYY-MM-DD-HHMMSS (was HHMM). Seconds
+  prevent collision when launching multiple runs in the same minute.
+
 ## v1.9.0 — 2026-04-07
 
 ### Changes
