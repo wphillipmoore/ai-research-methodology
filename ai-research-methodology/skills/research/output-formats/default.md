@@ -16,10 +16,10 @@ directory containing the full evidence archive.
 ├── research-input.md                    # Input spec (enables reruns)
 ├── diffs/                               # Difference reports (populated by reruns)
 │   └── {prior-ts}_vs_{new-ts}.md       # Comparison between two run groups
-├── {YYYY-MM-DD-HHMM}/                  # Run group (timestamped)
+├── {YYYY-MM-DD-HHMMSSSS}/                  # Run group (timestamped)
 │   ├── prompt-snapshot.md               # Methodology prompt (shared across runs)
 │   ├── output-format-snapshot.md        # Output format spec (shared)
-│   ├── synthesis.md                     # Aggregate result across n runs
+│   ├── synthesis.md                     # Aggregate result across all runs
 │   ├── consistency.md                   # Similarity metrics and divergences
 │   ├── reading-list.md                  # Consolidated sources across all runs
 │   ├── resources.md                     # Combined resource usage
