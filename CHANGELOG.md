@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.9.0 — 2026-04-07
+
+### Changes
+
+- **n-run default**: Research runs now execute n=3 independent runs by
+  default. Each run is blind to the others. A synthesis step produces
+  aggregate results with consistency metrics after all runs complete.
+- **Timestamp precision**: Run directories now use YYYY-MM-DD-HHMM
+  (was YYYY-MM-DD). Supports multiple runs per day.
+- **Run groups**: Directory structure adds run-1/ through run-n/
+  subdirectories within each timestamped group.
+- **Synthesis artifacts**: synthesis.md (aggregate verdict), consistency.md
+  (similarity metrics), consolidated reading-list.md and resources.md
+  at the run group level.
+- **n parameter**: `n=1` for quick runs, `n=3` default, larger n supported.
+
 ## v1.8.0 — 2026-04-06
 
 ### Changes
