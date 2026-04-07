@@ -15,19 +15,26 @@ directory containing the full evidence archive.
 {output-directory}/
 ├── research-input.md                    # Input spec (enables reruns)
 ├── diffs/                               # Difference reports (populated by reruns)
-│   └── {prior-date}_vs_{new-date}.md   # Comparison between two runs
-├── {YYYY-MM-DD}/                        # Run directory (date-stamped)
-│   ├── index.md                         # Run summary with all results
-│   ├── reading-list.md                  # Consolidated source reading list
-│   ├── resources.md                     # Resources consumed
-│   ├── prompt-snapshot.md               # Copy of the methodology prompt
-│   ├── output-format-snapshot.md        # Copy of the output format spec (if separate)
-│   ├── {entity-slug}/                   # One directory per claim/query
-│   │   ├── assessment.md                # Full analytical product
-│   │   ├── sources.md                   # All source scorecards
-│   │   ├── searches.md                  # All search logs
-│   │   ├── self-audit.md               # Process + source-back audit
-│   │   └── reading-list.md             # Prioritized source reading list
+│   └── {prior-ts}_vs_{new-ts}.md       # Comparison between two run groups
+├── {YYYY-MM-DD-HHMM}/                  # Run group (timestamped)
+│   ├── prompt-snapshot.md               # Methodology prompt (shared across runs)
+│   ├── output-format-snapshot.md        # Output format spec (shared)
+│   ├── synthesis.md                     # Aggregate result across n runs
+│   ├── consistency.md                   # Similarity metrics and divergences
+│   ├── reading-list.md                  # Consolidated sources across all runs
+│   ├── resources.md                     # Combined resource usage
+│   ├── run-1/                           # Independent run 1
+│   │   ├── index.md                     # Run summary with all results
+│   │   ├── reading-list.md              # Per-run consolidated reading list
+│   │   ├── resources.md                 # Per-run resources consumed
+│   │   ├── {entity-slug}/               # One directory per claim/query
+│   │   │   ├── assessment.md            # Full analytical product
+│   │   │   ├── sources.md               # All source scorecards
+│   │   │   ├── searches.md              # All search logs
+│   │   │   ├── self-audit.md            # Process + source-back audit
+│   │   │   └── reading-list.md          # Per-entity reading list
+│   ├── run-2/                           # Independent run 2 (same structure)
+│   └── run-3/                           # Independent run 3 (same structure)
 ```
 
 **Methodology snapshots**: Before beginning research, save the instructions

@@ -21,7 +21,7 @@ methodology determines how to handle each type automatically.
 ### run — Execute new research
 
 ```
-/research run [file=<path>] [output=<dir>] [id=<id>] [confirm=yes|no]
+/research run [file=<path>] [output=<dir>] [id=<id>] [n=<count>] [confirm=yes|no]
 ```
 
 | Parameter | Required | Description | Default | Example |
@@ -29,6 +29,7 @@ methodology determines how to handle each type automatically.
 | `file` | No | Path to a markdown file containing claims, queries, and/or axioms. | Ask interactively | `file=claims.md` |
 | `output` | No | Output directory. | Ask interactively | `output=research/ai-trust` |
 | `id` | No | Research instance ID. Only needed if your output format uses it. | Auto-generated | `id=R0005` |
+| `n` | No | Number of independent runs. Each run is blind to the others. After all complete, a synthesis step produces aggregate results with consistency metrics. | `3` | `n=1` |
 | `confirm` | No | `yes`: confirm before running. `no`: batch mode, just run. | `yes` | `confirm=no` |
 
 Any `key=value` parameter not listed above is ignored. If an unrecognized
@@ -38,19 +39,21 @@ parameter is provided, do not ask about it — silently ignore it.
 
 ```
 /research run file=claims.md output=research/ai-trust
+/research run file=claims.md output=research/ai-trust n=1
 /research run
 ```
 
 ### rerun — Re-execute previous research
 
 ```
-/research rerun <path-to-research-directory>
+/research rerun <path-to-research-directory> [n=<count>] [confirm=yes|no]
 ```
 
 Re-executes a previous research run using the saved input spec. The input
 spec file (`research-input.md`) is saved in the research instance directory
-during the original run. The rerun creates a new date directory alongside
-the existing one(s).
+during the original run. The rerun creates a new timestamped directory
+alongside the existing one(s). The `n` parameter works the same as for
+`run` (default: 3).
 
 **CRITICAL: Isolation rule.** The rerun MUST be executed with NO knowledge
 of prior run results. The skill reads ONLY `research-input.md` from the
@@ -268,63 +271,95 @@ To start new research, use a different output directory.
 Do NOT overwrite, merge, or append to an existing `research-input.md`.
 Do NOT proceed with execution. This is a hard stop.
 
-### Step 3: Create run directory
+### Step 3: Create run group directory
 
-Create `{output_directory}/{YYYY-MM-DD}/` using today's date. If the directory
-already exists, append a sequence number: `{YYYY-MM-DD}-02/`,
-`{YYYY-MM-DD}-03/`, etc.
+Create `{output_directory}/{YYYY-MM-DD-HHMM}/` using the current date and
+time (24-hour format, no seconds). This is the **run group** directory that
+will contain n independent runs plus synthesis files.
+
+Within the run group, create `run-1/`, `run-2/`, ... `run-{n}/` subdirectories.
 
 ### Step 4: Save methodology snapshot
 
-Copy the files used to drive the research into the run directory:
+Copy the files used to drive the research into the run group directory
+(not into each run subdirectory — one copy shared across all runs):
 
 - `prompt-snapshot.md` — copy of the research methodology prompt
 - `output-format-snapshot.md` — copy of the output format specification
 
 This creates a permanent record of exactly what instructions were in effect.
 
-### Step 5: Execute research
+### Step 5: Execute n independent research runs
 
-Launch a subagent with the following context:
+Determine the output format specification — check in this order:
+1. Look for a project-local custom output format at
+   `skills/research/output-formats/custom.md` in the current working
+   directory. If this file exists, use it.
+2. Otherwise, use the plugin's default:
+   `skills/research/output-formats/default.md`.
 
-- The research methodology prompt: `skills/research/prompts/research.md`
-- The output format specification — check in this order:
-  1. Look for a project-local custom output format at
-     `skills/research/output-formats/custom.md` in the current working
-     directory. If this file exists, use it. This allows projects to
-     override the default output format without modifying the plugin.
-  2. Otherwise, use the plugin's default:
-     `skills/research/output-formats/default.md`.
+For each of the n runs, launch an independent subagent with:
+- The research methodology prompt
+- The output format specification
 - The input (axioms, claims, queries)
-- The output directory (the run directory created in Step 3)
+- The output directory (the specific `run-{N}/` subdirectory)
 - The research ID and run date
 
-The subagent must read BOTH the methodology prompt AND the output format spec
-before beginning work. The methodology prompt defines HOW to investigate
-(search strategy, evidence evaluation, self-audit). The output format spec
-defines WHAT to produce (directory structure, file contents).
+**Isolation rule**: Each run is completely blind to the others. No run
+may read, reference, or be influenced by any other run's output. This
+is the same isolation principle as reruns — each run must be independent
+to provide a valid signal about reproducibility.
 
-The subagent then:
+**Parallelism**: For n<=5, launch runs in parallel where possible. For
+larger n, the agent may batch runs to manage resources.
 
+Each subagent:
 1. Reads the methodology prompt and output format specification
 2. For each claim/query in the input, investigates it following the methodology
-3. Writes all output files to the run directory following the output format spec
+3. Writes all output files to its `run-{N}/` directory
 4. After all individual investigations, produces the run-level index.md with
    collection analysis
 
+### Step 5b: Synthesize across n runs
+
+**This step runs ONLY after ALL n runs have completed.** It reads the
+output from every `run-{N}/` directory and produces group-level files in
+the run group directory.
+
+Produce these files:
+
+1. **synthesis.md** — aggregate result derived from n independent runs:
+   - For each claim/query: consensus verdict, divergences, union of sources
+   - Overall assessment that integrates findings from all runs
+   - Where runs agree: state with increased confidence
+   - Where runs disagree: note the divergence and classify the root cause
+
+2. **consistency.md** — similarity metrics across the n runs:
+   - Source overlap (% shared between each pair, sources found in all/most/one)
+   - Verdict agreement (did all runs support the same hypothesis?)
+   - Scoring consistency (same source scored the same way?)
+   - Overall similarity score
+   - Diagnostic: if <50% overlap, flag as "query may be too ambiguous"
+
+3. **reading-list.md** — consolidated reading list across all n runs,
+   deduplicated, with provenance (which runs found each source)
+
+4. **resources.md** — combined resource usage across all runs
+
 ### Step 6: Report completion
 
-When the subagent finishes, report to the user:
+When synthesis finishes, report to the user:
 
 ```
 ## Research Complete
 
-- **Items investigated**: {n}
-- **Files produced**: {n}
-- **Output**: {path to run directory}
+- **Runs**: {n} independent runs
+- **Items investigated**: {count} claims/queries
+- **Output**: {path to run group directory}
 - **Duration**: {wall clock time}
+- **Consistency**: {overall similarity score}%
 
-### Verdict Summary
+### Verdict Summary (from synthesis)
 
 | Probability | Count | Items |
 |-------------|-------|-------|
@@ -332,6 +367,14 @@ When the subagent finishes, report to the user:
 | Very likely | {n} | {list} |
 | Likely | {n} | {list} |
 | Unlikely | {n} | {list} |
+
+### Run Consistency
+
+| Metric | Value |
+|--------|-------|
+| Source overlap (avg pairwise) | {n}% |
+| Verdict agreement | {all agree / N of M agree} |
+| Scoring consistency | {consistent / N divergences} |
 
 ### Flags for Attention
 
