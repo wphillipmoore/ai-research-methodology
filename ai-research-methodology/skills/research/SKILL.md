@@ -21,7 +21,7 @@ methodology determines how to handle each type automatically.
 ### run — Execute new research
 
 ```
-/research run [file=<path>] [output=<dir>] [id=<id>] [n=<count>] [confirm=yes|no]
+/research run [file=<path>] [output=<dir>] [id=<id>] [runs=<count>] [confirm=yes|no]
 ```
 
 | Parameter | Required | Description | Default | Example |
@@ -29,7 +29,7 @@ methodology determines how to handle each type automatically.
 | `file` | No | Path to a markdown file containing claims, queries, and/or axioms. | Ask interactively | `file=claims.md` |
 | `output` | No | Output directory. | Ask interactively | `output=research/ai-trust` |
 | `id` | No | Research instance ID. Only needed if your output format uses it. | Auto-generated | `id=R0005` |
-| `n` | No | Number of independent runs. Each run is blind to the others. After all complete, a synthesis step produces aggregate results with consistency metrics. | `3` | `n=1` |
+| `runs` | No | Number of independent runs. Each run is blind to the others. After all complete, a synthesis step produces aggregate results with consistency metrics. | `3` | `runs=1` |
 | `confirm` | No | `yes`: confirm before running. `no`: batch mode, just run. | `yes` | `confirm=no` |
 
 Any `key=value` parameter not listed above is ignored. If an unrecognized
@@ -39,20 +39,20 @@ parameter is provided, do not ask about it — silently ignore it.
 
 ```
 /research run file=claims.md output=research/ai-trust
-/research run file=claims.md output=research/ai-trust n=1
+/research run file=claims.md output=research/ai-trust runs=1
 /research run
 ```
 
 ### rerun — Re-execute previous research
 
 ```
-/research rerun <path-to-research-directory> [n=<count>] [confirm=yes|no]
+/research rerun <path-to-research-directory> [runs=<count>] [confirm=yes|no]
 ```
 
 Re-executes a previous research run using the saved input spec. The input
 spec file (`research-input.md`) is saved in the research instance directory
 during the original run. The rerun creates a new timestamped directory
-alongside the existing one(s). The `n` parameter works the same as for
+alongside the existing one(s). The `runs` parameter works the same as for
 `run` (default: 3).
 
 **CRITICAL: Isolation rule.** The rerun MUST be executed with NO knowledge
@@ -89,7 +89,7 @@ The diff report contains:
    - Overall distribution shift (how many claims moved between ratings)
    - New cross-cutting patterns
    - Gap changes (gaps closed, new gaps identified)
-   - Source overlap (shared vs unique sources between runs)
+   - Source overlap (shared vs unique sources betweeruns)
 
 3. **Article impact summary**:
    - Claims that strengthened (no action needed)
@@ -273,9 +273,9 @@ Do NOT proceed with execution. This is a hard stop.
 
 ### Step 3: Create run group directory
 
-Create `{output_directory}/{YYYY-MM-DD-HHMM}/` using the current date and
+Create `{output_directory}/{YYYY-MM-DD-HHMMSS}/` using the current date and
 time (24-hour format, no seconds). This is the **run group** directory that
-will contain n independent runs plus synthesis files.
+will contairuns independent runs plus synthesis files.
 
 Within the run group, create `run-1/`, `run-2/`, ... `run-{n}/` subdirectories.
 
@@ -289,7 +289,7 @@ Copy the files used to drive the research into the run group directory
 
 This creates a permanent record of exactly what instructions were in effect.
 
-### Step 5: Execute n independent research runs
+### Step 5: Execute runs independent research runs
 
 Determine the output format specification — check in this order:
 1. Look for a project-local custom output format at
@@ -298,7 +298,7 @@ Determine the output format specification — check in this order:
 2. Otherwise, use the plugin's default:
    `skills/research/output-formats/default.md`.
 
-For each of the n runs, launch an independent subagent with:
+For each of the runs, launch aruns independent subagent with:
 - The research methodology prompt
 - The output format specification
 - The input (axioms, claims, queries)
@@ -310,7 +310,7 @@ may read, reference, or be influenced by any other run's output. This
 is the same isolation principle as reruns — each run must be independent
 to provide a valid signal about reproducibility.
 
-**Parallelism**: For n<=5, launch runs in parallel where possible. For
+**Parallelism**: For runs<=5, launch runs in parallel where possible. For
 larger n, the agent may batch runs to manage resources.
 
 Each subagent:
@@ -320,28 +320,28 @@ Each subagent:
 4. After all individual investigations, produces the run-level index.md with
    collection analysis
 
-### Step 5b: Synthesize across n runs
+### Step 5b: Synthesize across runs
 
-**This step runs ONLY after ALL n runs have completed.** It reads the
+**This step runs ONLY after ALL runs have completed.** It reads the
 output from every `run-{N}/` directory and produces group-level files in
 the run group directory.
 
 Produce these files:
 
-1. **synthesis.md** — aggregate result derived from n independent runs:
+1. **synthesis.md** — aggregate result derived from runs independent runs:
    - For each claim/query: consensus verdict, divergences, union of sources
    - Overall assessment that integrates findings from all runs
    - Where runs agree: state with increased confidence
    - Where runs disagree: note the divergence and classify the root cause
 
-2. **consistency.md** — similarity metrics across the n runs:
+2. **consistency.md** — similarity metrics across the runs:
    - Source overlap (% shared between each pair, sources found in all/most/one)
    - Verdict agreement (did all runs support the same hypothesis?)
    - Scoring consistency (same source scored the same way?)
    - Overall similarity score
    - Diagnostic: if <50% overlap, flag as "query may be too ambiguous"
 
-3. **reading-list.md** — consolidated reading list across all n runs,
+3. **reading-list.md** — consolidated reading list across all runs,
    deduplicated, with provenance (which runs found each source)
 
 4. **resources.md** — combined resource usage across all runs
