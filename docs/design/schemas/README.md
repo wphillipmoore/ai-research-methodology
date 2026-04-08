@@ -58,3 +58,21 @@ as they are defined.
    to prevent undeclared fields. New fields require a schema update.
 5. **Each schema maps to a future database table.** Design as if it's
    a data model, not a throwaway format.
+
+## Output rendering
+
+The Python renderer produces two output formats from the same JSON:
+
+1. **Drill-down hierarchy** — directory structure with linked markdown
+   files for navigating the data interactively. This is the primary
+   output for understanding the research. Each level links to the
+   next level of detail.
+
+2. **Flat file** — a single consolidated document suitable for sharing,
+   reading linearly, or publishing as an article appendix. The flat
+   file includes links back into the drill-down hierarchy so readers
+   who need more detail can jump to the navigation view.
+
+Both are rendered from the same JSON by a default Python renderer with
+configurable parameters (no custom prompt needed). The renderer replaces
+the current custom output format specification entirely.
