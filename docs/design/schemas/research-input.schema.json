@@ -47,11 +47,6 @@
           "type": "string",
           "description": "The factual assertion to be tested."
         },
-        "id": {
-          "type": "string",
-          "description": "Claim identifier (e.g., C001). Auto-generated if omitted.",
-          "pattern": "^C[0-9]+$"
-        },
         "candidate_evidence": {
           "type": "array",
           "description": "Researcher-provided URLs that may be relevant to this claim. Scored on equal terms with search-discovered sources.",
@@ -69,11 +64,6 @@
         "text": {
           "type": "string",
           "description": "The research question to be answered."
-        },
-        "id": {
-          "type": "string",
-          "description": "Query identifier (e.g., Q001). Auto-generated if omitted.",
-          "pattern": "^Q[0-9]+$"
         }
       },
       "additionalProperties": false
