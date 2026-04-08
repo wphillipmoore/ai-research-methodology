@@ -2,7 +2,6 @@
   "claims": [
     {
       "text": "AI research communities show 83% homophily between safety and ethics subfields.",
-      "id": "C001",
       "candidate_evidence": [
         {
           "url": "https://arxiv.org/html/2512.10058",
@@ -11,14 +10,12 @@
       ]
     },
     {
-      "text": "DeepSeek V3, trained with GRPO, was among the most sycophantic models tested.",
-      "id": "C002"
+      "text": "DeepSeek V3, trained with GRPO, was among the most sycophantic models tested."
     }
   ],
   "queries": [
     {
-      "text": "What is the current state of AI watermarking technology for detecting AI-generated text?",
-      "id": "Q001"
+      "text": "What is the current state of AI watermarking technology for detecting AI-generated text?"
     }
   ],
   "axioms": [
