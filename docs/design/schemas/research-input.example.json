@@ -27,7 +27,6 @@
     }
   ],
   "config": {
-    "id": "R0060",
     "output": "docs/site/docs/research/R0060-example",
     "runs": 3,
     "mode": "research"

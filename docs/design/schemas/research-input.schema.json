@@ -109,10 +109,6 @@
       "type": "object",
       "description": "Research run configuration. All fields optional with sensible defaults.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Research instance ID (e.g., R0005). Auto-generated if omitted."
-        },
         "output": {
           "type": "string",
           "description": "Output directory path."
