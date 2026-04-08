@@ -274,10 +274,14 @@ Do NOT proceed with execution. This is a hard stop.
 ### Step 3: Create run group directory
 
 Create `{output_directory}/{YYYY-MM-DD-HHMMSS}/` using the current date and
-time (24-hour format, no seconds). This is the **run group** directory that
-will contairuns independent runs plus synthesis files.
+time (24-hour format, including seconds). This is the **run group** directory
+that will contain all independent runs plus synthesis files.
 
-Within the run group, create `run-1/`, `run-2/`, ... `run-{n}/` subdirectories.
+Within the run group, create `run-1/`, `run-2/`, ... `run-{N}/` subdirectories.
+**Zero-pad the run number** based on the total number of runs: if runs<=9,
+use single digits (`run-1`). If runs is 10-99, use two digits (`run-01`,
+`run-02`). If runs is 100-999, use three digits (`run-001`). This ensures
+correct sort order in all file browsers.
 
 ### Step 4: Save methodology snapshot
 
