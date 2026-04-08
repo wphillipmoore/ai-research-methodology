@@ -14,12 +14,12 @@ flowchart TD
         URLInput[/"URL: Fetch + Extract"/]
     end
 
-    subgraph PARSE["Parse + Validate"]
+    subgraph PARSE["Parse + Validate (Python)"]
         P0{"Input is JSON?"}
-        A0["AI: Input Parser"]
         P2["Python: Validate schema"]
         P3{"Valid?"}
         P3_ERR["Return error JSON"]
+        P0_TEXT["Route raw text to first sub-agent"]
     end
 
     subgraph SETUP["Setup (Python)"]
@@ -71,8 +71,8 @@ flowchart TD
 
     %% Parse flow
     P0 -->|Yes| P2
-    P0 -->|No| A0
-    A0 --> P2
+    P0 -->|No| P0_TEXT
+    P0_TEXT -->|"Text passed to sub-agent; it parses via standard preamble"| A1
     P2 --> P3
     P3 -->|No| P3_ERR
     P3 -->|Yes| S1
@@ -119,7 +119,7 @@ to JSON before entering the workflow.
 
 | Step | Function | Input | Output |
 |------|----------|-------|--------|
-| Check input format | `check_input_format()` | Raw input | Route to AI parser or validator |
+| Check input format | `check_input_format()` | Raw input | Route: JSON → validate, text → first sub-agent |
 | Validate JSON schema | `validate_schema()` | JSON | Validated input JSON or error |
 | Create dirs | `create_run_group()` | Config | Directory tree |
 | Save snapshots | `save_snapshots()` | Prompt + format files | Copies |
@@ -136,7 +136,6 @@ to JSON before entering the workflow.
 
 | # | Name | Input JSON | Output JSON | Model | Cost est. |
 |---|------|-----------|-------------|-------|-----------|
-| 0 | Input Parser | `{raw_text}` or `{url}` | `{claims: [...], queries: [...], axioms: [...], candidate_evidence: [...]}` | Sonnet | ~3K |
 | 1 | Clarifier | `{claim, axioms}` | `{clarified, assumptions, scope, vocabulary}` | Opus | ~3K |
 | 2 | Hypothesizer | `{clarified_claim}` | `{hypotheses: [{id, statement, predictions}]}` | Opus | ~2K |
 | 3 | Search Designer | `{hypotheses, vocabulary}` | `{searches: [{query, target, rationale}]}` | Sonnet | ~2K |
