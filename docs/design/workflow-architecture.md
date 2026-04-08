@@ -14,9 +14,10 @@ flowchart TD
         URLInput[/"URL: Fetch + Extract"/]
     end
 
-    subgraph PARSE["Parse (Python)"]
-        P1["Parse input to JSON"]
-        P2["Validate required fields"]
+    subgraph PARSE["Parse + Validate"]
+        P0{"Input is JSON?"}
+        A0["AI: Input Parser"]
+        P2["Python: Validate schema"]
         P3{"Valid?"}
         P3_ERR["Return error JSON"]
     end
@@ -63,13 +64,15 @@ flowchart TD
     OUTPUT[/"Final output: JSON + rendered MD"/]
 
     %% Input flow
-    HumanMD --> P1
-    ProgramJSON --> P2
-    WebUI --> P1
-    URLInput --> P1
+    HumanMD --> P0
+    ProgramJSON --> P0
+    WebUI --> P0
+    URLInput --> P0
 
     %% Parse flow
-    P1 --> P2
+    P0 -->|Yes| P2
+    P0 -->|No| A0
+    A0 --> P2
     P2 --> P3
     P3 -->|No| P3_ERR
     P3 -->|Yes| S1
@@ -116,7 +119,8 @@ to JSON before entering the workflow.
 
 | Step | Function | Input | Output |
 |------|----------|-------|--------|
-| Parse input | `parse_input()` | Raw text or JSON | Validated input JSON |
+| Check input format | `check_input_format()` | Raw input | Route to AI parser or validator |
+| Validate JSON schema | `validate_schema()` | JSON | Validated input JSON or error |
 | Create dirs | `create_run_group()` | Config | Directory tree |
 | Save snapshots | `save_snapshots()` | Prompt + format files | Copies |
 | Execute searches | `execute_searches()` | Search plan JSON | Raw results JSON |
@@ -132,6 +136,7 @@ to JSON before entering the workflow.
 
 | # | Name | Input JSON | Output JSON | Model | Cost est. |
 |---|------|-----------|-------------|-------|-----------|
+| 0 | Input Parser | `{raw_text}` or `{url}` | `{claims: [...], queries: [...], axioms: [...], candidate_evidence: [...]}` | Sonnet | ~3K |
 | 1 | Clarifier | `{claim, axioms}` | `{clarified, assumptions, scope, vocabulary}` | Opus | ~3K |
 | 2 | Hypothesizer | `{clarified_claim}` | `{hypotheses: [{id, statement, predictions}]}` | Opus | ~2K |
 | 3 | Search Designer | `{hypotheses, vocabulary}` | `{searches: [{query, target, rationale}]}` | Sonnet | ~2K |
