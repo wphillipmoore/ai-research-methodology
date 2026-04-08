@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wphillipmoore/ai-research-methodology/schemas/research-input.schema.json",
+  "title": "Research Input",
+  "description": "Input specification for a research run. Must contain at least one claim, query, or axiom.",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "claims": {
+      "type": "array",
+      "description": "Assertions to be tested against evidence.",
+      "items": {
+        "$ref": "#/$defs/claim"
+      }
+    },
+    "queries": {
+      "type": "array",
+      "description": "Questions to be answered with evidence.",
+      "items": {
+        "$ref": "#/$defs/query"
+      }
+    },
+    "axioms": {
+      "type": "array",
+      "description": "Facts declared by the researcher to be assumed true. Not tested.",
+      "items": {
+        "$ref": "#/$defs/axiom"
+      }
+    },
+    "config": {
+      "$ref": "#/$defs/config"
+    },
+    "researcher_profile": {
+      "$ref": "#/$defs/researcher_profile"
+    }
+  },
+  "anyOf": [
+    { "required": ["claims"] },
+    { "required": ["queries"] }
+  ],
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The factual assertion to be tested."
+        },
+        "id": {
+          "type": "string",
+          "description": "Claim identifier (e.g., C001). Auto-generated if omitted.",
+          "pattern": "^C[0-9]+$"
+        },
+        "candidate_evidence": {
+          "type": "array",
+          "description": "Researcher-provided URLs that may be relevant to this claim. Scored on equal terms with search-discovered sources.",
+          "items": {
+            "$ref": "#/$defs/candidate_evidence_item"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "query": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The research question to be answered."
+        },
+        "id": {
+          "type": "string",
+          "description": "Query identifier (e.g., Q001). Auto-generated if omitted.",
+          "pattern": "^Q[0-9]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "axiom": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "A fact to be assumed true for the duration of the research."
+        }
+      },
+      "additionalProperties": false
+    },
+    "candidate_evidence_item": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the candidate evidence source."
+        },
+        "description": {
+          "type": "string",
+          "description": "Brief description of what this source contains and why the researcher believes it is relevant."
+        }
+      },
+      "additionalProperties": false
+    },
+    "config": {
+      "type": "object",
+      "description": "Research run configuration. All fields optional with sensible defaults.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Research instance ID (e.g., R0005). Auto-generated if omitted."
+        },
+        "output": {
+          "type": "string",
+          "description": "Output directory path."
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Number of independent runs. Default 3."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["research", "fact-check", "rerun"],
+          "default": "research",
+          "description": "Execution mode. 'research' = standard run. 'fact-check' = extract claims from document first. 'rerun' = re-execute from existing research-input.md."
+        },
+        "source_document": {
+          "type": "string",
+          "description": "Path or URL to document for fact-check mode. Required when mode is 'fact-check'."
+        },
+        "rerun_path": {
+          "type": "string",
+          "description": "Path to existing research instance for rerun mode. Required when mode is 'rerun'."
+        },
+        "model_overrides": {
+          "type": "object",
+          "description": "Override default model tier for specific sub-agents.",
+          "properties": {
+            "clarifier": { "type": "string" },
+            "hypothesizer": { "type": "string" },
+            "search_designer": { "type": "string" },
+            "result_selector": { "type": "string" },
+            "source_scorer": { "type": "string" },
+            "evidence_extractor": { "type": "string" },
+            "evaluator": { "type": "string" },
+            "auditor": { "type": "string" },
+            "synthesizer": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "researcher_profile": {
+      "type": "object",
+      "description": "Researcher bias and expertise disclosure for calibration.",
+      "properties": {
+        "expertise": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Domains of expertise that may bias the researcher's framing."
+        },
+        "known_biases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Self-declared biases or conflicts of interest."
+        },
+        "profile_path": {
+          "type": "string",
+          "description": "Path to an external researcher profile file."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
