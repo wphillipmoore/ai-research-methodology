@@ -144,7 +144,7 @@
     },
     "researcher_profile": {
       "type": "object",
-      "description": "Researcher bias and expertise disclosure for calibration.",
+      "description": "EXPERIMENTAL — placeholder. Researcher bias and expertise disclosure for calibration. This feature is not yet implemented and will likely become its own JSON schema. Do not treat this as a stable interface.",
       "properties": {
         "expertise": {
           "type": "array",
