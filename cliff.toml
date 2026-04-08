@@ -1,0 +1,45 @@
+[changelog]
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/)
+and this project adheres to [Semantic Versioning](https://semver.org/).
+"""
+body = """
+
+{% if version -%}
+    ## [{{ version | trim_start_matches(pat="develop-v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+    ## [Unreleased]
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | split(pat="\n") | first | trim }}\
+    {% endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug fixes" },
+  { message = "^doc", group = "Documentation" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactoring" },
+  { message = "^style", group = "Styling" },
+  { message = "^test", group = "Testing" },
+  { message = "^ci", group = "CI" },
+  { message = "^chore", skip = true },
+]
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "develop-v[0-9].*"
+skip_tags = ""
+sort_commits = "oldest"
