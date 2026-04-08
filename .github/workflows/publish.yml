@@ -1,0 +1,69 @@
+name: Publish release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+  pull-requests: write
+
+jobs:
+  publish:
+    uses: wphillipmoore/standard-actions/.github/workflows/publish-release.yml@develop
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+      pull-requests: write
+    with:
+      ecosystem: python
+      version-command: >-
+        python3 -c "import tomllib; from pathlib import Path;
+        print(tomllib.loads(Path('pyproject.toml').read_text())['project']['version'])"
+      registry-check-command: >-
+        python3 -c "
+        import urllib.request, urllib.error, os;
+        v = os.environ['VERSION'];
+        try:
+            urllib.request.urlopen(f'https://pypi.org/pypi/ai-research-methodology/{v}/json', timeout=30);
+            print('exists')
+        except urllib.error.HTTPError as e:
+            print('not_found' if e.code == 404 else 'error')"
+      build-command: >-
+        python3 -m pip install uv==0.10.4 && uv build --sdist --wheel
+      attestation-subject-path: "dist/*"
+      sbom-output-file: "dist/ai-research-methodology-$VERSION.cdx.json"
+      release-title: ai-research-methodology
+      release-notes: |
+        ## Installation
+
+        ```bash
+        pip install ai-research-methodology==$VERSION
+        ```
+
+        ## Links
+
+        - [PyPI](https://pypi.org/project/ai-research-methodology/$VERSION/)
+        - [Repository](https://github.com/wphillipmoore/ai-research-methodology)
+      release-artifacts: "dist/*"
+      version-file: pyproject.toml
+      version-regex: '^(version\s*=\s*\").*(\"\s*)$'
+      version-replacement: '\g<1>{version}\2'
+      version-regex-multiline: "true"
+      develop-version-command: >-
+        python3 -c "import sys, tomllib; print(tomllib.loads(sys.stdin.read())['project']['version'])"
+      post-bump-command: >-
+        uv lock --upgrade &&
+        uv export --no-hashes -o requirements.txt &&
+        uv export --no-hashes --group dev -o requirements-dev.txt
+      extra-files: uv.lock requirements.txt requirements-dev.txt
+      pr-body-extra: >-
+        Dependencies are refreshed to their latest compatible versions
+        via `uv lock --upgrade`.
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

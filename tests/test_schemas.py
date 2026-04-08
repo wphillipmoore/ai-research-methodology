@@ -78,7 +78,7 @@ class TestResearchInputSchema:
         """Config with just output should validate."""
         data = {
             "claims": [{"text": "Test"}],
-            "config": {"output": "/tmp/test", "runs": 1},
+            "config": {"output": "output/test", "runs": 1},
         }
         jsonschema.validate(instance=data, schema=research_input_schema)
 

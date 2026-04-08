@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      python-versions:
+        type: string
+        default: '["3.12", "3.13", "3.14"]'
+      run-security:
+        type: string
+        default: 'true'
+      run-release-gates:
+        type: string
+        default: 'true'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Security and standards (shared reusable workflow)
+  # ---------------------------------------------------------------------------
+
+  security-and-standards:
+    uses: wphillipmoore/standard-actions/.github/workflows/ci-security.yml@develop
+    permissions:
+      contents: read
+      security-events: write
+    with:
+      language: python
+      run-standards: ${{ inputs.run-release-gates || 'true' }}
+      run-security: ${{ inputs.run-security || 'true' }}
+
+  # ---------------------------------------------------------------------------
+  # Quality: unit tests, linting, type-checking, dependency audit
+  # ---------------------------------------------------------------------------
+
+  unit-tests:
+    name: "test: unit (${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions || '["3.12", "3.13", "3.14"]') }}
+    container:
+      image: ghcr.io/wphillipmoore/dev-python:${{ matrix.python-version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Fetch base branch for version checks
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --depth=1
+
+      - name: Validate version string policy
+        run: python3 scripts/dev/validate_version.py
+
+      - name: Verify uv.lock sync
+        run: uv lock --check
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run ruff check
+        run: uv run ruff check
+
+      - name: Run ruff format check
+        run: uv run ruff format --check .
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest \
+            --cov=ai_research_methodology \
+            --cov-report=term-missing \
+            --cov-branch
+
+  type-check:
+    name: "ci: type-check"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/wphillipmoore/dev-python:3.14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run mypy
+        run: uv run mypy src/
+
+  dependency-audit:
+    name: "ci: dependency-audit"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/wphillipmoore/dev-python:3.14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run pip-audit (fail on any vulnerability)
+        run: uv run pip-audit -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pip-licenses (license compliance)
+        run: >-
+          uv run pip-licenses
+          --allow-only="Apache-2.0;
+          Apache-2.0 OR BSD-2-Clause;
+          Apache Software License;
+          BSD License;
+          BSD-2-Clause;
+          BSD-3-Clause;
+          GPL-3.0-only;
+          GPL-3.0-or-later;
+          ISC License (ISCL);
+          MIT;
+          MIT License;
+          Mozilla Public License 2.0 (MPL 2.0);
+          PSF-2.0;
+          Python Software Foundation License"
+
+  # ---------------------------------------------------------------------------
+  # Release gates (PR only)
+  # ---------------------------------------------------------------------------
+
+  release-gates:
+    name: "release: gates"
+    if: ${{ inputs.run-release-gates != 'false' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/wphillipmoore/dev-python:3.14
+    steps:
+      - name: Skip on non-PR events
+        if: github.event_name != 'pull_request'
+        run: echo "Not a pull request; skipping release gates."
+
+      - name: Checkout code
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Mark workspace safe for git
+        if: github.event_name == 'pull_request'
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Changelog version gate (PRs targeting main)
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: python3 scripts/dev/validate_changelog.py
+
+      - name: Version divergence gate (PRs targeting develop)
+        if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+        uses: wphillipmoore/standard-actions/actions/release-gates/version-divergence@develop
+        with:
+          head-version-command: python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text())['project']['version'])"
+          main-version-command: git show origin/main:pyproject.toml | python3 -c "import sys, tomllib; print(tomllib.loads(sys.stdin.read())['project']['version'])"

@@ -83,6 +83,11 @@ docstring-quotes = "double"
     "D1",   # Tests do not require docstrings.
     "S101", # Pytest assert style is expected.
 ]
+"scripts/**/*.py" = [
+    "D1",    # Scripts do not require docstrings.
+    "T201",  # Scripts use print for user-facing output.
+    "INP001", # Scripts are not a package; no __init__.py needed.
+]
 
 [tool.ruff.format]
 quote-style = "double"
