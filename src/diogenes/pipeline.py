@@ -304,7 +304,7 @@ def _filter_and_deduplicate(
     return selected, rejected
 
 
-_SCORING_BATCH_SIZE = 2
+_SCORING_BATCH_SIZE = 1
 _MAX_SOURCES_TO_SCORE = 15
 
 
