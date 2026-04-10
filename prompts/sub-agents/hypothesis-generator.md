@@ -71,67 +71,14 @@ First, determine whether the answer space is **enumerable** or
 
 State explicitly which path you are taking and why.
 
-## Output Schema
+## Output
 
-Always return JSON. Never return markdown, prose, or formatted text.
+Always return JSON matching the output schema appended to this prompt.
+Never return markdown, prose, or formatted text. The caller renders the
+output — your job is to return structured data.
 
-### Claim mode or enumerable query mode:
-
-```json
-{
-  "id": "C001 or Q001",
-  "mode": "claim" or "query",
-  "approach": "hypotheses",
-  "hypotheses": [
-    {
-      "id": "H1",
-      "statement": "the hypothesis in plain language",
-      "supporting_evidence": [
-        "description of evidence that would support this"
-      ],
-      "eliminating_evidence": [
-        "description of evidence that would eliminate this"
-      ],
-      "depends_on_assumptions": [
-        "which surfaced assumptions this hypothesis relies on"
-      ]
-    }
-  ],
-  "axiom_constraints": [
-    "how each relevant axiom constrains the hypothesis space"
-  ],
-  "discriminating_questions": [
-    "questions whose answers would distinguish between hypotheses"
-  ]
-}
-```
-
-### Open-ended query mode:
-
-```json
-{
-  "id": "Q001",
-  "mode": "query",
-  "approach": "open-ended",
-  "rationale": "why hypotheses are not appropriate for this query",
-  "search_themes": [
-    {
-      "id": "T1",
-      "theme": "description of the search theme",
-      "derived_from": "which sub-question this addresses",
-      "look_for": [
-        "specific types of evidence to seek"
-      ],
-      "perspectives": [
-        "mainstream/consensus",
-        "dissenting/minority",
-        "primary data",
-        "boundary of knowledge"
-      ]
-    }
-  ],
-  "axiom_constraints": [
-    "how each relevant axiom constrains the search space"
-  ]
-}
-```
+The canonical output schema (hypotheses.schema.json) is provided below
+this prompt by the coordinator. That schema is the single source of truth
+for the output format. It defines two variants: one for the hypotheses
+approach and one for the open-ended approach. Use the variant that matches
+your chosen approach.

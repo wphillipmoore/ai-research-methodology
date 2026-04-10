@@ -1,0 +1,35 @@
+{
+  "claims": [
+    {
+      "text": "AI research communities show 83% homophily between safety and ethics subfields.",
+      "candidate_evidence": [
+        {
+          "url": "https://arxiv.org/html/2512.10058",
+          "description": "Roytburg & Miller, 'Mind the Gap!' — Figure 1 caption states 83.1% homophily."
+        }
+      ]
+    },
+    {
+      "text": "DeepSeek V3, trained with GRPO, was among the most sycophantic models tested."
+    }
+  ],
+  "queries": [
+    {
+      "text": "What is the current state of AI watermarking technology for detecting AI-generated text?"
+    }
+  ],
+  "axioms": [
+    {
+      "text": "This research is conducted in the context of consumer AI products, not classified military systems."
+    }
+  ],
+  "config": {
+    "output": "docs/site/docs/research/R0060-example",
+    "runs": 3,
+    "mode": "research"
+  },
+  "researcher_profile": {
+    "expertise": ["infrastructure engineering", "non-linear dynamics"],
+    "known_biases": ["skeptical of AI reliability claims", "engineering-first perspective"]
+  }
+}

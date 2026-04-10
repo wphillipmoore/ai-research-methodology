@@ -58,6 +58,7 @@ def step2_generate_hypotheses(
         response = client.call_sub_agent(
             prompt_path=prompt_path,
             user_input=agent_input,
+            output_schema="hypotheses.schema.json",
         )
 
         results[item_id] = response
@@ -76,6 +77,7 @@ def step2_generate_hypotheses(
         response = client.call_sub_agent(
             prompt_path=prompt_path,
             user_input=agent_input,
+            output_schema="hypotheses.schema.json",
         )
 
         results[item_id] = response

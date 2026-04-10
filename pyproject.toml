@@ -59,7 +59,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-diogenes = ["py.typed"]
+diogenes = ["py.typed", "schemas/*.json"]
 
 [tool.ruff]
 line-length = 120
@@ -103,6 +103,9 @@ docstring-quotes = "double"
 ]
 "src/diogenes/pipeline.py" = [
     "T201",    # Pipeline steps print progress for user-facing output.
+]
+"src/diogenes/api_client.py" = [
+    "PLR0913", # call_sub_agent has keyword-only params for composability.
 ]
 
 [tool.ruff.format]

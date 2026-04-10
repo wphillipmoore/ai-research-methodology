@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wphillipmoore/ai-research-methodology/schemas/hypotheses.schema.json",
+  "title": "Hypothesis Generation Output",
+  "description": "Output of the hypothesis-generator sub-agent for a single claim or query. Uses either a hypotheses approach (claim mode, enumerable query mode) or an open-ended approach (open-ended query mode).",
+  "type": "object",
+  "required": ["id", "mode", "approach"],
+  "oneOf": [
+    { "$ref": "#/$defs/hypotheses_output" },
+    { "$ref": "#/$defs/open_ended_output" }
+  ],
+  "$defs": {
+    "hypotheses_output": {
+      "type": "object",
+      "required": ["id", "mode", "approach", "hypotheses", "discriminating_questions"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[CQ][0-9]+$",
+          "description": "The claim or query ID this output corresponds to."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["claim", "query"]
+        },
+        "approach": {
+          "type": "string",
+          "const": "hypotheses"
+        },
+        "hypotheses": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/hypothesis" },
+          "description": "Competing hypotheses. Minimum three required."
+        },
+        "axiom_constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "How declared axioms constrain the hypothesis space."
+        },
+        "discriminating_questions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Questions whose answers would distinguish between hypotheses."
+        }
+      },
+      "additionalProperties": false
+    },
+    "open_ended_output": {
+      "type": "object",
+      "required": ["id", "mode", "approach", "rationale", "search_themes"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^Q[0-9]+$",
+          "description": "The query ID. Open-ended approach is only valid for queries."
+        },
+        "mode": {
+          "type": "string",
+          "const": "query"
+        },
+        "approach": {
+          "type": "string",
+          "const": "open-ended"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why hypotheses are not appropriate for this query."
+        },
+        "search_themes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/search_theme" },
+          "description": "Thematic search targets derived from sub-questions."
+        },
+        "axiom_constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "How declared axioms constrain the search space."
+        }
+      },
+      "additionalProperties": false
+    },
+    "hypothesis": {
+      "type": "object",
+      "required": ["id", "statement", "supporting_evidence", "eliminating_evidence"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^H[0-9]+$",
+          "description": "Sequential hypothesis ID (H1, H2, H3, ...)."
+        },
+        "statement": {
+          "type": "string",
+          "description": "The hypothesis stated clearly in plain language."
+        },
+        "supporting_evidence": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Descriptions of evidence that would support this hypothesis."
+        },
+        "eliminating_evidence": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Descriptions of evidence that would eliminate this hypothesis."
+        },
+        "depends_on_assumptions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Which surfaced assumptions this hypothesis relies on."
+        }
+      },
+      "additionalProperties": false
+    },
+    "search_theme": {
+      "type": "object",
+      "required": ["id", "theme", "derived_from", "look_for", "perspectives"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^T[0-9]+$",
+          "description": "Sequential theme ID (T1, T2, ...)."
+        },
+        "theme": {
+          "type": "string",
+          "description": "Description of the search theme."
+        },
+        "derived_from": {
+          "type": "string",
+          "description": "Which sub-question this theme addresses."
+        },
+        "look_for": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Specific types of evidence to seek."
+        },
+        "perspectives": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Perspectives to cover: mainstream, dissenting, primary data, boundary of knowledge."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

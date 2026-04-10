@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import anthropic
+import jsonschema
 
 from diogenes.config import ConfigError, DioConfig, load_config
 
@@ -18,6 +19,37 @@ class SubAgentError(Exception):
         """Initialize with the failing agent name and error message."""
         self.agent_name = agent_name
         super().__init__(f"Sub-agent '{agent_name}' failed: {message}")
+
+
+def _parse_json_response(text_content: str, agent_name: str) -> dict[str, Any]:
+    """Parse JSON from a sub-agent response, handling markdown code fences."""
+    json_text = text_content.strip()
+    if json_text.startswith("```"):
+        lines = json_text.split("\n")
+        lines = [line for line in lines if not line.strip().startswith("```")]
+        json_text = "\n".join(lines)
+
+    try:
+        result: dict[str, Any] = json.loads(json_text)
+    except json.JSONDecodeError as e:
+        msg = f"Response is not valid JSON: {e}\nRaw response:\n{text_content[:500]}"
+        raise SubAgentError(agent_name, msg) from e
+
+    return result
+
+
+def _validate_against_schema(
+    result: dict[str, Any],
+    schema_dict: dict[str, Any],
+    agent_name: str,
+) -> None:
+    """Validate a parsed response against a JSON Schema."""
+    try:
+        jsonschema.validate(instance=result, schema=schema_dict)
+    except jsonschema.ValidationError as e:
+        path = ".".join(str(p) for p in e.absolute_path)
+        msg = f"Response failed schema validation at '{path}': {e.message}"
+        raise SubAgentError(agent_name, msg) from e
 
 
 class APIClient:
@@ -37,6 +69,7 @@ class APIClient:
     DEFAULT_MAX_TOKENS = 8192
     _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
     _COMMON_GUIDELINES_PATH = _PROMPTS_DIR / "common-guidelines.md"
+    _SCHEMAS_DIR = Path(__file__).parent / "schemas"
 
     def __init__(
         self,
@@ -77,6 +110,43 @@ class APIClient:
         else:
             self._common_guidelines = ""
 
+    def _compose_system_prompt(
+        self,
+        agent_prompt: str,
+        *,
+        include_guidelines: bool,
+        output_schema: str | None,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Compose the system prompt from guidelines, agent prompt, and schema.
+
+        Returns:
+            Tuple of (system_prompt, schema_dict or None).
+
+        """
+        parts = []
+        if include_guidelines and self._common_guidelines:
+            parts.append(self._common_guidelines)
+        parts.append(agent_prompt)
+
+        schema_dict: dict[str, Any] | None = None
+        if output_schema:
+            schema_path = self._SCHEMAS_DIR / output_schema
+            if not schema_path.exists():
+                agent_name = "schema"
+                msg = f"Output schema not found: {schema_path}"
+                raise SubAgentError(agent_name, msg)
+            schema_text = schema_path.read_text()
+            schema_dict = json.loads(schema_text)
+            parts.append(
+                "## Output JSON Schema\n\n"
+                "Your output MUST conform to this JSON Schema. "
+                "This is the canonical specification — if anything in the prompt "
+                "above conflicts with this schema, the schema wins.\n\n"
+                f"```json\n{schema_text}\n```"
+            )
+
+        return "\n\n---\n\n".join(parts), schema_dict
+
     def call_sub_agent(
         self,
         *,
@@ -85,6 +155,7 @@ class APIClient:
         model: str | None = None,
         max_tokens: int | None = None,
         include_guidelines: bool = True,
+        output_schema: str | None = None,
     ) -> dict[str, Any]:
         """Call a sub-agent prompt and return parsed JSON.
 
@@ -96,13 +167,17 @@ class APIClient:
             include_guidelines: Prepend common behavioral guidelines to the
                 system prompt. Defaults to True. Set to False only for purely
                 mechanical steps that do not involve judgment or evidence handling.
+            output_schema: Schema filename (e.g., 'hypotheses.schema.json') to
+                append to the system prompt and validate the response against.
+                Loaded from the schemas package directory.
 
         Returns:
             Parsed JSON dict from the sub-agent response.
 
         Raises:
             SubAgentError: If the prompt file doesn't exist, the API
-                call fails, or the response is not valid JSON.
+                call fails, the response is not valid JSON, or the
+                response does not conform to the output schema.
 
         """
         prompt_file = Path(prompt_path)
@@ -111,11 +186,11 @@ class APIClient:
             raise SubAgentError(prompt_file.stem, msg)
 
         agent_prompt = prompt_file.read_text()
-
-        if include_guidelines and self._common_guidelines:
-            system_prompt = self._common_guidelines + "\n\n---\n\n" + agent_prompt
-        else:
-            system_prompt = agent_prompt
+        system_prompt, schema_dict = self._compose_system_prompt(
+            agent_prompt,
+            include_guidelines=include_guidelines,
+            output_schema=output_schema,
+        )
 
         # Convert dict input to JSON string
         user_message = json.dumps(user_input, indent=2) if isinstance(user_input, dict) else user_input
@@ -141,19 +216,9 @@ class APIClient:
             msg = "Empty response from API"
             raise SubAgentError(prompt_file.stem, msg)
 
-        # Parse JSON from response — handle markdown code blocks
-        json_text = text_content.strip()
-        if json_text.startswith("```"):
-            # Strip markdown code fence
-            lines = json_text.split("\n")
-            # Remove first line (```json or ```) and last line (```)
-            lines = [line for line in lines if not line.strip().startswith("```")]
-            json_text = "\n".join(lines)
+        result = _parse_json_response(text_content, prompt_file.stem)
 
-        try:
-            result: dict[str, Any] = json.loads(json_text)
-        except json.JSONDecodeError as e:
-            msg = f"Response is not valid JSON: {e}\nRaw response:\n{text_content[:500]}"
-            raise SubAgentError(prompt_file.stem, msg) from e
+        if schema_dict is not None:
+            _validate_against_schema(result, schema_dict, prompt_file.stem)
 
         return result
