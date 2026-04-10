@@ -79,7 +79,7 @@ class SearchProvider(Protocol):
 def execute_search_plan(
     search_plan: dict[str, Any],
     provider: SearchProvider,
-    max_results_per_search: int = 3,
+    max_results_per_search: int = 5,
 ) -> list[SearchExecution]:
     """Execute all searches in a search plan using the given provider.
 

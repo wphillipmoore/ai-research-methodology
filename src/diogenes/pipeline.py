@@ -153,17 +153,22 @@ def step3_design_searches(
     return results
 
 
+_RELEVANCE_BATCH_SIZE = 5
+_RELEVANCE_THRESHOLD = 5
+
+
 def step4_execute_searches(
     research_input: dict[str, Any],
     search_plans: dict[str, Any],
     client: APIClient,
     search_provider: SearchProvider,
 ) -> dict[str, Any]:
-    """Execute search plans and select results for each claim and query.
+    """Execute search plans and score results for each claim and query.
 
-    Part A: Python executes searches via the search provider (no LLM tokens).
-    Part B: LLM result-selector evaluates search results and selects sources
-    for the evidence base (uses only titles, URLs, snippets — not full pages).
+    Three phases:
+    - 4A (Python): Execute searches via search provider. Zero LLM tokens.
+    - 4B (LLM, batched): Score relevance 0-10 in batches of 5. Tiny calls.
+    - 4C (Python): Sort by score, filter by threshold, deduplicate.
 
     Args:
         research_input: The clarified research input (output of step 1).
@@ -178,7 +183,7 @@ def step4_execute_searches(
         SubAgentError: If a sub-agent call fails.
 
     """
-    prompt_path = _PROMPTS_DIR / "result-selector.md"
+    scorer_prompt = _PROMPTS_DIR / "relevance-scorer.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -189,32 +194,114 @@ def step4_execute_searches(
         searches = item_plan.get("searches", [])
         print(f"  Executing {len(searches)} searches for {item_id} via {search_provider.name}...")
 
-        # Part A: Python executes searches
+        # Phase 4A: Python executes searches
         executions = execute_search_plan(item_plan, search_provider)
         total_results = sum(len(e.results) for e in executions)
-        print(f"    {item_id}: {total_results} raw results from {len(executions)} searches")
+        print(f"    {total_results} raw results from {len(executions)} searches")
 
-        # Part B: LLM selects relevant results
-        agent_input = {
-            "item": item,
-            "search_plan": item_plan,
-            "search_executions": [e.to_dict() for e in executions],
-        }
-
-        response = client.call_sub_agent(
-            prompt_path=prompt_path,
-            user_input=agent_input,
-            output_schema="search-results.schema.json",
-            max_tokens=16384,
+        # Phase 4B: LLM scores relevance in batches
+        all_scored = _score_results_batched(
+            item, executions, client, scorer_prompt,
         )
 
-        results[item_id] = response
-        summary = response.get("summary", {})
-        selected = summary.get("total_selected", 0)
-        rejected = summary.get("total_rejected", 0)
-        print(f"    {item_id}: {selected} sources selected, {rejected} rejected")
+        # Phase 4C: Python filters and deduplicates
+        selected, rejected = _filter_and_deduplicate(all_scored)
+        print(f"    {len(selected)} sources selected (score >= {_RELEVANCE_THRESHOLD}), "
+              f"{len(rejected)} below threshold")
+
+        results[item_id] = {
+            "id": item_id,
+            "searches_executed": [e.to_dict() for e in executions],
+            "selected_sources": selected,
+            "rejected_sources": rejected,
+            "summary": {
+                "total_searches": len(executions),
+                "total_results_found": total_results,
+                "total_selected": len(selected),
+                "total_rejected": len(rejected),
+                "relevance_threshold": _RELEVANCE_THRESHOLD,
+            },
+        }
 
     return results
+
+
+def _score_results_batched(
+    item: dict[str, Any],
+    executions: list[Any],
+    client: APIClient,
+    scorer_prompt: Path,
+) -> list[dict[str, Any]]:
+    """Score all search results in batches via the relevance-scorer sub-agent."""
+    all_scored: list[dict[str, Any]] = []
+
+    for execution in executions:
+        results_list = execution.results
+        search_id = execution.search_id
+
+        # Determine search intent from the execution
+        search_intent = f"Search {search_id}: {' '.join(execution.terms[:3])}"
+
+        # Process in batches
+        for i in range(0, len(results_list), _RELEVANCE_BATCH_SIZE):
+            batch = results_list[i:i + _RELEVANCE_BATCH_SIZE]
+            batch_input = {
+                "item_id": item["id"],
+                "clarified_text": item.get("clarified_text", ""),
+                "search_intent": search_intent,
+                "results": [
+                    {"url": r.url, "title": r.title, "snippet": r.snippet}
+                    for r in batch
+                ],
+            }
+
+            response = client.call_sub_agent(
+                prompt_path=scorer_prompt,
+                user_input=batch_input,
+                output_schema="relevance-scores.schema.json",
+                include_guidelines=False,
+            )
+
+            # Enrich scores with metadata from original results
+            for score_entry in response.get("scores", []):
+                score_entry["search_id"] = search_id
+                # Find the original result for title/snippet
+                for r in batch:
+                    if r.url == score_entry["url"]:
+                        score_entry["title"] = r.title
+                        score_entry["snippet"] = r.snippet
+                        score_entry["page_age"] = r.page_age
+                        break
+                all_scored.append(score_entry)
+
+    return all_scored
+
+
+def _filter_and_deduplicate(
+    scored_results: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Filter by relevance threshold and deduplicate by URL."""
+    # Sort by score descending
+    scored_results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+
+    seen_urls: set[str] = set()
+    selected: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+
+    for result in scored_results:
+        url = result.get("url", "")
+        score = result.get("relevance_score", 0)
+
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        if score >= _RELEVANCE_THRESHOLD:
+            selected.append(result)
+        else:
+            rejected.append(result)
+
+    return selected, rejected
 
 
 def write_step_output(
