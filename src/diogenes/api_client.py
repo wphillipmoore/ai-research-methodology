@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 import anthropic
+
+from diogenes.config import ConfigError, DioConfig, load_config
 
 
 class SubAgentError(Exception):
@@ -33,24 +34,31 @@ class APIClient:
     def __init__(
         self,
         *,
+        config: DioConfig | None = None,
         model: str | None = None,
         max_tokens: int | None = None,
     ) -> None:
         """Initialize the API client.
 
         Args:
-            model: Anthropic model ID. Defaults to Claude Sonnet.
+            config: Pre-loaded configuration. If omitted, loads from all config sources
+                (environment variable, .dorc files, .env file).
+            model: Anthropic model ID. Overrides the value in config.
             max_tokens: Maximum response tokens. Defaults to 8192.
 
-        """
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            msg = "ANTHROPIC_API_KEY environment variable is required"
-            agent_name = "api_client"
-            raise SubAgentError(agent_name, msg)
+        Raises:
+            SubAgentError: If configuration cannot be loaded (e.g., no API key found).
 
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self._model = model or self.DEFAULT_MODEL
+        """
+        try:
+            cfg = config if config is not None else load_config()
+        except ConfigError as e:
+            agent_name = "config"
+            msg = str(e)
+            raise SubAgentError(agent_name, msg) from e
+
+        self._client = anthropic.Anthropic(api_key=cfg.api_key, base_url=cfg.base_url)
+        self._model = model or cfg.model or self.DEFAULT_MODEL
         self._max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
 
     def call_sub_agent(

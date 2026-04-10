@@ -45,6 +45,7 @@ diogenes = "diogenes.cli:main"
 dev = [
     "ruff",
     "mypy",
+    "types-jsonschema",
     "pytest",
     "pytest-cov",
     "pip-audit",
