@@ -151,6 +151,62 @@ def step3_design_searches(
     return results
 
 
+def step4_execute_searches(
+    research_input: dict[str, Any],
+    search_plans: dict[str, Any],
+    client: APIClient,
+) -> dict[str, Any]:
+    """Execute search plans and log results for each claim and query.
+
+    For each item, passes the clarified item and its search plan to the
+    search-executor sub-agent with web search enabled. The model executes
+    the searches and returns a PRISMA-compliant search log.
+
+    Args:
+        research_input: The clarified research input (output of step 1).
+        search_plans: The search plans keyed by item ID (output of step 3).
+        client: Configured API client with common guidelines loaded.
+
+    Returns:
+        A dict mapping item IDs to their search results.
+
+    Raises:
+        SubAgentError: If a sub-agent call fails.
+
+    """
+    prompt_path = _PROMPTS_DIR / "search-executor.md"
+    results: dict[str, Any] = {}
+
+    items = [*research_input.get("claims", []), *research_input.get("queries", [])]
+
+    for item in items:
+        item_id = item["id"]
+        item_plan = search_plans.get(item_id, {})
+        search_count = len(item_plan.get("searches", []))
+        print(f"  Executing {search_count} searches for {item_id}...")
+
+        agent_input = {
+            "item": item,
+            "search_plan": item_plan,
+        }
+
+        response = client.call_sub_agent(
+            prompt_path=prompt_path,
+            user_input=agent_input,
+            output_schema="search-results.schema.json",
+            enable_web_search=True,
+            max_tokens=16384,
+        )
+
+        results[item_id] = response
+        summary = response.get("summary", {})
+        selected = summary.get("total_selected", 0)
+        rejected = summary.get("total_rejected", 0)
+        print(f"    {item_id}: {selected} sources selected, {rejected} rejected")
+
+    return results
+
+
 def write_step_output(
     output_dir: Path,
     filename: str,

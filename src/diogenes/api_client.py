@@ -156,6 +156,7 @@ class APIClient:
         max_tokens: int | None = None,
         include_guidelines: bool = True,
         output_schema: str | None = None,
+        enable_web_search: bool = False,
     ) -> dict[str, Any]:
         """Call a sub-agent prompt and return parsed JSON.
 
@@ -170,6 +171,9 @@ class APIClient:
             output_schema: Schema filename (e.g., 'hypotheses.schema.json') to
                 append to the system prompt and validate the response against.
                 Loaded from the schemas package directory.
+            enable_web_search: Include the Anthropic web search server tool.
+                When True, the model can execute web searches during the call.
+                Anthropic handles search execution server-side.
 
         Returns:
             Parsed JSON dict from the sub-agent response.
@@ -195,13 +199,21 @@ class APIClient:
         # Convert dict input to JSON string
         user_message = json.dumps(user_input, indent=2) if isinstance(user_input, dict) else user_input
 
+        # Build API call kwargs
+        api_kwargs: dict[str, Any] = {
+            "model": model or self._model,
+            "max_tokens": max_tokens or self._max_tokens,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_message}],
+        }
+
+        if enable_web_search:
+            api_kwargs["tools"] = [
+                {"type": "web_search_20260209", "name": "web_search"},
+            ]
+
         try:
-            response = self._client.messages.create(
-                model=model or self._model,
-                max_tokens=max_tokens or self._max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-            )
+            response = self._client.messages.create(**api_kwargs)
         except anthropic.APIError as e:
             msg = f"API call failed: {e}"
             raise SubAgentError(prompt_file.stem, msg) from e
