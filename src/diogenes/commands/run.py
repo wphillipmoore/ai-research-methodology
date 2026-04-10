@@ -226,7 +226,20 @@ def execute(input_file: str, output: str, runs: int) -> int:
         print(f"  Pipeline paused after step 4 for {run_dir.name}.")
         print("  Steps 5-11 not yet implemented.")
 
+    # Write usage report
+    usage_data = client.usage.to_dict()
+    usage_path = write_step_output(group_dir, "usage.json", usage_data)
+
     print()
     print(f"Research complete. Output: {group_dir}")
+    print()
+    totals = usage_data["totals"]
+    print(f"Usage: {totals['api_calls']} API calls, "
+          f"{totals['input_tokens']:,} input + {totals['output_tokens']:,} output "
+          f"= {totals['total_tokens']:,} tokens")
+    if totals["web_search_requests"]:
+        print(f"  Web: {totals['web_search_requests']} searches, "
+              f"{totals['web_fetch_requests']} fetches")
+    print(f"  Details: {usage_path}")
 
     return 0

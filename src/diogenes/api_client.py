@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,84 @@ import anthropic
 import jsonschema
 
 from diogenes.config import ConfigError, DioConfig, load_config
+
+
+@dataclass
+class CallUsage:
+    """Token and tool usage from a single API call."""
+
+    agent_name: str
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
+    web_search_requests: int = 0
+    web_fetch_requests: int = 0
+    service_tier: str = "standard"
+
+
+@dataclass
+class UsageAccumulator:
+    """Accumulates usage across all API calls in a session."""
+
+    calls: list[CallUsage] = field(default_factory=list)
+
+    def record(self, usage: CallUsage) -> None:
+        """Record a single call's usage."""
+        self.calls.append(usage)
+
+    @property
+    def total_input_tokens(self) -> int:
+        """Total input tokens across all calls."""
+        return sum(c.input_tokens for c in self.calls)
+
+    @property
+    def total_output_tokens(self) -> int:
+        """Total output tokens across all calls."""
+        return sum(c.output_tokens for c in self.calls)
+
+    @property
+    def total_tokens(self) -> int:
+        """Total tokens (input + output) across all calls."""
+        return self.total_input_tokens + self.total_output_tokens
+
+    @property
+    def total_web_searches(self) -> int:
+        """Total web search requests across all calls."""
+        return sum(c.web_search_requests for c in self.calls)
+
+    @property
+    def total_web_fetches(self) -> int:
+        """Total web fetch requests across all calls."""
+        return sum(c.web_fetch_requests for c in self.calls)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a dict for JSON output."""
+        return {
+            "totals": {
+                "input_tokens": self.total_input_tokens,
+                "output_tokens": self.total_output_tokens,
+                "total_tokens": self.total_tokens,
+                "web_search_requests": self.total_web_searches,
+                "web_fetch_requests": self.total_web_fetches,
+                "api_calls": len(self.calls),
+            },
+            "per_call": [
+                {
+                    "agent": c.agent_name,
+                    "model": c.model,
+                    "input_tokens": c.input_tokens,
+                    "output_tokens": c.output_tokens,
+                    "cache_creation_tokens": c.cache_creation_tokens,
+                    "cache_read_tokens": c.cache_read_tokens,
+                    "web_search_requests": c.web_search_requests,
+                    "web_fetch_requests": c.web_fetch_requests,
+                    "service_tier": c.service_tier,
+                }
+                for c in self.calls
+            ],
+        }
 
 
 class SubAgentError(Exception):
@@ -110,6 +189,8 @@ class APIClient:
         else:
             self._common_guidelines = ""
 
+        self.usage = UsageAccumulator()
+
     def _compose_system_prompt(
         self,
         agent_prompt: str,
@@ -209,7 +290,11 @@ class APIClient:
 
         if enable_web_search:
             api_kwargs["tools"] = [
-                {"type": "web_search_20260209", "name": "web_search"},
+                {
+                    "type": "web_search_20260209",
+                    "name": "web_search",
+                    "allowed_callers": ["direct"],
+                },
             ]
 
         try:
@@ -217,6 +302,20 @@ class APIClient:
         except anthropic.APIError as e:
             msg = f"API call failed: {e}"
             raise SubAgentError(prompt_file.stem, msg) from e
+
+        # Record usage
+        server_tool = response.usage.server_tool_use
+        self.usage.record(CallUsage(
+            agent_name=prompt_file.stem,
+            model=response.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            cache_creation_tokens=response.usage.cache_creation_input_tokens or 0,
+            cache_read_tokens=response.usage.cache_read_input_tokens or 0,
+            web_search_requests=server_tool.web_search_requests if server_tool else 0,
+            web_fetch_requests=server_tool.web_fetch_requests if server_tool else 0,
+            service_tier=response.usage.service_tier or "standard",
+        ))
 
         # Extract text content from response
         text_content = ""
