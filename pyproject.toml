@@ -93,7 +93,12 @@ docstring-quotes = "double"
     "INP001", # Scripts are not a package; no __init__.py needed.
 ]
 "src/diogenes/cli.py" = [
-    "T201",  # CLI uses print for user-facing output.
+    "T201",   # CLI uses print for user-facing output.
+    "PLC0415", # Lazy imports for subcommands are intentional.
+]
+"src/diogenes/commands/**/*.py" = [
+    "T201",    # Command implementations use print for user-facing output.
+    "PLR0915", # Command functions may exceed 50 statements.
 ]
 
 [tool.ruff.format]
