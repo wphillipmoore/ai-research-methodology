@@ -2,7 +2,7 @@
 set -euo pipefail
 
 export DOCKER_DEV_IMAGE="${DOCKER_DEV_IMAGE:-dev-python:3.14}"
-export DOCKER_TEST_CMD="${DOCKER_TEST_CMD:-uv sync --frozen --group dev && uv run pytest --cov=ai_research_methodology --cov-report=term-missing --cov-branch}"
+export DOCKER_TEST_CMD="${DOCKER_TEST_CMD:-uv sync --frozen --group dev && uv run pytest --cov=diogenes --cov-report=term-missing --cov-branch}"
 
 if ! command -v st-docker-test >/dev/null 2>&1; then
   echo "ERROR: st-docker-test not found on PATH." >&2
