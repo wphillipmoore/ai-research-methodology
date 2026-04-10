@@ -24,8 +24,13 @@ The detailed background behind this methodology — the framework evaluation,
 the design decisions, and the evidence for every feature — is discussed in a
 pair of articles:
 
-- [The Truth is Out There. But How Do You Find It?](https://the-infrastructure-mindset.ghost.io/the-truth-is-out-there/) — the what and the why (Part 1)
-- [The Truth is Out There. Now Go Find It.](https://the-infrastructure-mindset.ghost.io/the-truth-is-out-there-now-go-find-it/) — the how and how to get it (Part 2)
+- [The Truth is Out There. But How Do You Find It?][part1]
+  — the what and the why (Part 1)
+- [The Truth is Out There. Now Go Find It.][part2]
+  — the how and how to get it (Part 2)
+
+[part1]: https://the-infrastructure-mindset.ghost.io/the-truth-is-out-there/
+[part2]: https://the-infrastructure-mindset.ghost.io/the-truth-is-out-there-now-go-find-it/
 
 ## Three Input Types
 

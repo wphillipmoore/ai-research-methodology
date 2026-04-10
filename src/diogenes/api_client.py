@@ -53,7 +53,9 @@ class APIClient:
         try:
             cfg = config if config is not None else load_config()
         except ConfigError as e:
-            raise SubAgentError("config", str(e)) from e
+            agent_name = "config"
+            msg = str(e)
+            raise SubAgentError(agent_name, msg) from e
 
         self._client = anthropic.Anthropic(api_key=cfg.api_key, base_url=cfg.base_url)
         self._model = model or cfg.model or self.DEFAULT_MODEL
