@@ -99,6 +99,58 @@ def _print_hypothesis_summary(item_id: str, response: dict[str, Any]) -> None:
         print(f"    {item_id}: approach={approach}")
 
 
+def step3_design_searches(
+    research_input: dict[str, Any],
+    hypotheses: dict[str, Any],
+    client: APIClient,
+) -> dict[str, Any]:
+    """Design discriminating searches for each claim and query.
+
+    For each item, passes the clarified item (with vocabulary) and its
+    hypotheses to the search-designer sub-agent to produce a concrete
+    search plan.
+
+    Args:
+        research_input: The clarified research input (output of step 1).
+        hypotheses: The hypothesis results keyed by item ID (output of step 2).
+        client: Configured API client with common guidelines loaded.
+
+    Returns:
+        A dict mapping item IDs to their search plan results.
+
+    Raises:
+        SubAgentError: If a sub-agent call fails.
+
+    """
+    prompt_path = _PROMPTS_DIR / "search-designer.md"
+    results: dict[str, Any] = {}
+
+    items = [*research_input.get("claims", []), *research_input.get("queries", [])]
+
+    for item in items:
+        item_id = item["id"]
+        item_hypotheses = hypotheses.get(item_id, {})
+        print(f"  Designing searches for {item_id}...")
+
+        agent_input = {
+            "item": item,
+            "hypotheses": item_hypotheses,
+        }
+
+        response = client.call_sub_agent(
+            prompt_path=prompt_path,
+            user_input=agent_input,
+            output_schema="search-plan.schema.json",
+        )
+
+        results[item_id] = response
+        search_count = len(response.get("searches", []))
+        approach = response.get("approach", "unknown")
+        print(f"    {item_id}: {search_count} searches planned ({approach})")
+
+    return results
+
+
 def write_step_output(
     output_dir: Path,
     filename: str,

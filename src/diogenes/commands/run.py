@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from diogenes.api_client import APIClient, SubAgentError
-from diogenes.pipeline import step2_generate_hypotheses, write_step_output
+from diogenes.pipeline import step2_generate_hypotheses, step3_design_searches, write_step_output
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
 
 # Resolve prompts directory relative to repo root
@@ -194,10 +194,21 @@ def execute(input_file: str, output: str, runs: int) -> int:
         hyp_path = write_step_output(run_dir, "hypotheses.json", hypotheses)
         print(f"  Wrote: {hyp_path}")
 
-        # Steps 3-11: not yet implemented
+        # Step 3: Design discriminating searches
+        print("Step 3: Designing search plans...")
+        try:
+            search_plans = step3_design_searches(research_input, hypotheses, client)
+        except SubAgentError as e:
+            print(f"ERROR: {e}")
+            return 1
+
+        plan_path = write_step_output(run_dir, "search-plans.json", search_plans)
+        print(f"  Wrote: {plan_path}")
+
+        # Steps 4-11: not yet implemented
         print()
-        print(f"  Pipeline paused after step 2 for {run_dir.name}.")
-        print("  Steps 3-11 not yet implemented.")
+        print(f"  Pipeline paused after step 3 for {run_dir.name}.")
+        print("  Steps 4-11 not yet implemented.")
 
     print()
     print(f"Research complete. Output: {group_dir}")
