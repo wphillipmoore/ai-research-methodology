@@ -26,10 +26,17 @@ class APIClient:
     Each sub-agent is a markdown prompt file. The client loads the prompt,
     sends it as the system message with the user input, and returns the
     parsed JSON response.
+
+    By default, the common guidelines (behavioral constraints, input types,
+    researcher profile) are prepended to every sub-agent prompt. This ensures
+    all sub-agents operate under the same non-negotiable rules regardless of
+    which step they implement.
     """
 
     DEFAULT_MODEL = "claude-sonnet-4-20250514"
     DEFAULT_MAX_TOKENS = 8192
+    _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+    _COMMON_GUIDELINES_PATH = _PROMPTS_DIR / "common-guidelines.md"
 
     def __init__(
         self,
@@ -37,6 +44,7 @@ class APIClient:
         config: DioConfig | None = None,
         model: str | None = None,
         max_tokens: int | None = None,
+        guidelines_path: str | Path | None = None,
     ) -> None:
         """Initialize the API client.
 
@@ -45,6 +53,8 @@ class APIClient:
                 (environment variable, .dorc files, .env file).
             model: Anthropic model ID. Overrides the value in config.
             max_tokens: Maximum response tokens. Defaults to 8192.
+            guidelines_path: Path to common guidelines file. Defaults to
+                prompts/common-guidelines.md in the repo root.
 
         Raises:
             SubAgentError: If configuration cannot be loaded (e.g., no API key found).
@@ -61,6 +71,12 @@ class APIClient:
         self._model = model or cfg.model or self.DEFAULT_MODEL
         self._max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
 
+        gp = Path(guidelines_path) if guidelines_path is not None else self._COMMON_GUIDELINES_PATH
+        if gp.exists():
+            self._common_guidelines = gp.read_text()
+        else:
+            self._common_guidelines = ""
+
     def call_sub_agent(
         self,
         *,
@@ -68,6 +84,7 @@ class APIClient:
         user_input: str | dict[str, Any],
         model: str | None = None,
         max_tokens: int | None = None,
+        include_guidelines: bool = True,
     ) -> dict[str, Any]:
         """Call a sub-agent prompt and return parsed JSON.
 
@@ -76,6 +93,9 @@ class APIClient:
             user_input: User input as JSON dict or raw text string.
             model: Override the default model for this call.
             max_tokens: Override the default max tokens for this call.
+            include_guidelines: Prepend common behavioral guidelines to the
+                system prompt. Defaults to True. Set to False only for purely
+                mechanical steps that do not involve judgment or evidence handling.
 
         Returns:
             Parsed JSON dict from the sub-agent response.
@@ -90,7 +110,12 @@ class APIClient:
             msg = f"Prompt file not found: {prompt_file}"
             raise SubAgentError(prompt_file.stem, msg)
 
-        system_prompt = prompt_file.read_text()
+        agent_prompt = prompt_file.read_text()
+
+        if include_guidelines and self._common_guidelines:
+            system_prompt = self._common_guidelines + "\n\n---\n\n" + agent_prompt
+        else:
+            system_prompt = agent_prompt
 
         # Convert dict input to JSON string
         user_message = json.dumps(user_input, indent=2) if isinstance(user_input, dict) else user_input
