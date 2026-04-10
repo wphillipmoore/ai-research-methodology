@@ -79,12 +79,14 @@ class SearchProvider(Protocol):
 def execute_search_plan(
     search_plan: dict[str, Any],
     provider: SearchProvider,
+    max_results_per_search: int = 3,
 ) -> list[SearchExecution]:
     """Execute all searches in a search plan using the given provider.
 
     Args:
         search_plan: The search plan from Step 3 (for one item).
         provider: The search provider to use.
+        max_results_per_search: Maximum results to request per search.
 
     Returns:
         List of SearchExecution records (one per search in the plan).
@@ -101,7 +103,7 @@ def execute_search_plan(
         # Combine terms into a single query
         query = " ".join(terms[:3])
 
-        results, total_available = provider.search(query)
+        results, total_available = provider.search(query, max_results=max_results_per_search)
 
         executions.append(SearchExecution(
             search_id=search_id,

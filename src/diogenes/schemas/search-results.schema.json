@@ -121,7 +121,7 @@
           "description": "Which search ID found this source (S01, S02, etc.)."
         },
         "page_age": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Age or date of the page if available."
         }
       },
@@ -138,6 +138,10 @@
         "title": {
           "type": "string",
           "description": "Title of the rejected source."
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Brief excerpt from the source."
         },
         "rejection_rationale": {
           "type": "string",

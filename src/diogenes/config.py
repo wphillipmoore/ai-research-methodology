@@ -127,7 +127,7 @@ def load_config() -> DioConfig:
 
     # Search provider configuration
     search_sect = _section(toml, "search")
-    search_provider = str(search_sect.get("provider", "brave"))
+    search_provider = str(search_sect.get("provider", "serper"))
 
     # Search API keys: env var > .dorc > .env
     dotenv_vars: dict[str, str] = {}

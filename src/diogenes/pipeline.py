@@ -205,6 +205,7 @@ def step4_execute_searches(
             prompt_path=prompt_path,
             user_input=agent_input,
             output_schema="search-results.schema.json",
+            max_tokens=16384,
         )
 
         results[item_id] = response
