@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/wphillipmoore/ai-research-methodology/schemas/clarified-input.schema.json",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/clarified-input.schema.json",
   "title": "Clarified Research Input",
   "description": "Output of the input-clarifier sub-agent. Contains clarified claims, queries, and axioms with surfaced assumptions, scope, and vocabulary mappings.",
   "type": "object",

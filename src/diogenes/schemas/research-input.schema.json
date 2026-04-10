@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/wphillipmoore/ai-research-methodology/schemas/research-input.schema.json",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/research-input.schema.json",
   "title": "Research Input",
   "description": "Input specification for a research run. Must contain at least one claim, query, or axiom.",
   "type": "object",
