@@ -87,9 +87,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "run":
-        print(f"dio run: input={args.input_file} output={args.output} runs={args.runs}")
-        print("Not yet implemented.")
-        return 1
+        from diogenes.commands.run import execute as run_execute
+
+        return run_execute(args.input_file, args.output, args.runs)
 
     if args.command == "rerun":
         print(f"dio rerun: dir={args.research_dir} runs={args.runs}")
