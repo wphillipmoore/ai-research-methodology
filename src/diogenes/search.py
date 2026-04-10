@@ -7,9 +7,12 @@ result selection, not full page content.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
+
+import requests
 
 
 @dataclass
@@ -74,6 +77,39 @@ class SearchProvider(Protocol):
 
         """
         ...
+
+
+_FETCH_TIMEOUT = 10
+_CONTENT_EXTRACT_LENGTH = 2000
+
+
+def fetch_page_extract(url: str) -> str:
+    """Fetch a page and return a text extract of the content.
+
+    Returns the first ~2000 characters of visible text, or an empty
+    string if the fetch fails. This is intentionally simple — we only
+    need enough context for the scorer to assess quality and relevance.
+    """
+    try:
+        resp = requests.get(
+            url,
+            timeout=_FETCH_TIMEOUT,
+            headers={"User-Agent": "Diogenes/0.1 (research-methodology)"},
+        )
+        resp.raise_for_status()
+    except (requests.RequestException, ValueError):
+        return ""
+
+    # Simple text extraction: strip HTML tags
+    text = resp.text
+    # Remove script and style blocks
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text[:_CONTENT_EXTRACT_LENGTH]
 
 
 def execute_search_plan(

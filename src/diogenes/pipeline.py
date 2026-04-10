@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from diogenes.search import SearchProvider, execute_search_plan
+from diogenes.search import SearchProvider, execute_search_plan, fetch_page_extract
 
 if TYPE_CHECKING:
     from diogenes.api_client import APIClient
@@ -302,6 +302,79 @@ def _filter_and_deduplicate(
             rejected.append(result)
 
     return selected, rejected
+
+
+_SCORING_BATCH_SIZE = 3
+
+
+def step5_score_sources(
+    research_input: dict[str, Any],
+    search_results: dict[str, Any],
+    client: APIClient,
+) -> dict[str, Any]:
+    """Score each selected source with reliability, relevance, and bias assessment.
+
+    For each item, fetches page content (Python, zero tokens), then scores
+    sources in batches of 3 via the source-scorer sub-agent.
+
+    Args:
+        research_input: The clarified research input (output of step 1).
+        search_results: The search results keyed by item ID (output of step 4).
+        client: Configured API client with common guidelines loaded.
+
+    Returns:
+        A dict mapping item IDs to their source scorecards.
+
+    Raises:
+        SubAgentError: If a sub-agent call fails.
+
+    """
+    scorer_prompt = _PROMPTS_DIR / "source-scorer.md"
+    results: dict[str, Any] = {}
+
+    items = [*research_input.get("claims", []), *research_input.get("queries", [])]
+
+    for item in items:
+        item_id = item["id"]
+        item_results = search_results.get(item_id, {})
+        selected = item_results.get("selected_sources", [])
+        print(f"  Scoring {len(selected)} sources for {item_id}...")
+
+        # Phase A: Python fetches page content
+        enriched_sources = []
+        for source in selected:
+            url = source.get("url", "")
+            print(f"    Fetching {url[:60]}...")
+            content = fetch_page_extract(url)
+            enriched_sources.append({
+                "url": url,
+                "title": source.get("title", ""),
+                "snippet": source.get("snippet", ""),
+                "content_extract": content,
+            })
+
+        # Phase B: LLM scores in batches
+        all_scorecards: list[dict[str, Any]] = []
+        for i in range(0, len(enriched_sources), _SCORING_BATCH_SIZE):
+            batch = enriched_sources[i:i + _SCORING_BATCH_SIZE]
+            batch_input = {
+                "item_id": item_id,
+                "clarified_text": item.get("clarified_text", ""),
+                "sources": batch,
+            }
+
+            response = client.call_sub_agent(
+                prompt_path=scorer_prompt,
+                user_input=batch_input,
+                output_schema="source-scorecards.schema.json",
+            )
+
+            all_scorecards.extend(response.get("scorecards", []))
+
+        print(f"    {item_id}: {len(all_scorecards)} sources scored")
+        results[item_id] = {"id": item_id, "scorecards": all_scorecards}
+
+    return results
 
 
 def write_step_output(

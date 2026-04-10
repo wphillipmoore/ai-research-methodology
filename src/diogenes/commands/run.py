@@ -14,6 +14,7 @@ from diogenes.pipeline import (
     step2_generate_hypotheses,
     step3_design_searches,
     step4_execute_searches,
+    step5_score_sources,
     write_step_output,
 )
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
@@ -260,10 +261,21 @@ def execute(input_file: str, output: str, runs: int) -> int:
         results_path = write_step_output(run_dir, "search-results.json", search_results)
         print(f"  Wrote: {results_path}")
 
-        # Steps 5-11: not yet implemented
+        # Step 5: Score each source
+        print("Step 5: Scoring sources...")
+        try:
+            scorecards = step5_score_sources(research_input, search_results, client)
+        except SubAgentError as e:
+            print(f"ERROR: {e}")
+            return 1
+
+        scorecards_path = write_step_output(run_dir, "source-scorecards.json", scorecards)
+        print(f"  Wrote: {scorecards_path}")
+
+        # Steps 6-11: not yet implemented
         print()
-        print(f"  Pipeline paused after step 4 for {run_dir.name}.")
-        print("  Steps 5-11 not yet implemented.")
+        print(f"  Pipeline paused after step 5 for {run_dir.name}.")
+        print("  Steps 6-11 not yet implemented.")
 
     # Write usage report
     usage_data = client.usage.to_dict()
