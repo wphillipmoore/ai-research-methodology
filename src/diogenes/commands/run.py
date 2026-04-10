@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from diogenes.api_client import APIClient, SubAgentError
+from diogenes.config import load_config
 from diogenes.pipeline import (
     step2_generate_hypotheses,
     step3_design_searches,
@@ -16,6 +17,7 @@ from diogenes.pipeline import (
     write_step_output,
 )
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
+from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider
 
 # Resolve prompts directory relative to repo root
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
@@ -137,6 +139,29 @@ def _parse_and_clarify(
     return research_input
 
 
+def _create_search_provider() -> BraveSearchProvider | GoogleSearchProvider | None:
+    """Create a search provider from config.
+
+    Returns the provider, or None on error (after printing).
+    """
+    cfg = load_config()
+
+    if cfg.search_provider == "brave":
+        if not cfg.brave_api_key:
+            print("ERROR: Brave Search requires BRAVE_API_KEY in .dorc or .env")
+            return None
+        return BraveSearchProvider(cfg.brave_api_key)
+
+    if cfg.search_provider == "google":
+        if not cfg.google_api_key or not cfg.google_search_engine_id:
+            print("ERROR: Google Search requires GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID")
+            return None
+        return GoogleSearchProvider(cfg.google_api_key, cfg.google_search_engine_id)
+
+    print(f"ERROR: Unknown search provider: {cfg.search_provider}")
+    return None
+
+
 def execute(input_file: str, output: str, runs: int) -> int:
     """Execute the 'dio run' command.
 
@@ -157,6 +182,11 @@ def execute(input_file: str, output: str, runs: int) -> int:
         client = APIClient()
     except SubAgentError as e:
         print(f"ERROR: {e}")
+        return 1
+
+    # Initialize search provider
+    search_provider = _create_search_provider()
+    if search_provider is None:
         return 1
 
     # Step 1: Parse input and clarify via sub-agent if needed
@@ -213,7 +243,9 @@ def execute(input_file: str, output: str, runs: int) -> int:
         # Step 4: Execute searches and log
         print("Step 4: Executing searches...")
         try:
-            search_results = step4_execute_searches(research_input, search_plans, client)
+            search_results = step4_execute_searches(
+                research_input, search_plans, client, search_provider,
+            )
         except SubAgentError as e:
             print(f"ERROR: {e}")
             return 1

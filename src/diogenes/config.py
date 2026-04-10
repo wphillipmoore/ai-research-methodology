@@ -24,6 +24,10 @@ class DioConfig:
     api_key: str
     base_url: str = DEFAULT_BASE_URL
     model: str = DEFAULT_MODEL
+    search_provider: str = "brave"
+    brave_api_key: str = ""
+    google_api_key: str = ""
+    google_search_engine_id: str = ""
 
 
 def _parse_dotenv(path: Path) -> dict[str, str]:
@@ -120,4 +124,40 @@ def load_config() -> DioConfig:
         )
         raise ConfigError(msg)
 
-    return DioConfig(api_key=api_key, base_url=base_url, model=model)
+    # Search provider configuration
+    search_sect = _section(toml, "search")
+    search_provider = str(search_sect.get("provider", "brave"))
+
+    # Search API keys: env var > .dorc > .env
+    dotenv_vars: dict[str, str] = {}
+    if load_dotenv:
+        dotenv_name = str(env_sect.get("dotenv_path", ".env"))
+        dotenv_path = Path(dotenv_name)
+        if dotenv_path.exists():
+            dotenv_vars = _parse_dotenv(dotenv_path)
+
+    brave_api_key = (
+        os.environ.get("BRAVE_API_KEY", "")
+        or str(search_sect.get("brave_api_key", ""))
+        or dotenv_vars.get("BRAVE_API_KEY", "")
+    )
+    google_api_key = (
+        os.environ.get("GOOGLE_API_KEY", "")
+        or str(search_sect.get("google_api_key", ""))
+        or dotenv_vars.get("GOOGLE_API_KEY", "")
+    )
+    google_search_engine_id = (
+        os.environ.get("GOOGLE_SEARCH_ENGINE_ID", "")
+        or str(search_sect.get("google_search_engine_id", ""))
+        or dotenv_vars.get("GOOGLE_SEARCH_ENGINE_ID", "")
+    )
+
+    return DioConfig(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        search_provider=search_provider,
+        brave_api_key=brave_api_key,
+        google_api_key=google_api_key,
+        google_search_engine_id=google_search_engine_id,
+    )

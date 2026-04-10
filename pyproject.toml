@@ -46,6 +46,7 @@ dev = [
     "ruff",
     "mypy",
     "types-jsonschema",
+    "types-requests",
     "pytest",
     "pytest-cov",
     "pip-audit",
@@ -99,7 +100,9 @@ docstring-quotes = "double"
 ]
 "src/diogenes/commands/**/*.py" = [
     "T201",    # Command implementations use print for user-facing output.
+    "PLR0911", # Command execute() has early-return error handling per step.
     "PLR0915", # Command functions may exceed 50 statements.
+    "C901",    # Command execute() orchestrates multi-step pipeline.
 ]
 "src/diogenes/pipeline.py" = [
     "T201",    # Pipeline steps print progress for user-facing output.

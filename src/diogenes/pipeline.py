@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from diogenes.search import SearchProvider, execute_search_plan
+
 if TYPE_CHECKING:
     from diogenes.api_client import APIClient
 
@@ -155,17 +157,19 @@ def step4_execute_searches(
     research_input: dict[str, Any],
     search_plans: dict[str, Any],
     client: APIClient,
+    search_provider: SearchProvider,
 ) -> dict[str, Any]:
-    """Execute search plans and log results for each claim and query.
+    """Execute search plans and select results for each claim and query.
 
-    For each item, passes the clarified item and its search plan to the
-    search-executor sub-agent with web search enabled. The model executes
-    the searches and returns a PRISMA-compliant search log.
+    Part A: Python executes searches via the search provider (no LLM tokens).
+    Part B: LLM result-selector evaluates search results and selects sources
+    for the evidence base (uses only titles, URLs, snippets — not full pages).
 
     Args:
         research_input: The clarified research input (output of step 1).
         search_plans: The search plans keyed by item ID (output of step 3).
         client: Configured API client with common guidelines loaded.
+        search_provider: Search provider for executing web searches.
 
     Returns:
         A dict mapping item IDs to their search results.
@@ -174,7 +178,7 @@ def step4_execute_searches(
         SubAgentError: If a sub-agent call fails.
 
     """
-    prompt_path = _PROMPTS_DIR / "search-executor.md"
+    prompt_path = _PROMPTS_DIR / "result-selector.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -182,20 +186,25 @@ def step4_execute_searches(
     for item in items:
         item_id = item["id"]
         item_plan = search_plans.get(item_id, {})
-        search_count = len(item_plan.get("searches", []))
-        print(f"  Executing {search_count} searches for {item_id}...")
+        searches = item_plan.get("searches", [])
+        print(f"  Executing {len(searches)} searches for {item_id} via {search_provider.name}...")
 
+        # Part A: Python executes searches
+        executions = execute_search_plan(item_plan, search_provider)
+        total_results = sum(len(e.results) for e in executions)
+        print(f"    {item_id}: {total_results} raw results from {len(executions)} searches")
+
+        # Part B: LLM selects relevant results
         agent_input = {
             "item": item,
             "search_plan": item_plan,
+            "search_executions": [e.to_dict() for e in executions],
         }
 
         response = client.call_sub_agent(
             prompt_path=prompt_path,
             user_input=agent_input,
             output_schema="search-results.schema.json",
-            enable_web_search=True,
-            max_tokens=16384,
         )
 
         results[item_id] = response
