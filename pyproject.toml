@@ -101,6 +101,9 @@ docstring-quotes = "double"
     "T201",    # Command implementations use print for user-facing output.
     "PLR0915", # Command functions may exceed 50 statements.
 ]
+"src/diogenes/pipeline.py" = [
+    "T201",    # Pipeline steps print progress for user-facing output.
+]
 
 [tool.ruff.format]
 quote-style = "double"

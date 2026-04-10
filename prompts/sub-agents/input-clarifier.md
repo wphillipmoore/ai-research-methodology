@@ -127,6 +127,7 @@ Return a JSON object with this structure:
 ## Task
 
 For each claim:
+
 1. Restate for testability — remove ambiguity, expand acronyms
 2. Surface embedded assumptions (e.g., "X caused Y" assumes causation)
 3. Define scope: domain, timeframe, testability
@@ -135,6 +136,7 @@ For each claim:
 6. Assign sequential IDs: C001, C002, ...
 
 For each query:
+
 1. Restate precisely — clarify what counts as an answer
 2. Decompose into sub-questions if the query is compound
 3. Surface embedded assumptions
@@ -143,6 +145,7 @@ For each query:
 6. Assign sequential IDs: Q001, Q002, ...
 
 For axioms:
+
 1. Pass through unchanged with sequential IDs: A001, A002, ...
 2. Do NOT test or challenge axioms — they are declared constraints
 

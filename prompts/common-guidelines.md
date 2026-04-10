@@ -1,3 +1,6 @@
+<!-- markdownlint-disable MD029 -->
+<!-- Rules 1-12 are intentionally numbered continuously across subsections -->
+
 # Common Guidelines — Diogenes Research Methodology
 
 License: GPL-3.0-only
@@ -54,6 +57,7 @@ operates. In academic research, established axioms define the boundaries
 of the investigation.
 
 **How the agent uses axioms**:
+
 - Treat axioms as established context, not as claims to investigate.
 - Use axioms to constrain the scope: "Given that [axiom], what does the
   evidence say about [claim/query]?"
@@ -69,6 +73,7 @@ of the investigation.
   the researcher.
 
 **How the agent uses candidate evidence**:
+
 - Treat candidate evidence as a pre-discovered search result. It was not
   found through a search — it was provided by the researcher.
 - Fetch the URL, read the content, and score it using the standard source
@@ -230,7 +235,7 @@ to calibrate your analysis:
 
 ### Profile Template
 
-```
+```text
 RESEARCHER PROFILE
 Name: [name]
 Date: [date]
@@ -258,7 +263,7 @@ ACKNOWLEDGED BLIND SPOTS
 Every component of this prompt traces to a specific source:
 
 | Component | Source Framework(s) |
-|-----------|-------------------|
+| --------- | ------------------- |
 | Truth hierarchy | ICD 203 (adapted) |
 | Anti-sycophancy rules | Chamberlin/Platt + ICD 203 |
 | Evidence handling rules | ICD 203 + NAS |
