@@ -17,7 +17,7 @@ from diogenes.pipeline import (
     write_step_output,
 )
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
-from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider
+from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
 
 # Resolve prompts directory relative to repo root
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
@@ -139,12 +139,19 @@ def _parse_and_clarify(
     return research_input
 
 
-def _create_search_provider() -> BraveSearchProvider | GoogleSearchProvider | None:
+def _create_search_provider() -> SerperSearchProvider | BraveSearchProvider | GoogleSearchProvider | None:
     """Create a search provider from config.
 
     Returns the provider, or None on error (after printing).
     """
     cfg = load_config()
+
+    if cfg.search_provider == "serper":
+        if not cfg.serper_api_key:
+            print("ERROR: Serper.dev requires SERPER_API_KEY in .dorc or .env")
+            print("  Sign up free at https://serper.dev/ (2,500 searches/month)")
+            return None
+        return SerperSearchProvider(cfg.serper_api_key)
 
     if cfg.search_provider == "brave":
         if not cfg.brave_api_key:
@@ -266,9 +273,11 @@ def execute(input_file: str, output: str, runs: int) -> int:
     print(f"Research complete. Output: {group_dir}")
     print()
     totals = usage_data["totals"]
+    cost = totals.get("estimated_cost_usd", 0)
     print(f"Usage: {totals['api_calls']} API calls, "
           f"{totals['input_tokens']:,} input + {totals['output_tokens']:,} output "
           f"= {totals['total_tokens']:,} tokens")
+    print(f"  Estimated cost: ${cost:.4f}")
     if totals["web_search_requests"]:
         print(f"  Web: {totals['web_search_requests']} searches, "
               f"{totals['web_fetch_requests']} fetches")

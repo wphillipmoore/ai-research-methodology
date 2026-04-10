@@ -11,6 +11,61 @@ from diogenes.search import SearchResult
 _DEFAULT_TIMEOUT = 10
 
 
+class SerperSearchProvider:
+    """Serper.dev search provider (Google results).
+
+    Free tier: 2,500 queries/month. Simple JSON API.
+    https://serper.dev/
+    """
+
+    API_URL = "https://google.serper.dev/search"
+
+    def __init__(self, api_key: str) -> None:
+        """Initialize with a Serper.dev API key."""
+        self._api_key = api_key
+
+    @property
+    def name(self) -> str:
+        """Provider name for logging."""
+        return "serper"
+
+    def search(self, query: str, max_results: int = 10) -> tuple[list[SearchResult], int]:
+        """Execute a Serper.dev web search (Google results)."""
+        headers = {
+            "X-API-KEY": self._api_key,
+            "Content-Type": "application/json",
+        }
+        payload: dict[str, Any] = {
+            "q": query,
+            "num": max_results,
+        }
+
+        resp = requests.post(
+            self.API_URL,
+            headers=headers,
+            json=payload,
+            timeout=_DEFAULT_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        organic = data.get("organic", [])
+        # Serper doesn't return a total count; use organic length
+        total = len(organic)
+
+        results = [
+            SearchResult(
+                title=r.get("title", ""),
+                url=r.get("link", ""),
+                snippet=r.get("snippet", ""),
+                page_age=r.get("date"),
+            )
+            for r in organic
+        ]
+
+        return results, total
+
+
 class BraveSearchProvider:
     """Brave Search API provider.
 

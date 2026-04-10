@@ -24,7 +24,8 @@ class DioConfig:
     api_key: str
     base_url: str = DEFAULT_BASE_URL
     model: str = DEFAULT_MODEL
-    search_provider: str = "brave"
+    search_provider: str = "serper"
+    serper_api_key: str = ""
     brave_api_key: str = ""
     google_api_key: str = ""
     google_search_engine_id: str = ""
@@ -136,6 +137,11 @@ def load_config() -> DioConfig:
         if dotenv_path.exists():
             dotenv_vars = _parse_dotenv(dotenv_path)
 
+    serper_api_key = (
+        os.environ.get("SERPER_API_KEY", "")
+        or str(search_sect.get("serper_api_key", ""))
+        or dotenv_vars.get("SERPER_API_KEY", "")
+    )
     brave_api_key = (
         os.environ.get("BRAVE_API_KEY", "")
         or str(search_sect.get("brave_api_key", ""))
@@ -157,6 +163,7 @@ def load_config() -> DioConfig:
         base_url=base_url,
         model=model,
         search_provider=search_provider,
+        serper_api_key=serper_api_key,
         brave_api_key=brave_api_key,
         google_api_key=google_api_key,
         google_search_engine_id=google_search_engine_id,

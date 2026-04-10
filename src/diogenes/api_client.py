@@ -28,6 +28,30 @@ class CallUsage:
     service_tier: str = "standard"
 
 
+# Approximate per-token costs in USD (Anthropic API, standard tier)
+# These are estimates for cost tracking — actual billing may vary.
+_MODEL_COSTS: dict[str, tuple[float, float]] = {
+    # Values are (input_cost_per_1M_tokens, output_cost_per_1M_tokens)
+    "claude-sonnet-4-20250514": (3.00, 15.00),
+    "claude-haiku-4-5-20251001": (0.80, 4.00),
+    "claude-opus-4-20250514": (15.00, 75.00),
+}
+_WEB_SEARCH_COST_PER_REQUEST = 0.01  # $10/1K searches
+
+
+def _estimate_call_cost(call: CallUsage) -> float:
+    """Estimate the USD cost of a single API call."""
+    input_rate, output_rate = _MODEL_COSTS.get(
+        call.model, (3.00, 15.00),  # default to Sonnet rates
+    )
+    token_cost = (
+        call.input_tokens * input_rate / 1_000_000
+        + call.output_tokens * output_rate / 1_000_000
+    )
+    search_cost = call.web_search_requests * _WEB_SEARCH_COST_PER_REQUEST
+    return token_cost + search_cost
+
+
 @dataclass
 class UsageAccumulator:
     """Accumulates usage across all API calls in a session."""
@@ -63,6 +87,11 @@ class UsageAccumulator:
         """Total web fetch requests across all calls."""
         return sum(c.web_fetch_requests for c in self.calls)
 
+    @property
+    def total_estimated_cost(self) -> float:
+        """Total estimated USD cost across all calls."""
+        return sum(_estimate_call_cost(c) for c in self.calls)
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a dict for JSON output."""
         return {
@@ -73,6 +102,7 @@ class UsageAccumulator:
                 "web_search_requests": self.total_web_searches,
                 "web_fetch_requests": self.total_web_fetches,
                 "api_calls": len(self.calls),
+                "estimated_cost_usd": round(self.total_estimated_cost, 4),
             },
             "per_call": [
                 {
@@ -85,6 +115,7 @@ class UsageAccumulator:
                     "web_search_requests": c.web_search_requests,
                     "web_fetch_requests": c.web_fetch_requests,
                     "service_tier": c.service_tier,
+                    "estimated_cost_usd": round(_estimate_call_cost(c), 4),
                 }
                 for c in self.calls
             ],
