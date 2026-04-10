@@ -22,6 +22,14 @@
           "type": "string",
           "description": "URL of the scored source."
         },
+        "title": {
+          "type": "string",
+          "description": "Title of the source."
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Snippet from the source."
+        },
         "reliability": {
           "$ref": "#/$defs/rating_with_rationale",
           "description": "How trustworthy is this source."

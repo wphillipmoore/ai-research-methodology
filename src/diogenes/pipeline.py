@@ -304,7 +304,8 @@ def _filter_and_deduplicate(
     return selected, rejected
 
 
-_SCORING_BATCH_SIZE = 3
+_SCORING_BATCH_SIZE = 2
+_MAX_SOURCES_TO_SCORE = 15
 
 
 def step5_score_sources(
@@ -337,8 +338,13 @@ def step5_score_sources(
     for item in items:
         item_id = item["id"]
         item_results = search_results.get(item_id, {})
-        selected = item_results.get("selected_sources", [])
-        print(f"  Scoring {len(selected)} sources for {item_id}...")
+        all_selected = item_results.get("selected_sources", [])
+        # Cap at top N by relevance score to control cost
+        selected = all_selected[:_MAX_SOURCES_TO_SCORE]
+        if len(all_selected) > _MAX_SOURCES_TO_SCORE:
+            print(f"  Scoring top {len(selected)} of {len(all_selected)} sources for {item_id}...")
+        else:
+            print(f"  Scoring {len(selected)} sources for {item_id}...")
 
         # Phase A: Python fetches page content
         enriched_sources = []
@@ -367,6 +373,7 @@ def step5_score_sources(
                 prompt_path=scorer_prompt,
                 user_input=batch_input,
                 output_schema="source-scorecards.schema.json",
+                max_tokens=8192,
             )
 
             all_scorecards.extend(response.get("scorecards", []))

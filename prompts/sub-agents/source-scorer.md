@@ -75,5 +75,9 @@ use "N/A" when the source is not based on a randomized controlled trial.
 Always return JSON matching the output schema appended to this prompt.
 Never return markdown, prose, or formatted text.
 
+Return ONLY the url and the scoring fields (reliability, relevance,
+bias_assessment, overall_quality). Do NOT echo back the title, snippet,
+or content_extract — the coordinator already has those.
+
 The canonical output schema (source-scorecards.schema.json) is provided
 below this prompt by the coordinator.
