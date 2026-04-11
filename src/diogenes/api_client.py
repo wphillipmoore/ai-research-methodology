@@ -193,7 +193,7 @@ class APIClient:
 
         Args:
             config: Pre-loaded configuration. If omitted, loads from all config sources
-                (environment variable, .dorc files, .env file).
+                (environment variable, .diorc files, .env file).
             model: Anthropic model ID. Overrides the value in config.
             max_tokens: Maximum response tokens. Defaults to 8192.
             guidelines_path: Path to common guidelines file. Defaults to

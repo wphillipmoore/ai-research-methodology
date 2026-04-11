@@ -149,14 +149,14 @@ def _create_search_provider() -> SerperSearchProvider | BraveSearchProvider | Go
 
     if cfg.search_provider == "serper":
         if not cfg.serper_api_key:
-            print("ERROR: Serper.dev requires SERPER_API_KEY in .dorc or .env")
+            print("ERROR: Serper.dev requires SERPER_API_KEY in .diorc or .env")
             print("  Sign up free at https://serper.dev/ (2,500 searches/month)")
             return None
         return SerperSearchProvider(cfg.serper_api_key)
 
     if cfg.search_provider == "brave":
         if not cfg.brave_api_key:
-            print("ERROR: Brave Search requires BRAVE_API_KEY in .dorc or .env")
+            print("ERROR: Brave Search requires BRAVE_API_KEY in .diorc or .env")
             return None
         return BraveSearchProvider(cfg.brave_api_key)
 

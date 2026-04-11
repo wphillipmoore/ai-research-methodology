@@ -74,8 +74,8 @@ def load_config() -> DioConfig:
     Priority (highest to lowest):
 
     1. ``ANTHROPIC_API_KEY`` environment variable
-    2. ``api.key`` in ``./.dorc`` (project-level config, current directory)
-    3. ``api.key`` in ``~/.dorc`` (user-level config)
+    2. ``api.key`` in ``./.diorc`` (project-level config, current directory)
+    3. ``api.key`` in ``~/.diorc`` (user-level config)
     4. ``ANTHROPIC_API_KEY`` from ``.env`` file in the current directory (loaded with a warning)
 
     Returns:
@@ -85,8 +85,8 @@ def load_config() -> DioConfig:
         ConfigError: If no API key can be resolved from any source.
 
     """
-    user_toml = _load_toml(Path.home() / ".dorc")
-    project_toml = _load_toml(Path.cwd() / ".dorc")
+    user_toml = _load_toml(Path.home() / ".diorc")
+    project_toml = _load_toml(Path.cwd() / ".diorc")
 
     # Merge: project-level overrides user-level, section by section
     toml: dict[str, Any] = {**user_toml}
@@ -106,7 +106,7 @@ def load_config() -> DioConfig:
     # Priority 1: environment variable
     api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
 
-    # Priority 2 & 3: config file key (project or user .dorc)
+    # Priority 2 & 3: config file key (project or user .diorc)
     if not api_key:
         api_key = str(api_sect.get("key", ""))
 
@@ -121,7 +121,7 @@ def load_config() -> DioConfig:
     if not api_key:
         msg = (
             "No API key found. "
-            "Set ANTHROPIC_API_KEY, add api.key to .dorc, or create a .env file."
+            "Set ANTHROPIC_API_KEY, add api.key to .diorc, or create a .env file."
         )
         raise ConfigError(msg)
 
@@ -129,7 +129,7 @@ def load_config() -> DioConfig:
     search_sect = _section(toml, "search")
     search_provider = str(search_sect.get("provider", "serper"))
 
-    # Search API keys: env var > .dorc > .env
+    # Search API keys: env var > .diorc > .env
     dotenv_vars: dict[str, str] = {}
     if load_dotenv:
         dotenv_name = str(env_sect.get("dotenv_path", ".env"))
