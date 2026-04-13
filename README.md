@@ -5,6 +5,18 @@ scientific frameworks into an 11-step evidence-based process. Available as a
 Claude Code plugin or as a standalone prompt for any AI interface (Claude,
 ChatGPT, Gemini, or any capable LLM).
 
+## Table of Contents
+
+- [What This Is](#what-this-is)
+- [Three Input Types](#three-input-types)
+- [Installation](#installation)
+- [Usage](#usage)
+- [The 11-Step Process](#the-11-step-process)
+- [Anti-Sycophancy by Design](#anti-sycophancy-by-design)
+- [Customization](#customization)
+- [Attribution](#attribution)
+- [License](#license)
+
 ## What This Is
 
 A structured research methodology that makes AI agents produce defensible,
