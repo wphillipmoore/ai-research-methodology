@@ -11,6 +11,8 @@ ChatGPT, Gemini, or any capable LLM).
 - [Three Input Types](#three-input-types)
 - [Installation](#installation)
 - [Usage](#usage)
+- [MCP Server (optional)](#mcp-server-optional)
+- [dio CLI](#dio-cli)
 - [The 11-Step Process](#the-11-step-process)
 - [Anti-Sycophancy by Design](#anti-sycophancy-by-design)
 - [Customization](#customization)
@@ -148,6 +150,87 @@ developed and tested with Claude but uses no Claude-specific features.
 # Fact-check in batch mode (no confirmation prompts)
 /research fact-check article.md output=research/check confirm=no
 ```
+
+## MCP Server (optional)
+
+The Diogenes MCP server exposes Python-based web search and page fetching
+tools that Claude Code can use instead of its built-in AI web search.
+This is **optional** — the plugin works without it. The MCP server reduces
+token consumption during the search phase by ~93%.
+
+**Without MCP**: The AI uses its built-in web search tool. Works
+out of the box, but search-heavy research consumes more tokens.
+
+**With MCP**: The AI calls `dio_search` and `dio_fetch` instead.
+Searches are executed by Python via Serper.dev (or Brave/Google), and
+only the results (titles, URLs, snippets) are returned to the AI.
+
+### Setup
+
+1. Install the package:
+
+   ```bash
+   pip install diogenes
+   # or clone the repo and use uv
+   ```
+
+2. Configure a search provider in `~/.diorc` or the project `.env`:
+
+   ```bash
+   # .env file
+   SERPER_API_KEY=your-key-here    # Free: https://serper.dev/
+   ```
+
+3. Add to Claude Code settings (`~/.claude/settings.json`):
+
+   ```json
+   {
+     "mcpServers": {
+       "diogenes": {
+         "command": "uv",
+         "args": [
+           "--directory", "/path/to/ai-research-methodology",
+           "run", "dio-mcp"
+         ]
+       }
+     }
+   }
+   ```
+
+4. Restart Claude Code. The `dio_search`, `dio_fetch`, and
+   `dio_search_batch` tools are now available in all sessions.
+
+### MCP Tools
+
+| Tool | Description |
+| ---- | ----------- |
+| `dio_search` | Web search via configured provider. Returns titles, URLs, snippets. |
+| `dio_fetch` | Fetch a URL, extract visible text (~2000 chars). |
+| `dio_search_batch` | Execute multiple searches at once. |
+
+## dio CLI
+
+The `dio` command-line interface runs the full 11-step research pipeline
+as a Python coordinator calling AI sub-agents via the Anthropic API. It
+uses the same methodology as the plugin but manages the process
+programmatically.
+
+```bash
+# Install
+pip install diogenes
+
+# Configure API keys in .env
+echo 'ANTHROPIC_API_KEY=your-key' >> .env
+echo 'SERPER_API_KEY=your-key' >> .env
+
+# Run research
+dio run input.md --output research/my-topic --runs 1
+```
+
+The CLI produces JSON output files at each pipeline step (clarified
+input, hypotheses, search plans, search results, source scorecards,
+synthesis, self-audit, and final reports), plus a `usage.json` with
+per-call token counts and estimated costs.
 
 ## The 11-Step Process
 
