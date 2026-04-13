@@ -50,13 +50,13 @@ parameter is provided, do not ask about it — silently ignore it.
 ```
 
 Re-executes a previous research run using the saved input spec. The input
-spec file (`research-input.md`) is saved in the research instance directory
+spec file (`research-input.json`) is saved in the research instance directory
 during the original run. The rerun creates a new timestamped directory
 alongside the existing one(s). The `runs` parameter works the same as for
 `run` (default: 3).
 
 **CRITICAL: Isolation rule.** The rerun MUST be executed with NO knowledge
-of prior run results. The skill reads ONLY `research-input.md` from the
+of prior run results. The skill reads ONLY `research-input.json` from the
 research directory. It MUST NOT read, reference, or pass to the subagent
 ANY files from existing date directories (prior run results, assessments,
 evidence, or any other output). The subagent MUST NOT be given the path
@@ -103,16 +103,17 @@ The diff report contains:
 /research extract <url-or-path> [output=<dir>]
 ```
 
-Reads a document and produces a numbered list of verifiable factual claims
-as a markdown file suitable for input to `/research run`.
+Reads a document and produces a JSON file of verifiable factual claims
+suitable for input to `/research run`.
 
 | Parameter | Required | Description | Default | Example |
 |-----------|----------|-------------|---------|---------|
 | `<url-or-path>` | Yes | URL or local file path | — | `articles/A0005/drafts/draft-v1.md` |
 | `output` | No | Directory to write the claims file | Local path: dirname of input. URL: must specify. | `output=research/` |
 
-**Standard output file**: `extracted-claims.md` (placed in the output
+**Standard output file**: `extracted-claims.json` (placed in the output
 directory). This name is fixed — do not ask the user for a filename.
+The output MUST conform to the `extracted-claims.schema.json` schema.
 
 **Extraction rules:**
 
@@ -142,28 +143,24 @@ directory). This name is fixed — do not ask the user for a filename.
    `confirm=no` — see below). The user may add, remove, or modify claims.
    The extraction is a starting point, not a final product.
 
-**Output format** (`extracted-claims.md`):
+**Output format** (`extracted-claims.json`):
 
-```markdown
-# Claims extracted from {document name}
-
-Source: {url or path}
-Extracted: {date}
-
-## Claims
-
-1. {first verifiable claim as it appears in the prose}
-2. {second claim}
-...
-
-## Axioms
-
-{empty by default — user may add axioms before running verification}
-
-## Queries
-
-{empty by default — user may add queries before running verification}
+```json
+{
+  "source": "url or path to the source document",
+  "extracted_at": "2026-04-13T12:00:00Z",
+  "claims": [
+    {"text": "first verifiable claim as it appears in the prose"},
+    {"text": "second claim"}
+  ],
+  "queries": [],
+  "axioms": []
+}
 ```
+
+The `queries` and `axioms` arrays are empty by default — the user may
+add items before running verification. This JSON is directly usable as
+input to `/research run file=extracted-claims.json`.
 
 ### fact-check — Extract and verify in one step
 
@@ -181,7 +178,7 @@ Extracts claims from a document and immediately runs verification on them.
 
 **Workflow:**
 
-1. Check if `{output}/extracted-claims.md` exists AND is newer than the
+1. Check if `{output}/extracted-claims.json` exists AND is newer than the
    source document. If yes, skip extraction and use the existing claims file.
    If no, run extraction.
 2. **Pre-fact-check gate** (reference audit): Read the document's References
@@ -204,7 +201,7 @@ Extracts claims from a document and immediately runs verification on them.
 - No clarification of input
 - Treat all input as final — the user specified everything on the command line
 - Just run
-- Still save research-input.md, snapshots, and all output artifacts
+- Still save research-input.json, snapshots, and all output artifacts
 
 This is a convenience command. It does nothing that `extract` followed by
 `run` doesn't do — it chains them and adds smart caching of the extraction.
@@ -253,22 +250,22 @@ Queries: 2
 Ask the user to confirm before proceeding.
 
 After confirmation, save the input specification as
-`{output_directory}/research-input.md`. This file enables future re-runs
+`{output_directory}/research-input.json`. This file enables future re-runs
 without re-specifying parameters.
 
-**Guardrail**: Before writing `research-input.md`, check if one already
+**Guardrail**: Before writing `research-input.json`, check if one already
 exists in the output directory. If it does, this is NOT a new research run —
 it is an attempted reuse of an existing research directory. **STOP and fail
 with an error:**
 
 ```
-ERROR: {output_directory}/research-input.md already exists.
+ERROR: {output_directory}/research-input.json already exists.
 This directory belongs to an existing research instance.
 To re-run this research, use: /research rerun {output_directory}
 To start new research, use a different output directory.
 ```
 
-Do NOT overwrite, merge, or append to an existing `research-input.md`.
+Do NOT overwrite, merge, or append to an existing `research-input.json`.
 Do NOT proceed with execution. This is a hard stop.
 
 ### Step 3: Create run group directory
@@ -450,7 +447,7 @@ When synthesis finishes, report to the user:
   (H4, H5, ...) may be added when the evidence supports more than three
   distinct explanations.
 - **Run isolation**: The subagent MUST NOT read prior run results. On a rerun,
-  read ONLY `research-input.md`. Do NOT pass prior run paths to the subagent.
+  read ONLY `research-input.json`. Do NOT pass prior run paths to the subagent.
   Prior results bias new research through anchoring and confirmation effects.
 - **Claim extraction blindness**: When extracting claims from a document
   (via `extract` or `check`), read ONLY the document body. Do NOT read or
