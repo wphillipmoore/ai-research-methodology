@@ -182,19 +182,18 @@ Search and Google Custom Search are also supported. See
 2. Configure your search provider API key
    (see [Configuration](#configuration)).
 
-3. Add to Claude Code settings (`~/.claude/settings.json`):
+3. Register the MCP server with Claude Code:
 
-   ```json
-   {
-     "mcpServers": {
-       "diogenes": {
-         "command": "dio-mcp"
-       }
-     }
-   }
+   ```bash
+   # Add for all projects (user scope)
+   claude mcp add --transport stdio --scope user diogenes -- dio-mcp
    ```
 
 4. Restart Claude Code. The MCP tools are now available in all sessions.
+
+To verify: run `claude mcp list` and confirm `diogenes` appears.
+
+To remove: `claude mcp remove --scope user diogenes`
 
 ### MCP Tools
 
