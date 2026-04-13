@@ -13,6 +13,7 @@ ChatGPT, Gemini, or any capable LLM).
 - [Usage](#usage)
 - [MCP Server (optional)](#mcp-server-optional)
 - [dio CLI](#dio-cli)
+- [Configuration](#configuration)
 - [The 11-Step Process](#the-11-step-process)
 - [Anti-Sycophancy by Design](#anti-sycophancy-by-design)
 - [Customization](#customization)
@@ -165,21 +166,19 @@ out of the box, but search-heavy research consumes more tokens.
 Searches are executed by Python via Serper.dev (or Brave/Google), and
 only the results (titles, URLs, snippets) are returned to the AI.
 
-### Setup
+**Requires**: A Serper.dev API key (free tier: 2,500 searches/month).
+Sign up at <https://serper.dev/>. See [Configuration](#configuration)
+for how to set the key.
+
+### MCP Setup
 
 1. Install the package:
 
    ```bash
    pip install diogenes
-   # or clone the repo and use uv
    ```
 
-2. Configure a search provider in `~/.diorc` or the project `.env`:
-
-   ```bash
-   # .env file
-   SERPER_API_KEY=your-key-here    # Free: https://serper.dev/
-   ```
+2. Configure the `SERPER_API_KEY` (see [Configuration](#configuration)).
 
 3. Add to Claude Code settings (`~/.claude/settings.json`):
 
@@ -197,8 +196,7 @@ only the results (titles, URLs, snippets) are returned to the AI.
    }
    ```
 
-4. Restart Claude Code. The `dio_search`, `dio_fetch`, and
-   `dio_search_batch` tools are now available in all sessions.
+4. Restart Claude Code. The MCP tools are now available in all sessions.
 
 ### MCP Tools
 
@@ -215,13 +213,12 @@ as a Python coordinator calling AI sub-agents via the Anthropic API. It
 uses the same methodology as the plugin but manages the process
 programmatically.
 
+**Requires**: An Anthropic API key and a Serper.dev API key.
+See [Configuration](#configuration) for how to set both.
+
 ```bash
 # Install
 pip install diogenes
-
-# Configure API keys in .env
-echo 'ANTHROPIC_API_KEY=your-key' >> .env
-echo 'SERPER_API_KEY=your-key' >> .env
 
 # Run research
 dio run input.md --output research/my-topic --runs 1
@@ -231,6 +228,71 @@ The CLI produces JSON output files at each pipeline step (clarified
 input, hypotheses, search plans, search results, source scorecards,
 synthesis, self-audit, and final reports), plus a `usage.json` with
 per-call token counts and estimated costs.
+
+## Configuration
+
+Diogenes resolves configuration from multiple sources in priority order.
+Higher-priority sources override lower ones.
+
+### Priority order
+
+1. **Environment variable** — highest priority, overrides everything
+2. **Project `.diorc`** — `.diorc` file in the current directory
+3. **User `.diorc`** — `~/.diorc` in your home directory (recommended
+   for personal API keys)
+4. **`.env` file** — `.env` in the current directory (lowest priority,
+   primarily for development)
+
+### Required keys
+
+| Key | Required for | Where to get it |
+| --- | ------------ | --------------- |
+| `ANTHROPIC_API_KEY` | dio CLI | <https://console.anthropic.com/> |
+| `SERPER_API_KEY` | MCP server, dio CLI | <https://serper.dev/> (free tier: 2,500/month) |
+
+### Recommended: user `.diorc` file
+
+For personal use, create `~/.diorc` with your API keys. This keeps
+keys out of project directories and works across all projects.
+
+```toml
+[api]
+key = "sk-ant-..."
+
+[search]
+provider = "serper"
+serper_api_key = "your-serper-key"
+```
+
+### Alternative: project `.diorc` file
+
+For project-specific configuration, create `.diorc` in the project root.
+Project settings override user settings.
+
+```toml
+[api]
+key = "sk-ant-..."
+model = "claude-sonnet-4-20250514"
+
+[search]
+provider = "serper"
+serper_api_key = "your-serper-key"
+```
+
+### Alternative: environment variables
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+export SERPER_API_KEY="your-serper-key"
+```
+
+### Supported search providers
+
+| Provider | Config value | API key variable |
+| -------- | ------------ | ---------------- |
+| Serper.dev (default) | `serper` | `SERPER_API_KEY` |
+| Brave Search | `brave` | `BRAVE_API_KEY` |
+| Google Custom Search | `google` | `GOOGLE_API_KEY` + `GOOGLE_SEARCH_ENGINE_ID` |
 
 ## The 11-Step Process
 
