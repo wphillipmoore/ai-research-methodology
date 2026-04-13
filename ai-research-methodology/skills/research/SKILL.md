@@ -305,10 +305,25 @@ to provide a valid signal about reproducibility.
 **Parallelism**: For runs<=5, launch runs in parallel where possible. For
 larger n, the agent may batch runs to manage resources.
 
-**Search tools**: If `dio_search` and `dio_fetch` MCP tools are
-available, use them for all web searches and page fetches. These execute
-searches via Python at lower cost. If the MCP tools are NOT available,
-fall back to the built-in web search tool.
+**MANDATORY — Search tools**: Check your available tools list for
+`dio_search` and `dio_fetch`. If these MCP tools are present:
+
+- You MUST use `dio_search` for ALL web searches. Do NOT use the
+  built-in `web_search` tool. Do NOT use `WebSearch`. Do NOT perform
+  any web search through any mechanism other than `dio_search`.
+- You MUST use `dio_fetch` for ALL page content retrieval. Do NOT
+  read web pages directly.
+- This is a hard cost control requirement. The built-in web search
+  consumes expensive AI tokens. `dio_search` executes searches via
+  Python at near-zero token cost. Using the wrong tool wastes the
+  user's money.
+- If `dio_search` returns an error (quota exhausted, service
+  unreachable), STOP and inform the user. Do NOT silently fall back
+  to `web_search`. Let the user decide whether to continue with the
+  more expensive option.
+
+ONLY if `dio_search` and `dio_fetch` are NOT in your available tools
+list (MCP server not configured), fall back to the built-in web search.
 
 Each subagent executes these steps, writing JSON output files to its
 `run-{N}/` directory:
