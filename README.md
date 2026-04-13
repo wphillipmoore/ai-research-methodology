@@ -179,7 +179,8 @@ Search and Google Custom Search are also supported. See
    pip install diogenes
    ```
 
-2. Configure the `SERPER_API_KEY` (see [Configuration](#configuration)).
+2. Configure your search provider API key
+   (see [Configuration](#configuration)).
 
 3. Add to Claude Code settings (`~/.claude/settings.json`):
 
