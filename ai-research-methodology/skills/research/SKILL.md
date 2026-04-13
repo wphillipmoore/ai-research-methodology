@@ -296,7 +296,7 @@ effect.
 ### Step 5: Execute independent research runs
 
 Each run follows the 11-step pipeline, producing JSON files at each
-step. The compiled sub-agent prompts (in `prompts/compiled/`) include
+step. The compiled sub-agent prompts (in `skills/research/prompts/compiled/`) include
 both the task instructions and the JSON schema. The sub-agent MUST
 produce JSON conforming to the schema — no markdown, no prose.
 
@@ -316,41 +316,41 @@ fall back to the built-in web search tool.
 Each subagent executes these steps, writing JSON output files to its
 `run-{N}/` directory:
 
-**Step 5a: Clarify input** — Read `prompts/compiled/input-clarifier.md`.
+**Step 5a: Clarify input** — Read `skills/research/prompts/compiled/input-clarifier.md`.
 For each claim and query, clarify, surface assumptions, map vocabulary.
 Write `research-input.json` (clarified input with IDs assigned).
 
 **Step 5b: Generate hypotheses** — Read
-`prompts/compiled/hypothesis-generator.md`. For each claim/query, pass
+`skills/research/prompts/compiled/hypothesis-generator.md`. For each claim/query, pass
 the clarified item and axioms. Write `hypotheses.json`.
 
 **Step 5c: Design searches** — Read
-`prompts/compiled/search-designer.md`. For each item, pass the
+`skills/research/prompts/compiled/search-designer.md`. For each item, pass the
 clarified item and its hypotheses. Write `search-plans.json`.
 
 **Step 5d: Execute searches** — For each search in the plan:
 - If `dio_search` MCP tool is available: call it with the search terms.
 - If not available: use built-in web search.
 For each batch of results, score relevance (0-10) using the criteria
-in `prompts/compiled/relevance-scorer.md`. Filter by score >= 5,
+in `skills/research/prompts/compiled/relevance-scorer.md`. Filter by score >= 5,
 deduplicate by URL. Write `search-results.json`.
 
 **Step 5e: Score sources** — For each selected source:
 - If `dio_fetch` MCP tool is available: call it to get page content.
 - If not available: the subagent reads the source directly.
 Score reliability, relevance, and six bias domains per
-`prompts/compiled/source-scorer.md`. Write `source-scorecards.json`.
+`skills/research/prompts/compiled/source-scorer.md`. Write `source-scorecards.json`.
 
 **Step 5f: Synthesize, assess, gaps** — Read
-`prompts/compiled/evidence-synthesizer.md`. For each item, pass the
+`skills/research/prompts/compiled/evidence-synthesizer.md`. For each item, pass the
 scorecards and hypotheses. Synthesize the evidence collection, produce
 probability assessment, identify gaps. Write `synthesis.json`.
 
-**Step 5g: Self-audit** — Read `prompts/compiled/self-auditor.md`. For
+**Step 5g: Self-audit** — Read `skills/research/prompts/compiled/self-auditor.md`. For
 each item, audit the process, verify source interpretations, produce
 reading list. Write `self-audit.json`.
 
-**Step 5h: Report** — Read `prompts/compiled/report-assembler.md`. For
+**Step 5h: Report** — Read `skills/research/prompts/compiled/report-assembler.md`. For
 each item, assemble the final report from all prior steps. Write
 `reports.json`.
 
@@ -462,7 +462,7 @@ When synthesis finishes, report to the user:
 ## Customization
 
 The research pipeline produces JSON at every step. The compiled sub-agent
-prompts in `prompts/compiled/` contain both the task instructions and the
+prompts in `skills/research/prompts/compiled/` contain both the task instructions and the
 JSON schema for each step's output. To customize, modify the source prompts
 in `src/diogenes/prompts/sub-agents/` and/or the schemas in
 `src/diogenes/schemas/`, then run `python scripts/compile-prompts.py` to
