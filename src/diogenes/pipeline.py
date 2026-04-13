@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 
 _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts" / "sub-agents"
 
+# Model overrides for cost optimization. Set to None to use the client default.
+# Scoring steps are classification tasks that can use cheaper models.
+_SCORING_MODEL: str | None = "claude-haiku-4-5-20251001"
+
 
 def step2_generate_hypotheses(
     research_input: dict[str, Any],
@@ -261,6 +265,7 @@ def _score_results_batched(
                 user_input=batch_input,
                 output_schema="relevance-scores.schema.json",
                 include_guidelines=False,
+                model=_SCORING_MODEL,
             )
 
             # Enrich scores with metadata from original results
@@ -375,6 +380,7 @@ def step5_score_sources(
                 user_input=batch_input,
                 output_schema="source-scorecards.schema.json",
                 max_tokens=8192,
+                model=_SCORING_MODEL,
             )
 
             all_scorecards.extend(response.get("scorecards", []))
