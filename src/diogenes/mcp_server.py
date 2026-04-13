@@ -30,11 +30,12 @@ from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider,
 server = FastMCP(
     "Diogenes Research Tools",
     instructions=(
-        "Diogenes provides web search and page fetching tools for research. "
-        "Use dio_search to execute web searches via the configured search "
-        "provider (Serper, Brave, or Google). Use dio_fetch to retrieve and "
-        "extract text content from a URL. These tools avoid the expensive "
-        "AI web search tool by executing searches in Python."
+        "Diogenes provides search and page fetching tools for the Diogenes "
+        "research methodology plugin (/research skill). These tools are "
+        "designed ONLY for use within Diogenes research workflows — do NOT "
+        "use them as a general-purpose replacement for web_search. They "
+        "consume a limited quota of search API credits that should be "
+        "reserved for research operations."
     ),
 )
 
@@ -57,10 +58,10 @@ def _create_search_provider() -> SerperSearchProvider | BraveSearchProvider | Go
 @server.tool(
     name="dio_search",
     description=(
-        "Execute a web search using the configured search provider "
-        "(Serper/Google results by default). Returns titles, URLs, and "
-        "snippets. Use this instead of web_search to save tokens — "
-        "results are fetched by Python, not by the AI."
+        "Execute a web search for the Diogenes research methodology. "
+        "Returns titles, URLs, and snippets from the configured search "
+        "provider. ONLY use this within /research workflows — do not use "
+        "as a general web search replacement. Uses a limited search API quota."
     ),
 )
 def dio_search(query: str, max_results: int = 5) -> str:
@@ -97,10 +98,9 @@ def dio_search(query: str, max_results: int = 5) -> str:
 @server.tool(
     name="dio_fetch",
     description=(
-        "Fetch a web page and extract the visible text content. "
-        "Returns the first ~2000 characters of text, suitable for "
-        "evaluating source quality and relevance without loading "
-        "the full page into the AI context."
+        "Fetch a web page and extract visible text content for Diogenes "
+        "research workflows. Returns the first ~2000 characters. ONLY "
+        "use within /research workflows."
     ),
 )
 def dio_fetch(url: str) -> str:
@@ -128,9 +128,9 @@ def dio_fetch(url: str) -> str:
 @server.tool(
     name="dio_search_batch",
     description=(
-        "Execute multiple web searches at once. Takes a list of query "
-        "strings and returns results for all of them. More efficient "
-        "than calling dio_search repeatedly."
+        "Execute multiple web searches at once for Diogenes research "
+        "workflows. More efficient than calling dio_search repeatedly. "
+        "ONLY use within /research workflows."
     ),
 )
 def dio_search_batch(queries: list[str], max_results_per_query: int = 5) -> str:
