@@ -63,7 +63,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-diogenes = ["py.typed", "schemas/*.json"]
+diogenes = ["py.typed", "schemas/*.json", "prompts/*.md", "prompts/sub-agents/*.md"]
 
 [tool.ruff]
 line-length = 120

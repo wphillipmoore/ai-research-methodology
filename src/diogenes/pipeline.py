@@ -17,7 +17,7 @@ from diogenes.search import SearchProvider, execute_search_plan, fetch_page_extr
 if TYPE_CHECKING:
     from diogenes.api_client import APIClient
 
-_PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts" / "sub-agents"
+_PROMPTS_DIR = Path(__file__).parent / "prompts" / "sub-agents"
 
 # Model overrides for cost optimization. Set to None to use the client default.
 # Testing showed Haiku produces different verdicts than Sonnet on scoring steps,
