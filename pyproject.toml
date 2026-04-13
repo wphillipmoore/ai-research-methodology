@@ -111,6 +111,7 @@ docstring-quotes = "double"
 ]
 "src/diogenes/api_client.py" = [
     "PLR0913", # call_sub_agent has keyword-only params for composability.
+    "C901",    # _parse_json_response handles multiple extraction strategies.
 ]
 
 [tool.ruff.format]

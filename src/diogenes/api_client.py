@@ -132,20 +132,45 @@ class SubAgentError(Exception):
 
 
 def _parse_json_response(text_content: str, agent_name: str) -> dict[str, Any]:
-    """Parse JSON from a sub-agent response, handling markdown code fences."""
+    """Parse JSON from a sub-agent response, handling markdown code fences and trailing text."""
     json_text = text_content.strip()
     if json_text.startswith("```"):
         lines = json_text.split("\n")
         lines = [line for line in lines if not line.strip().startswith("```")]
         json_text = "\n".join(lines)
 
+    # Try parsing the full text first
     try:
         result: dict[str, Any] = json.loads(json_text)
-    except json.JSONDecodeError as e:
-        msg = f"Response is not valid JSON: {e}\nRaw response:\n{text_content[:500]}"
-        raise SubAgentError(agent_name, msg) from e
+    except json.JSONDecodeError:
+        pass
+    else:
+        return result
 
-    return result
+    # If that fails, try to extract JSON object from the text.
+    # Some models (especially Haiku) append explanatory text after valid JSON.
+    start = json_text.find("{")
+    if start == -1:
+        msg = f"No JSON object found in response.\nRaw response:\n{text_content[:500]}"
+        raise SubAgentError(agent_name, msg)
+
+    # Find the matching closing brace by tracking depth
+    depth = 0
+    for i in range(start, len(json_text)):
+        if json_text[i] == "{":
+            depth += 1
+        elif json_text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    extracted: dict[str, Any] = json.loads(json_text[start:i + 1])
+                except json.JSONDecodeError:
+                    break
+                else:
+                    return extracted
+
+    msg = f"Could not extract valid JSON from response.\nRaw response:\n{text_content[:500]}"
+    raise SubAgentError(agent_name, msg)
 
 
 def _validate_against_schema(

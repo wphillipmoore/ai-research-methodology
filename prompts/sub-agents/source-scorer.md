@@ -79,5 +79,8 @@ Return ONLY the url and the scoring fields (reliability, relevance,
 bias_assessment, overall_quality). Do NOT echo back the title, snippet,
 or content_extract — the coordinator already has those.
 
+Keep ALL rationales to one sentence maximum. This is a triage scorecard,
+not a detailed analysis. Brevity is critical.
+
 The canonical output schema (source-scorecards.schema.json) is provided
 below this prompt by the coordinator.
