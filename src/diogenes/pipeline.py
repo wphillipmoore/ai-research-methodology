@@ -20,8 +20,9 @@ if TYPE_CHECKING:
 _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts" / "sub-agents"
 
 # Model overrides for cost optimization. Set to None to use the client default.
-# Scoring steps are classification tasks that can use cheaper models.
-_SCORING_MODEL: str | None = "claude-haiku-4-5-20251001"
+# Testing showed Haiku produces different verdicts than Sonnet on scoring steps,
+# which changes downstream assessments. Correctness > cost. See issue #84.
+_SCORING_MODEL: str | None = None
 
 
 def step2_generate_hypotheses(
