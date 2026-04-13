@@ -253,17 +253,28 @@ class APIClient:
         *,
         include_guidelines: bool,
         output_schema: str | None,
-    ) -> tuple[str, dict[str, Any] | None]:
-        """Compose the system prompt from guidelines, agent prompt, and schema.
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+        """Compose the system prompt as content blocks with cache control.
+
+        The common guidelines are marked as cacheable — they're identical across
+        all calls and represent ~5K tokens that would otherwise be charged at full
+        rate 90+ times per run. With prompt caching, repeated blocks cost 90% less.
 
         Returns:
-            Tuple of (system_prompt, schema_dict or None).
+            Tuple of (system_blocks, schema_dict or None).
 
         """
-        parts = []
+        blocks: list[dict[str, Any]] = []
+
         if include_guidelines and self._common_guidelines:
-            parts.append(self._common_guidelines)
-        parts.append(agent_prompt)
+            blocks.append({
+                "type": "text",
+                "text": self._common_guidelines,
+                "cache_control": {"type": "ephemeral"},
+            })
+
+        # Agent prompt + schema combined into one block
+        prompt_parts = [agent_prompt]
 
         schema_dict: dict[str, Any] | None = None
         if output_schema:
@@ -274,7 +285,7 @@ class APIClient:
                 raise SubAgentError(agent_name, msg)
             schema_text = schema_path.read_text()
             schema_dict = json.loads(schema_text)
-            parts.append(
+            prompt_parts.append(
                 "## Output JSON Schema\n\n"
                 "Your output MUST conform to this JSON Schema. "
                 "This is the canonical specification — if anything in the prompt "
@@ -282,7 +293,9 @@ class APIClient:
                 f"```json\n{schema_text}\n```"
             )
 
-        return "\n\n---\n\n".join(parts), schema_dict
+        blocks.append({"type": "text", "text": "\n\n---\n\n".join(prompt_parts)})
+
+        return blocks, schema_dict
 
     def call_sub_agent(
         self,
@@ -327,7 +340,7 @@ class APIClient:
             raise SubAgentError(prompt_file.stem, msg)
 
         agent_prompt = prompt_file.read_text()
-        system_prompt, schema_dict = self._compose_system_prompt(
+        system_blocks, schema_dict = self._compose_system_prompt(
             agent_prompt,
             include_guidelines=include_guidelines,
             output_schema=output_schema,
@@ -340,7 +353,7 @@ class APIClient:
         api_kwargs: dict[str, Any] = {
             "model": model or self._model,
             "max_tokens": max_tokens or self._max_tokens,
-            "system": system_prompt,
+            "system": system_blocks,
             "messages": [{"role": "user", "content": user_message}],
         }
 
