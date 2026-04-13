@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/source-scorecards.schema.json",
+  "title": "Source Scorecards",
+  "description": "Output of the source-scorer sub-agent. Contains reliability, relevance, and bias scorecards for a batch of sources.",
+  "type": "object",
+  "required": ["scorecards"],
+  "properties": {
+    "scorecards": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source_scorecard" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "source_scorecard": {
+      "type": "object",
+      "required": ["url", "reliability", "relevance", "bias_assessment"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the scored source."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the source."
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Snippet from the source."
+        },
+        "reliability": {
+          "$ref": "#/$defs/rating_with_rationale",
+          "description": "How trustworthy is this source."
+        },
+        "relevance": {
+          "$ref": "#/$defs/rating_with_rationale",
+          "description": "How directly this addresses the research item."
+        },
+        "bias_assessment": {
+          "$ref": "#/$defs/bias_assessment"
+        },
+        "overall_quality": {
+          "type": "string",
+          "enum": ["strong", "moderate", "weak"],
+          "description": "Summary quality rating derived from the three components."
+        }
+      },
+      "additionalProperties": false
+    },
+    "rating_with_rationale": {
+      "type": "object",
+      "required": ["rating", "rationale"],
+      "properties": {
+        "rating": {
+          "type": "string",
+          "enum": ["High", "Medium", "Low"]
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Brief explanation of the rating."
+        }
+      },
+      "additionalProperties": false
+    },
+    "bias_assessment": {
+      "type": "object",
+      "required": ["missing_data", "measurement", "selective_reporting", "randomization", "protocol_deviation", "conflict_of_interest"],
+      "properties": {
+        "missing_data": { "$ref": "#/$defs/bias_domain" },
+        "measurement": { "$ref": "#/$defs/bias_domain" },
+        "selective_reporting": { "$ref": "#/$defs/bias_domain" },
+        "randomization": { "$ref": "#/$defs/bias_domain" },
+        "protocol_deviation": { "$ref": "#/$defs/bias_domain" },
+        "conflict_of_interest": { "$ref": "#/$defs/bias_domain" }
+      },
+      "additionalProperties": false
+    },
+    "bias_domain": {
+      "type": "object",
+      "required": ["rating", "rationale"],
+      "properties": {
+        "rating": {
+          "type": "string",
+          "enum": ["Low risk", "Some concerns", "High risk", "N/A"]
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Brief explanation."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

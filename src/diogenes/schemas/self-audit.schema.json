@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/self-audit.schema.json",
+  "title": "Self-Audit, Source-Back Verification, and Reading List",
+  "description": "Combined output of Steps 9, 9b, and 9c for a single claim or query.",
+  "type": "object",
+  "required": ["id", "process_audit", "source_verification", "reading_list"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[CQ][0-9]+$"
+    },
+    "process_audit": { "$ref": "#/$defs/process_audit" },
+    "source_verification": { "$ref": "#/$defs/source_verification" },
+    "reading_list": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reading_list_entry" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "process_audit": {
+      "type": "object",
+      "required": ["eligibility_criteria", "search_comprehensiveness", "evaluation_consistency", "synthesis_fairness"],
+      "properties": {
+        "eligibility_criteria": { "$ref": "#/$defs/audit_domain" },
+        "search_comprehensiveness": { "$ref": "#/$defs/audit_domain" },
+        "evaluation_consistency": { "$ref": "#/$defs/audit_domain" },
+        "synthesis_fairness": { "$ref": "#/$defs/audit_domain" },
+        "researcher_bias_impact": {
+          "type": "string",
+          "description": "Assessment of whether researcher biases influenced the process."
+        }
+      },
+      "additionalProperties": false
+    },
+    "audit_domain": {
+      "type": "object",
+      "required": ["rating", "rationale"],
+      "properties": {
+        "rating": {
+          "type": "string",
+          "enum": ["Pass", "Concern", "Fail"]
+        },
+        "rationale": { "type": "string" },
+        "impact": {
+          "type": "string",
+          "description": "Impact on conclusions if Concern or Fail."
+        }
+      },
+      "additionalProperties": false
+    },
+    "source_verification": {
+      "type": "object",
+      "required": ["sources_verified", "discrepancies"],
+      "properties": {
+        "sources_verified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "discrepancies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source_url", "claim_in_assessment", "actual_source_says", "severity"],
+            "properties": {
+              "source_url": { "type": "string" },
+              "claim_in_assessment": { "type": "string" },
+              "actual_source_says": { "type": "string" },
+              "severity": {
+                "type": "string",
+                "enum": ["minor", "major"]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reading_list_entry": {
+      "type": "object",
+      "required": ["url", "summary", "priority"],
+      "properties": {
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": {
+          "type": "string",
+          "description": "One-sentence summary of what this source contributes."
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["must read", "should read", "reference"]
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["search-discovered", "researcher-provided"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Markdownlint configuration
+# https://github.com/DavidAnson/markdownlint
+
+# Allow ordered list prefixes (1, 2, 3...) not just (1, 1, 1...)
+# Needed because behavioral constraints are numbered 1-12 across subsections
+MD029:
+  style: "ordered"
+
+# Allow trailing punctuation in headings (colons for schema labels)
+MD026:
+  punctuation: ".,;!。，；！"
+
+# Line length — match ruff at 120, not the 80 default
+MD013:
+  line_length: 120

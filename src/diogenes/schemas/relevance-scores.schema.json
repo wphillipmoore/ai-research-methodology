@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/relevance-scores.schema.json",
+  "title": "Relevance Scores",
+  "description": "Output of the relevance-scorer sub-agent. Contains relevance scores for a batch of search results.",
+  "type": "object",
+  "required": ["scores"],
+  "properties": {
+    "scores": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/scored_result" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "scored_result": {
+      "type": "object",
+      "required": ["url", "relevance_score", "rationale"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the search result."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the search result."
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Snippet from the search result."
+        },
+        "relevance_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Relevance score from 0 (not relevant) to 10 (highly relevant)."
+        },
+        "rationale": {
+          "type": "string",
+          "description": "One-sentence explanation of the score."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/search-results.schema.json",
+  "title": "Search Results",
+  "description": "Output of the search-executor sub-agent. Contains the PRISMA-compliant search log with selected and rejected results.",
+  "type": "object",
+  "required": ["id", "searches_executed", "selected_sources", "summary"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[CQ][0-9]+$",
+      "description": "The claim or query ID."
+    },
+    "searches_executed": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/executed_search" },
+      "description": "Log of every search performed."
+    },
+    "selected_sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/selected_source" },
+      "description": "Sources selected for the evidence base."
+    },
+    "rejected_sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rejected_source" },
+      "description": "Sources reviewed but not selected."
+    },
+    "candidate_evidence_results": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidate_evidence_result" },
+      "description": "Disposition of researcher-provided candidate evidence."
+    },
+    "summary": {
+      "$ref": "#/$defs/search_summary"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "executed_search": {
+      "type": "object",
+      "required": ["search_id", "terms_used", "sources_searched", "results_found", "results_selected", "results_rejected"],
+      "properties": {
+        "search_id": {
+          "type": "string",
+          "description": "The search ID from the search plan (S01, S02, ...)."
+        },
+        "terms_used": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Actual search terms used (may include variations)."
+        },
+        "sources_searched": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sources or databases searched."
+        },
+        "date": {
+          "type": "string",
+          "description": "Date of search execution (ISO 8601)."
+        },
+        "results_found": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of results returned."
+        },
+        "results_selected": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of results selected for review."
+        },
+        "results_rejected": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of results reviewed and rejected."
+        },
+        "no_relevant_results": {
+          "type": "boolean",
+          "description": "True if the search returned no relevant results."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Any notes about the search execution."
+        }
+      },
+      "additionalProperties": false
+    },
+    "selected_source": {
+      "type": "object",
+      "required": ["id", "url", "title", "selection_rationale", "origin"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^SRC[0-9]+$",
+          "description": "Sequential source ID (SRC001, SRC002, ...)."
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the source."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the source."
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Brief excerpt or summary of the relevant content."
+        },
+        "selection_rationale": {
+          "type": "string",
+          "description": "Why this source was selected for the evidence base."
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["search-discovered", "researcher-provided"],
+          "description": "How this source was found."
+        },
+        "discovered_by_search": {
+          "type": "string",
+          "description": "Which search ID found this source (S01, S02, etc.)."
+        },
+        "page_age": {
+          "type": ["string", "null"],
+          "description": "Age or date of the page if available."
+        }
+      },
+      "additionalProperties": false
+    },
+    "rejected_source": {
+      "type": "object",
+      "required": ["url", "title", "rejection_rationale"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the rejected source."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the rejected source."
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Brief excerpt from the source."
+        },
+        "rejection_rationale": {
+          "type": "string",
+          "description": "Why this source was not selected."
+        },
+        "discovered_by_search": {
+          "type": "string",
+          "description": "Which search ID found this source."
+        }
+      },
+      "additionalProperties": false
+    },
+    "candidate_evidence_result": {
+      "type": "object",
+      "required": ["url", "status", "rationale"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the researcher-provided evidence."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["selected", "rejected"],
+          "description": "Whether the candidate evidence was selected."
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why the candidate evidence was selected or rejected."
+        }
+      },
+      "additionalProperties": false
+    },
+    "search_summary": {
+      "type": "object",
+      "required": ["total_searches", "total_results_found", "total_selected", "total_rejected"],
+      "properties": {
+        "total_searches": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "total_results_found": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_selected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "searches_with_no_results": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverage_assessment": {
+          "type": "string",
+          "description": "Assessment of whether the search was comprehensive enough."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

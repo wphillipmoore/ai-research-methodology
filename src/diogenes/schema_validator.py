@@ -8,9 +8,8 @@ from typing import Any
 
 import jsonschema
 
-# Resolve schema directory relative to the repo root
-_REPO_ROOT = Path(__file__).parent.parent.parent
-_SCHEMAS_DIR = _REPO_ROOT / "docs" / "design" / "schemas"
+# Schemas are packaged with the module
+_SCHEMAS_DIR = Path(__file__).parent / "schemas"
 
 
 class ValidationError(Exception):

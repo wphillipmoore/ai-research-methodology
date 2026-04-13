@@ -40,13 +40,16 @@ JSON Schema Draft 2020-12. It provides:
 
 ## Schema files
 
+Canonical location: `src/diogenes/schemas/` (packaged with `pip install
+diogenes`). The schemas in this directory are retained for reference but
+the packaged versions are the single source of truth.
+
 | Schema | Purpose |
 |--------|---------|
 | `research-input.schema.json` | Input to the entire research workflow |
 | `research-input.example.json` | Example valid input |
-
-Additional schemas will be added for each sub-agent's input and output
-as they are defined.
+| `clarified-input.schema.json` | Step 1 output (input-clarifier) |
+| `hypotheses.schema.json` | Step 2 output (hypothesis-generator) |
 
 ## Design principles
 
