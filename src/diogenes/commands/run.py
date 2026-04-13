@@ -15,6 +15,10 @@ from diogenes.pipeline import (
     step3_design_searches,
     step4_execute_searches,
     step5_score_sources,
+    step9_self_audit,
+    step10_report,
+    step11_archive,
+    steps678_synthesize_and_assess,
     write_step_output,
 )
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
@@ -272,10 +276,61 @@ def execute(input_file: str, output: str, runs: int) -> int:
         scorecards_path = write_step_output(run_dir, "source-scorecards.json", scorecards)
         print(f"  Wrote: {scorecards_path}")
 
-        # Steps 6-11: not yet implemented
-        print()
-        print(f"  Pipeline paused after step 5 for {run_dir.name}.")
-        print("  Steps 6-11 not yet implemented.")
+        # Steps 6+7+8: Synthesize, assess, identify gaps
+        print("Steps 6-8: Synthesizing evidence and assessing...")
+        try:
+            synthesis = steps678_synthesize_and_assess(
+                research_input, hypotheses, scorecards, client,
+            )
+        except SubAgentError as e:
+            print(f"ERROR: {e}")
+            return 1
+
+        synthesis_path = write_step_output(run_dir, "synthesis.json", synthesis)
+        print(f"  Wrote: {synthesis_path}")
+
+        # Step 9: Self-audit, source-back verification, reading list
+        print("Step 9: Self-audit and verification...")
+        try:
+            audit = step9_self_audit(
+                research_input, hypotheses, search_results, scorecards,
+                synthesis, client,
+            )
+        except SubAgentError as e:
+            print(f"ERROR: {e}")
+            return 1
+
+        audit_path = write_step_output(run_dir, "self-audit.json", audit)
+        print(f"  Wrote: {audit_path}")
+
+        # Step 10: Final report
+        print("Step 10: Assembling final reports...")
+        try:
+            reports = step10_report(
+                research_input, hypotheses, search_results, scorecards,
+                synthesis, audit, client,
+            )
+        except SubAgentError as e:
+            print(f"ERROR: {e}")
+            return 1
+
+        reports_path = write_step_output(run_dir, "reports.json", reports)
+        print(f"  Wrote: {reports_path}")
+
+        # Step 11: Archive for temporal revisitation
+        print("Step 11: Archiving...")
+        all_outputs = {
+            "research_input": research_input,
+            "hypotheses": hypotheses,
+            "search_plans": search_plans,
+            "search_results": search_results,
+            "scorecards": scorecards,
+            "synthesis": synthesis,
+            "self_audit": audit,
+            "reports": reports,
+        }
+        archive_path = step11_archive(run_dir, all_outputs)
+        print(f"  Wrote: {archive_path}")
 
     # Write usage report
     usage_data = client.usage.to_dict()

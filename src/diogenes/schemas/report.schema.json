@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/report.schema.json",
+  "title": "Research Report",
+  "description": "Final structured report for a single claim or query (Step 10).",
+  "type": "object",
+  "required": ["id", "mode", "input_summary", "assessment_summary", "evidence_summary", "synthesis_summary", "gaps_summary", "audit_summary", "revisit_triggers"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[CQ][0-9]+$"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["claim", "query"]
+    },
+    "input_summary": {
+      "type": "object",
+      "required": ["original_text", "clarified_text"],
+      "properties": {
+        "original_text": { "type": "string" },
+        "clarified_text": { "type": "string" },
+        "axioms": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sub_questions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Query mode only."
+        }
+      },
+      "additionalProperties": false
+    },
+    "hypotheses_summary": {
+      "type": "object",
+      "properties": {
+        "approach": {
+          "type": "string",
+          "enum": ["hypotheses", "open-ended"]
+        },
+        "hypotheses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "statement", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "statement": { "type": "string" },
+              "status": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "thematic_summary": {
+          "type": "string",
+          "description": "Open-ended queries: summary of thematic analysis."
+        }
+      },
+      "additionalProperties": false
+    },
+    "assessment_summary": {
+      "type": "object",
+      "required": ["conclusion", "reasoning"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "description": "Claim mode: the claim is [probability term] ([range])."
+        },
+        "answer": {
+          "type": "string",
+          "description": "Query mode: the answer."
+        },
+        "confidence": { "type": "string" },
+        "conclusion": {
+          "type": "string",
+          "description": "One-paragraph conclusion."
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Reasoning chain from evidence to conclusion."
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence_summary": {
+      "type": "object",
+      "required": ["sources_count", "key_sources"],
+      "properties": {
+        "sources_count": { "type": "integer" },
+        "key_sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["url", "contribution"],
+            "properties": {
+              "url": { "type": "string" },
+              "title": { "type": "string" },
+              "contribution": { "type": "string" },
+              "reliability": { "type": "string" },
+              "relevance": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "synthesis_summary": {
+      "type": "object",
+      "required": ["evidence_quality", "source_agreement"],
+      "properties": {
+        "evidence_quality": { "type": "string" },
+        "source_agreement": { "type": "string" },
+        "independence": { "type": "string" },
+        "notable_outliers": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "gaps_summary": {
+      "type": "object",
+      "required": ["key_gaps", "impact"],
+      "properties": {
+        "key_gaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "impact": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "audit_summary": {
+      "type": "object",
+      "required": ["overall_rating", "domains"],
+      "properties": {
+        "overall_rating": {
+          "type": "string",
+          "enum": ["Pass", "Concern", "Fail"]
+        },
+        "domains": {
+          "type": "object",
+          "properties": {
+            "eligibility_criteria": { "type": "string" },
+            "search_comprehensiveness": { "type": "string" },
+            "evaluation_consistency": { "type": "string" },
+            "synthesis_fairness": { "type": "string" },
+            "source_verification": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "discrepancies_found": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "revisit_triggers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["trigger", "type"],
+        "properties": {
+          "trigger": {
+            "type": "string",
+            "description": "Specific, testable condition."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["study", "event", "time", "data_update", "policy", "organization"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

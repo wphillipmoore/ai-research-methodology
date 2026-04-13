@@ -8,6 +8,7 @@ The coordinator (run command) calls these in sequence.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -382,6 +383,208 @@ def step5_score_sources(
         results[item_id] = {"id": item_id, "scorecards": all_scorecards}
 
     return results
+
+
+def steps678_synthesize_and_assess(
+    research_input: dict[str, Any],
+    hypotheses: dict[str, Any],
+    scorecards: dict[str, Any],
+    client: APIClient,
+) -> dict[str, Any]:
+    """Synthesize evidence, assess, and identify gaps (Steps 6+7+8 combined).
+
+    One LLM call per item. These steps are tightly coupled — synthesis informs
+    assessment, assessment reveals gaps.
+
+    Args:
+        research_input: The clarified research input (output of step 1).
+        hypotheses: Hypothesis results keyed by item ID (output of step 2).
+        scorecards: Source scorecards keyed by item ID (output of step 5).
+        client: Configured API client with common guidelines loaded.
+
+    Returns:
+        A dict mapping item IDs to their synthesis/assessment/gaps results.
+
+    """
+    prompt_path = _PROMPTS_DIR / "evidence-synthesizer.md"
+    results: dict[str, Any] = {}
+
+    items = [*research_input.get("claims", []), *research_input.get("queries", [])]
+
+    for item in items:
+        item_id = item["id"]
+        item_hypotheses = hypotheses.get(item_id, {})
+        item_scorecards = scorecards.get(item_id, {}).get("scorecards", [])
+        print(f"  Synthesizing {item_id} ({len(item_scorecards)} sources)...")
+
+        agent_input = {
+            "item": item,
+            "hypotheses": item_hypotheses,
+            "scorecards": item_scorecards,
+        }
+
+        response = client.call_sub_agent(
+            prompt_path=prompt_path,
+            user_input=agent_input,
+            output_schema="synthesis.schema.json",
+            max_tokens=16384,
+        )
+
+        results[item_id] = response
+        assessment = response.get("assessment", {})
+        verdict = assessment.get("verdict", assessment.get("answer", ""))
+        print(f"    {item_id}: {verdict[:80]}")
+
+    return results
+
+
+def step9_self_audit(
+    research_input: dict[str, Any],
+    hypotheses: dict[str, Any],
+    search_results: dict[str, Any],
+    scorecards: dict[str, Any],
+    synthesis: dict[str, Any],
+    client: APIClient,
+) -> dict[str, Any]:
+    """Self-audit, source-back verification, and reading list (Steps 9+9b+9c).
+
+    One LLM call per item. Reviews the entire research chain.
+
+    Args:
+        research_input: Clarified research input (step 1).
+        hypotheses: Hypothesis results (step 2).
+        search_results: Search results (step 4).
+        scorecards: Source scorecards (step 5).
+        synthesis: Synthesis/assessment/gaps (steps 6-8).
+        client: Configured API client.
+
+    Returns:
+        A dict mapping item IDs to their audit results.
+
+    """
+    prompt_path = _PROMPTS_DIR / "self-auditor.md"
+    results: dict[str, Any] = {}
+
+    items = [*research_input.get("claims", []), *research_input.get("queries", [])]
+
+    for item in items:
+        item_id = item["id"]
+        print(f"  Auditing {item_id}...")
+
+        agent_input = {
+            "item": item,
+            "hypotheses": hypotheses.get(item_id, {}),
+            "search_results": search_results.get(item_id, {}),
+            "scorecards": scorecards.get(item_id, {}).get("scorecards", []),
+            "synthesis": synthesis.get(item_id, {}),
+        }
+
+        response = client.call_sub_agent(
+            prompt_path=prompt_path,
+            user_input=agent_input,
+            output_schema="self-audit.schema.json",
+            max_tokens=16384,
+        )
+
+        results[item_id] = response
+        audit = response.get("process_audit", {})
+        ratings = [
+            audit.get("eligibility_criteria", {}).get("rating", "?"),
+            audit.get("search_comprehensiveness", {}).get("rating", "?"),
+            audit.get("evaluation_consistency", {}).get("rating", "?"),
+            audit.get("synthesis_fairness", {}).get("rating", "?"),
+        ]
+        print(f"    {item_id}: audit [{', '.join(ratings)}]")
+
+    return results
+
+
+def step10_report(
+    research_input: dict[str, Any],
+    hypotheses: dict[str, Any],
+    search_results: dict[str, Any],
+    scorecards: dict[str, Any],
+    synthesis: dict[str, Any],
+    audit: dict[str, Any],
+    client: APIClient,
+) -> dict[str, Any]:
+    """Assemble the final research report (Step 10).
+
+    One LLM call per item. Pulls together all prior steps into a structured report.
+
+    Args:
+        research_input: Clarified research input (step 1).
+        hypotheses: Hypothesis results (step 2).
+        search_results: Search results (step 4).
+        scorecards: Source scorecards (step 5).
+        synthesis: Synthesis/assessment/gaps (steps 6-8).
+        audit: Self-audit results (step 9).
+        client: Configured API client.
+
+    Returns:
+        A dict mapping item IDs to their final reports.
+
+    """
+    prompt_path = _PROMPTS_DIR / "report-assembler.md"
+    results: dict[str, Any] = {}
+
+    claims = research_input.get("claims", [])
+    queries = research_input.get("queries", [])
+    items = [*claims, *queries]
+
+    for item in items:
+        item_id = item["id"]
+        mode = "claim" if item_id.startswith("C") else "query"
+        print(f"  Assembling report for {item_id} ({mode})...")
+
+        agent_input = {
+            "item": item,
+            "hypotheses": hypotheses.get(item_id, {}),
+            "search_results": search_results.get(item_id, {}),
+            "scorecards": scorecards.get(item_id, {}).get("scorecards", []),
+            "synthesis": synthesis.get(item_id, {}),
+            "self_audit": audit.get(item_id, {}),
+        }
+
+        response = client.call_sub_agent(
+            prompt_path=prompt_path,
+            user_input=agent_input,
+            output_schema="report.schema.json",
+            max_tokens=16384,
+        )
+
+        results[item_id] = response
+        verdict = response.get("assessment_summary", {}).get(
+            "verdict", response.get("assessment_summary", {}).get("answer", ""),
+        )
+        print(f"    {item_id}: {verdict[:80]}")
+
+    return results
+
+
+def step11_archive(output_dir: Path, all_outputs: dict[str, Any]) -> Path:
+    """Archive all research outputs for temporal revisitation (Step 11).
+
+    Pure Python — no LLM call. Writes a single archive JSON with all
+    pipeline outputs and metadata.
+
+    Args:
+        output_dir: The run directory to write to.
+        all_outputs: Dict containing all pipeline step outputs.
+
+    Returns:
+        Path to the archive file.
+
+    """
+    archive = {
+        "archived_at": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "pipeline_version": "0.1.0",
+        **all_outputs,
+    }
+
+    path = output_dir / "archive.json"
+    path.write_text(json.dumps(archive, indent=2) + "\n")
+    return path
 
 
 def write_step_output(

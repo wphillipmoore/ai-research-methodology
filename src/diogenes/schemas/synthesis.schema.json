@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/synthesis.schema.json",
+  "title": "Evidence Synthesis, Assessment, and Gaps",
+  "description": "Combined output of Steps 6 (synthesis), 7 (assessment), and 8 (gaps) for a single claim or query.",
+  "type": "object",
+  "required": ["id", "synthesis", "assessment", "gaps"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[CQ][0-9]+$"
+    },
+    "synthesis": { "$ref": "#/$defs/synthesis" },
+    "assessment": { "$ref": "#/$defs/assessment" },
+    "gaps": { "$ref": "#/$defs/gaps" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "synthesis": {
+      "type": "object",
+      "required": ["evidence_quality", "source_agreement", "independence", "outliers"],
+      "properties": {
+        "evidence_quality": { "$ref": "#/$defs/rated_field" },
+        "source_agreement": { "$ref": "#/$defs/rated_field" },
+        "independence": {
+          "type": "object",
+          "required": ["assessment", "shared_origins"],
+          "properties": {
+            "assessment": { "type": "string" },
+            "shared_origins": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "outliers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source_url", "divergence", "explanation"],
+            "properties": {
+              "source_url": { "type": "string" },
+              "divergence": { "type": "string" },
+              "explanation": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "thematic_clusters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theme", "sources", "finding"],
+            "properties": {
+              "theme": { "type": "string" },
+              "sources": { "type": "array", "items": { "type": "string" } },
+              "finding": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "description": "Open-ended queries only: themes that emerged from the evidence."
+        },
+        "convergence_analysis": {
+          "type": "string",
+          "description": "Open-ended queries only: where sources converge and diverge."
+        },
+        "emerging_answer": {
+          "type": "string",
+          "description": "Open-ended queries only: draft finding based on evidence."
+        }
+      },
+      "additionalProperties": false
+    },
+    "assessment": {
+      "type": "object",
+      "required": ["approach"],
+      "properties": {
+        "approach": {
+          "type": "string",
+          "enum": ["probability", "confidence"]
+        },
+        "hypothesis_ratings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["hypothesis_id", "probability_term", "probability_range", "reasoning"],
+            "properties": {
+              "hypothesis_id": { "type": "string" },
+              "probability_term": { "type": "string" },
+              "probability_range": { "type": "string" },
+              "reasoning": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "description": "For hypotheses approach: probability rating per hypothesis."
+        },
+        "verdict": {
+          "type": "string",
+          "description": "For claims: the claim is [probability term] ([range])."
+        },
+        "answer": {
+          "type": "string",
+          "description": "For open-ended queries: the synthesized answer."
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["High", "Medium", "Low"],
+          "description": "For open-ended queries: confidence level."
+        },
+        "reasoning_chain": {
+          "type": "string",
+          "description": "Explicit reasoning from evidence through synthesis to conclusion."
+        },
+        "caveats": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Conditions, qualifications, or limitations."
+        }
+      },
+      "additionalProperties": false
+    },
+    "gaps": {
+      "type": "object",
+      "required": ["expected_not_found", "unanswered_questions", "impact_on_confidence"],
+      "properties": {
+        "expected_not_found": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Evidence expected but not found."
+        },
+        "no_result_searches": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Searches that produced no relevant results."
+        },
+        "unanswered_questions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Questions that remain unanswered."
+        },
+        "impact_on_confidence": {
+          "type": "string",
+          "description": "How these gaps affect the confidence of the assessment."
+        }
+      },
+      "additionalProperties": false
+    },
+    "rated_field": {
+      "type": "object",
+      "required": ["rating", "rationale"],
+      "properties": {
+        "rating": {
+          "type": "string",
+          "enum": ["Robust", "Medium", "Limited", "High", "Low"]
+        },
+        "rationale": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
