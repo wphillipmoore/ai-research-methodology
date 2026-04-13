@@ -42,12 +42,10 @@ _WEB_SEARCH_COST_PER_REQUEST = 0.01  # $10/1K searches
 def _estimate_call_cost(call: CallUsage) -> float:
     """Estimate the USD cost of a single API call."""
     input_rate, output_rate = _MODEL_COSTS.get(
-        call.model, (3.00, 15.00),  # default to Sonnet rates
+        call.model,
+        (3.00, 15.00),  # default to Sonnet rates
     )
-    token_cost = (
-        call.input_tokens * input_rate / 1_000_000
-        + call.output_tokens * output_rate / 1_000_000
-    )
+    token_cost = call.input_tokens * input_rate / 1_000_000 + call.output_tokens * output_rate / 1_000_000
     search_cost = call.web_search_requests * _WEB_SEARCH_COST_PER_REQUEST
     return token_cost + search_cost
 
@@ -163,7 +161,7 @@ def _parse_json_response(text_content: str, agent_name: str) -> dict[str, Any]:
             depth -= 1
             if depth == 0:
                 try:
-                    extracted: dict[str, Any] = json.loads(json_text[start:i + 1])
+                    extracted: dict[str, Any] = json.loads(json_text[start : i + 1])
                 except json.JSONDecodeError:
                     break
                 else:
@@ -267,11 +265,13 @@ class APIClient:
         blocks: list[dict[str, Any]] = []
 
         if include_guidelines and self._common_guidelines:
-            blocks.append({
-                "type": "text",
-                "text": self._common_guidelines,
-                "cache_control": {"type": "ephemeral"},
-            })
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": self._common_guidelines,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            )
 
         # Agent prompt + schema combined into one block
         prompt_parts = [agent_prompt]
@@ -374,17 +374,19 @@ class APIClient:
 
         # Record usage
         server_tool = response.usage.server_tool_use
-        self.usage.record(CallUsage(
-            agent_name=prompt_file.stem,
-            model=response.model,
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
-            cache_creation_tokens=response.usage.cache_creation_input_tokens or 0,
-            cache_read_tokens=response.usage.cache_read_input_tokens or 0,
-            web_search_requests=server_tool.web_search_requests if server_tool else 0,
-            web_fetch_requests=server_tool.web_fetch_requests if server_tool else 0,
-            service_tier=response.usage.service_tier or "standard",
-        ))
+        self.usage.record(
+            CallUsage(
+                agent_name=prompt_file.stem,
+                model=response.model,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                cache_creation_tokens=response.usage.cache_creation_input_tokens or 0,
+                cache_read_tokens=response.usage.cache_read_input_tokens or 0,
+                web_search_requests=server_tool.web_search_requests if server_tool else 0,
+                web_fetch_requests=server_tool.web_fetch_requests if server_tool else 0,
+                service_tier=response.usage.service_tier or "standard",
+            )
+        )
 
         # Extract text content from response
         text_content = ""

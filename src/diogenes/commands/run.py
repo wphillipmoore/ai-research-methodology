@@ -256,7 +256,10 @@ def execute(input_file: str, output: str, runs: int) -> int:
         print("Step 4: Executing searches...")
         try:
             search_results = step4_execute_searches(
-                research_input, search_plans, client, search_provider,
+                research_input,
+                search_plans,
+                client,
+                search_provider,
             )
         except SubAgentError as e:
             print(f"ERROR: {e}")
@@ -280,7 +283,10 @@ def execute(input_file: str, output: str, runs: int) -> int:
         print("Steps 6-8: Synthesizing evidence and assessing...")
         try:
             synthesis = steps678_synthesize_and_assess(
-                research_input, hypotheses, scorecards, client,
+                research_input,
+                hypotheses,
+                scorecards,
+                client,
             )
         except SubAgentError as e:
             print(f"ERROR: {e}")
@@ -293,8 +299,12 @@ def execute(input_file: str, output: str, runs: int) -> int:
         print("Step 9: Self-audit and verification...")
         try:
             audit = step9_self_audit(
-                research_input, hypotheses, search_results, scorecards,
-                synthesis, client,
+                research_input,
+                hypotheses,
+                search_results,
+                scorecards,
+                synthesis,
+                client,
             )
         except SubAgentError as e:
             print(f"ERROR: {e}")
@@ -307,8 +317,13 @@ def execute(input_file: str, output: str, runs: int) -> int:
         print("Step 10: Assembling final reports...")
         try:
             reports = step10_report(
-                research_input, hypotheses, search_results, scorecards,
-                synthesis, audit, client,
+                research_input,
+                hypotheses,
+                search_results,
+                scorecards,
+                synthesis,
+                audit,
+                client,
             )
         except SubAgentError as e:
             print(f"ERROR: {e}")
@@ -341,13 +356,14 @@ def execute(input_file: str, output: str, runs: int) -> int:
     print()
     totals = usage_data["totals"]
     cost = totals.get("estimated_cost_usd", 0)
-    print(f"Usage: {totals['api_calls']} API calls, "
-          f"{totals['input_tokens']:,} input + {totals['output_tokens']:,} output "
-          f"= {totals['total_tokens']:,} tokens")
+    print(
+        f"Usage: {totals['api_calls']} API calls, "
+        f"{totals['input_tokens']:,} input + {totals['output_tokens']:,} output "
+        f"= {totals['total_tokens']:,} tokens"
+    )
     print(f"  Estimated cost: ${cost:.4f}")
     if totals["web_search_requests"]:
-        print(f"  Web: {totals['web_search_requests']} searches, "
-              f"{totals['web_fetch_requests']} fetches")
+        print(f"  Web: {totals['web_search_requests']} searches, {totals['web_fetch_requests']} fetches")
     print(f"  Details: {usage_path}")
 
     return 0

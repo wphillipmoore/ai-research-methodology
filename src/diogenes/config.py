@@ -119,10 +119,7 @@ def load_config() -> DioConfig:
             api_key = _parse_dotenv(dotenv_path).get("ANTHROPIC_API_KEY", "")
 
     if not api_key:
-        msg = (
-            "No API key found. "
-            "Set ANTHROPIC_API_KEY, add api.key to .diorc, or create a .env file."
-        )
+        msg = "No API key found. Set ANTHROPIC_API_KEY, add api.key to .diorc, or create a .env file."
         raise ConfigError(msg)
 
     # Search provider configuration

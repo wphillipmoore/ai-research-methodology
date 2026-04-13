@@ -207,13 +207,17 @@ def step4_execute_searches(
 
         # Phase 4B: LLM scores relevance in batches
         all_scored = _score_results_batched(
-            item, executions, client, scorer_prompt,
+            item,
+            executions,
+            client,
+            scorer_prompt,
         )
 
         # Phase 4C: Python filters and deduplicates
         selected, rejected = _filter_and_deduplicate(all_scored)
-        print(f"    {len(selected)} sources selected (score >= {_RELEVANCE_THRESHOLD}), "
-              f"{len(rejected)} below threshold")
+        print(
+            f"    {len(selected)} sources selected (score >= {_RELEVANCE_THRESHOLD}), {len(rejected)} below threshold"
+        )
 
         results[item_id] = {
             "id": item_id,
@@ -250,15 +254,12 @@ def _score_results_batched(
 
         # Process in batches
         for i in range(0, len(results_list), _RELEVANCE_BATCH_SIZE):
-            batch = results_list[i:i + _RELEVANCE_BATCH_SIZE]
+            batch = results_list[i : i + _RELEVANCE_BATCH_SIZE]
             batch_input = {
                 "item_id": item["id"],
                 "clarified_text": item.get("clarified_text", ""),
                 "search_intent": search_intent,
-                "results": [
-                    {"url": r.url, "title": r.title, "snippet": r.snippet}
-                    for r in batch
-                ],
+                "results": [{"url": r.url, "title": r.title, "snippet": r.snippet} for r in batch],
             }
 
             response = client.call_sub_agent(
@@ -359,17 +360,19 @@ def step5_score_sources(
             url = source.get("url", "")
             print(f"    Fetching {url[:60]}...")
             content = fetch_page_extract(url)
-            enriched_sources.append({
-                "url": url,
-                "title": source.get("title", ""),
-                "snippet": source.get("snippet", ""),
-                "content_extract": content,
-            })
+            enriched_sources.append(
+                {
+                    "url": url,
+                    "title": source.get("title", ""),
+                    "snippet": source.get("snippet", ""),
+                    "content_extract": content,
+                }
+            )
 
         # Phase B: LLM scores in batches
         all_scorecards: list[dict[str, Any]] = []
         for i in range(0, len(enriched_sources), _SCORING_BATCH_SIZE):
-            batch = enriched_sources[i:i + _SCORING_BATCH_SIZE]
+            batch = enriched_sources[i : i + _SCORING_BATCH_SIZE]
             batch_input = {
                 "item_id": item_id,
                 "clarified_text": item.get("clarified_text", ""),
@@ -562,7 +565,8 @@ def step10_report(
 
         results[item_id] = response
         verdict = response.get("assessment_summary", {}).get(
-            "verdict", response.get("assessment_summary", {}).get("answer", ""),
+            "verdict",
+            response.get("assessment_summary", {}).get("answer", ""),
         )
         print(f"    {item_id}: {verdict[:80]}")
 

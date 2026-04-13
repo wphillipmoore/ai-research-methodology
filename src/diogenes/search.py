@@ -141,13 +141,15 @@ def execute_search_plan(
 
         results, total_available = provider.search(query, max_results=max_results_per_search)
 
-        executions.append(SearchExecution(
-            search_id=search_id,
-            terms=terms,
-            provider=provider.name,
-            date=now,
-            results=results,
-            total_results_available=total_available,
-        ))
+        executions.append(
+            SearchExecution(
+                search_id=search_id,
+                terms=terms,
+                provider=provider.name,
+                date=now,
+                results=results,
+                total_results_available=total_available,
+            )
+        )
 
     return executions
