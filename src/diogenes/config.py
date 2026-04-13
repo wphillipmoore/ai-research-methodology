@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,9 +73,13 @@ def load_config() -> DioConfig:
     Priority (highest to lowest):
 
     1. ``ANTHROPIC_API_KEY`` environment variable
-    2. ``api.key`` in ``./.diorc`` (project-level config, current directory)
-    3. ``api.key`` in ``~/.diorc`` (user-level config)
-    4. ``ANTHROPIC_API_KEY`` from ``.env`` file in the current directory (loaded with a warning)
+    2. ``ANTHROPIC_API_KEY`` from ``.env`` file in the current directory
+    3. ``api.key`` in ``./.diorc`` (project-level config, current directory)
+    4. ``api.key`` in ``~/.diorc`` (user-level config)
+
+    The ``.env`` file follows standard Python convention (VS Code, Docker
+    Compose, etc.): values are loaded as pseudo-environment variables and
+    override config files, but real environment variables override ``.env``.
 
     Returns:
         Resolved :class:`DioConfig` instance.
@@ -103,20 +106,24 @@ def load_config() -> DioConfig:
     model = str(api_sect.get("model", DEFAULT_MODEL))
     load_dotenv = bool(env_sect.get("load_dotenv", True))
 
-    # Priority 1: environment variable
-    api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
-
-    # Priority 2 & 3: config file key (project or user .diorc)
-    if not api_key:
-        api_key = str(api_sect.get("key", ""))
-
-    # Priority 4: .env file, with an explicit warning so it is never silent
-    if not api_key and load_dotenv:
+    # Load .env file (priority 2 — overrides .diorc but not env vars)
+    dotenv_vars: dict[str, str] = {}
+    if load_dotenv:
         dotenv_name = str(env_sect.get("dotenv_path", ".env"))
         dotenv_path = Path(dotenv_name)
         if dotenv_path.exists():
-            sys.stderr.write(f"Warning: Loading API key from {dotenv_path.resolve()}\n")
-            api_key = _parse_dotenv(dotenv_path).get("ANTHROPIC_API_KEY", "")
+            dotenv_vars = _parse_dotenv(dotenv_path)
+
+    # Priority 1: environment variable
+    api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    # Priority 2: .env file
+    if not api_key:
+        api_key = dotenv_vars.get("ANTHROPIC_API_KEY", "")
+
+    # Priority 3 & 4: config file key (project or user .diorc)
+    if not api_key:
+        api_key = str(api_sect.get("key", ""))
 
     if not api_key:
         msg = "No API key found. Set ANTHROPIC_API_KEY, add api.key to .diorc, or create a .env file."
@@ -126,33 +133,26 @@ def load_config() -> DioConfig:
     search_sect = _section(toml, "search")
     search_provider = str(search_sect.get("provider", "serper"))
 
-    # Search API keys: env var > .diorc > .env
-    dotenv_vars: dict[str, str] = {}
-    if load_dotenv:
-        dotenv_name = str(env_sect.get("dotenv_path", ".env"))
-        dotenv_path = Path(dotenv_name)
-        if dotenv_path.exists():
-            dotenv_vars = _parse_dotenv(dotenv_path)
-
+    # Search API keys: env var > .env > .diorc (same priority as ANTHROPIC_API_KEY)
     serper_api_key = (
         os.environ.get("SERPER_API_KEY", "")
-        or str(search_sect.get("serper_api_key", ""))
         or dotenv_vars.get("SERPER_API_KEY", "")
+        or str(search_sect.get("serper_api_key", ""))
     )
     brave_api_key = (
         os.environ.get("BRAVE_API_KEY", "")
-        or str(search_sect.get("brave_api_key", ""))
         or dotenv_vars.get("BRAVE_API_KEY", "")
+        or str(search_sect.get("brave_api_key", ""))
     )
     google_api_key = (
         os.environ.get("GOOGLE_API_KEY", "")
-        or str(search_sect.get("google_api_key", ""))
         or dotenv_vars.get("GOOGLE_API_KEY", "")
+        or str(search_sect.get("google_api_key", ""))
     )
     google_search_engine_id = (
         os.environ.get("GOOGLE_SEARCH_ENGINE_ID", "")
-        or str(search_sect.get("google_search_engine_id", ""))
         or dotenv_vars.get("GOOGLE_SEARCH_ENGINE_ID", "")
+        or str(search_sect.get("google_search_engine_id", ""))
     )
 
     return DioConfig(

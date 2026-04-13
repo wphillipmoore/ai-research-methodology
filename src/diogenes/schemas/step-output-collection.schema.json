@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/step-output-collection.schema.json",
+  "title": "Step Output Collection",
+  "description": "Wrapper format for pipeline step outputs. Each step output file is an object keyed by item ID (C001, C002, Q001, etc.), where each value is the per-item sub-agent output conforming to that step's schema.",
+  "type": "object",
+  "propertyNames": {
+    "pattern": "^[CQ][0-9]+$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "description": "Per-item output conforming to the step-specific schema (hypotheses, search-plan, synthesis, etc.)."
+  }
+}

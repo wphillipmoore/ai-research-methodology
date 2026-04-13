@@ -50,13 +50,13 @@ parameter is provided, do not ask about it — silently ignore it.
 ```
 
 Re-executes a previous research run using the saved input spec. The input
-spec file (`research-input.md`) is saved in the research instance directory
+spec file (`research-input.json`) is saved in the research instance directory
 during the original run. The rerun creates a new timestamped directory
 alongside the existing one(s). The `runs` parameter works the same as for
 `run` (default: 3).
 
 **CRITICAL: Isolation rule.** The rerun MUST be executed with NO knowledge
-of prior run results. The skill reads ONLY `research-input.md` from the
+of prior run results. The skill reads ONLY `research-input.json` from the
 research directory. It MUST NOT read, reference, or pass to the subagent
 ANY files from existing date directories (prior run results, assessments,
 evidence, or any other output). The subagent MUST NOT be given the path
@@ -103,16 +103,17 @@ The diff report contains:
 /research extract <url-or-path> [output=<dir>]
 ```
 
-Reads a document and produces a numbered list of verifiable factual claims
-as a markdown file suitable for input to `/research run`.
+Reads a document and produces a JSON file of verifiable factual claims
+suitable for input to `/research run`.
 
 | Parameter | Required | Description | Default | Example |
 |-----------|----------|-------------|---------|---------|
 | `<url-or-path>` | Yes | URL or local file path | — | `articles/A0005/drafts/draft-v1.md` |
 | `output` | No | Directory to write the claims file | Local path: dirname of input. URL: must specify. | `output=research/` |
 
-**Standard output file**: `extracted-claims.md` (placed in the output
+**Standard output file**: `extracted-claims.json` (placed in the output
 directory). This name is fixed — do not ask the user for a filename.
+The output MUST conform to the `extracted-claims.schema.json` schema.
 
 **Extraction rules:**
 
@@ -142,28 +143,24 @@ directory). This name is fixed — do not ask the user for a filename.
    `confirm=no` — see below). The user may add, remove, or modify claims.
    The extraction is a starting point, not a final product.
 
-**Output format** (`extracted-claims.md`):
+**Output format** (`extracted-claims.json`):
 
-```markdown
-# Claims extracted from {document name}
-
-Source: {url or path}
-Extracted: {date}
-
-## Claims
-
-1. {first verifiable claim as it appears in the prose}
-2. {second claim}
-...
-
-## Axioms
-
-{empty by default — user may add axioms before running verification}
-
-## Queries
-
-{empty by default — user may add queries before running verification}
+```json
+{
+  "source": "url or path to the source document",
+  "extracted_at": "2026-04-13T12:00:00Z",
+  "claims": [
+    {"text": "first verifiable claim as it appears in the prose"},
+    {"text": "second claim"}
+  ],
+  "queries": [],
+  "axioms": []
+}
 ```
+
+The `queries` and `axioms` arrays are empty by default — the user may
+add items before running verification. This JSON is directly usable as
+input to `/research run file=extracted-claims.json`.
 
 ### fact-check — Extract and verify in one step
 
@@ -181,7 +178,7 @@ Extracts claims from a document and immediately runs verification on them.
 
 **Workflow:**
 
-1. Check if `{output}/extracted-claims.md` exists AND is newer than the
+1. Check if `{output}/extracted-claims.json` exists AND is newer than the
    source document. If yes, skip extraction and use the existing claims file.
    If no, run extraction.
 2. **Pre-fact-check gate** (reference audit): Read the document's References
@@ -204,7 +201,7 @@ Extracts claims from a document and immediately runs verification on them.
 - No clarification of input
 - Treat all input as final — the user specified everything on the command line
 - Just run
-- Still save research-input.md, snapshots, and all output artifacts
+- Still save research-input.json, snapshots, and all output artifacts
 
 This is a convenience command. It does nothing that `extract` followed by
 `run` doesn't do — it chains them and adds smart caching of the extraction.
@@ -253,22 +250,22 @@ Queries: 2
 Ask the user to confirm before proceeding.
 
 After confirmation, save the input specification as
-`{output_directory}/research-input.md`. This file enables future re-runs
+`{output_directory}/research-input.json`. This file enables future re-runs
 without re-specifying parameters.
 
-**Guardrail**: Before writing `research-input.md`, check if one already
+**Guardrail**: Before writing `research-input.json`, check if one already
 exists in the output directory. If it does, this is NOT a new research run —
 it is an attempted reuse of an existing research directory. **STOP and fail
 with an error:**
 
 ```
-ERROR: {output_directory}/research-input.md already exists.
+ERROR: {output_directory}/research-input.json already exists.
 This directory belongs to an existing research instance.
 To re-run this research, use: /research rerun {output_directory}
 To start new research, use a different output directory.
 ```
 
-Do NOT overwrite, merge, or append to an existing `research-input.md`.
+Do NOT overwrite, merge, or append to an existing `research-input.json`.
 Do NOT proceed with execution. This is a hard stop.
 
 ### Step 3: Create run group directory
@@ -285,29 +282,20 @@ correct sort order in all file browsers.
 
 ### Step 4: Save methodology snapshot
 
-Copy the files used to drive the research into the run group directory
-(not into each run subdirectory — one copy shared across all runs):
+Copy the common guidelines into the run group directory (not into each
+run subdirectory — one copy shared across all runs):
 
-- `prompt-snapshot.md` — copy of the research methodology prompt
-- `output-format-snapshot.md` — copy of the output format specification
+- `prompt-snapshot.md` — copy of `prompts/common-guidelines.md`
 
-This creates a permanent record of exactly what instructions were in effect.
+This creates a permanent record of what behavioral constraints were in
+effect.
 
-### Step 5: Execute runs independent research runs
+### Step 5: Execute independent research runs
 
-Determine the output format specification — check in this order:
-1. Look for a project-local custom output format at
-   `skills/research/output-formats/custom.md` in the current working
-   directory. If this file exists, use it.
-2. Otherwise, use the plugin's default:
-   `skills/research/output-formats/default.md`.
-
-For each of the runs, launch aruns independent subagent with:
-- The research methodology prompt
-- The output format specification
-- The input (axioms, claims, queries)
-- The output directory (the specific `run-{N}/` subdirectory)
-- The research ID and run date
+Each run follows the 11-step pipeline, producing JSON files at each
+step. The compiled sub-agent prompts (in `skills/research/prompts/compiled/`) include
+both the task instructions and the JSON schema. The sub-agent MUST
+produce JSON conforming to the schema — no markdown, no prose.
 
 **Isolation rule**: Each run is completely blind to the others. No run
 may read, reference, or be influenced by any other run's output. This
@@ -317,38 +305,113 @@ to provide a valid signal about reproducibility.
 **Parallelism**: For runs<=5, launch runs in parallel where possible. For
 larger n, the agent may batch runs to manage resources.
 
-Each subagent:
-1. Reads the methodology prompt and output format specification
-2. For each claim/query in the input, investigates it following the methodology
-3. Writes all output files to its `run-{N}/` directory
-4. After all individual investigations, produces the run-level index.md with
-   collection analysis
+**MANDATORY — Search tools**: Check your available tools list for
+`dio_search` and `dio_fetch`. If these MCP tools are present:
 
-### Step 5b: Synthesize across runs
+- You MUST use `dio_search` for ALL web searches. Do NOT use the
+  built-in `web_search` tool. Do NOT use `WebSearch`. Do NOT perform
+  any web search through any mechanism other than `dio_search`.
+- You MUST use `dio_fetch` for ALL page content retrieval. Do NOT
+  read web pages directly.
+- This is a hard cost control requirement. The built-in web search
+  consumes expensive AI tokens. `dio_search` executes searches via
+  Python at near-zero token cost. Using the wrong tool wastes the
+  user's money.
+- If `dio_search` returns an error (quota exhausted, service
+  unreachable), STOP and inform the user. Do NOT silently fall back
+  to `web_search`. Let the user decide whether to continue with the
+  more expensive option.
+
+ONLY if `dio_search` and `dio_fetch` are NOT in your available tools
+list (MCP server not configured), fall back to the built-in web search.
+
+Each subagent executes these steps, writing JSON output files to its
+`run-{N}/` directory:
+
+**Step 5a: Clarify input** — Read `skills/research/prompts/compiled/input-clarifier.md`.
+For each claim and query, clarify, surface assumptions, map vocabulary.
+Write `research-input.json` (clarified input with IDs assigned).
+
+**Step 5b: Generate hypotheses** — Read
+`skills/research/prompts/compiled/hypothesis-generator.md`. For each claim/query, pass
+the clarified item and axioms. Write `hypotheses.json`.
+
+**Step 5c: Design searches** — Read
+`skills/research/prompts/compiled/search-designer.md`. For each item, pass the
+clarified item and its hypotheses. Write `search-plans.json`.
+
+**Step 5d: Execute searches** — For each search in the plan:
+- If `dio_search` MCP tool is available: call it with the search terms.
+- If not available: use built-in web search.
+For each batch of results, score relevance (0-10) using the criteria
+in `skills/research/prompts/compiled/relevance-scorer.md`. Filter by score >= 5,
+deduplicate by URL. Write `search-results.json`.
+
+**Step 5e: Score sources** — For each selected source:
+- If `dio_fetch` MCP tool is available: call it to get page content.
+- If not available: the subagent reads the source directly.
+Score reliability, relevance, and six bias domains per
+`skills/research/prompts/compiled/source-scorer.md`. Write `source-scorecards.json`.
+
+**Step 5f: Synthesize, assess, gaps** — Read
+`skills/research/prompts/compiled/evidence-synthesizer.md`. For each item, pass the
+scorecards and hypotheses. Synthesize the evidence collection, produce
+probability assessment, identify gaps. Write `synthesis.json`.
+
+**Step 5g: Self-audit** — Read `skills/research/prompts/compiled/self-auditor.md`. For
+each item, audit the process, verify source interpretations, produce
+reading list. Write `self-audit.json`.
+
+**Step 5h: Report** — Read `skills/research/prompts/compiled/report-assembler.md`. For
+each item, assemble the final report from all prior steps. Write
+`reports.json`.
+
+**Step 5i: Archive** — Combine all JSON outputs into `archive.json`
+with a timestamp and pipeline version.
+
+**Step 5j: Usage** — Record token usage, API call counts, and estimated
+costs. Write `usage.json` to the run group directory.
+
+**Output files per run directory** (all JSON, no markdown):
+
+```
+run-{N}/
+├── research-input.json
+├── hypotheses.json
+├── search-plans.json
+├── search-results.json
+├── source-scorecards.json
+├── synthesis.json
+├── self-audit.json
+├── reports.json
+└── archive.json
+```
+
+### Step 5k: Synthesize across runs
 
 **This step runs ONLY after ALL runs have completed.** It reads the
-output from every `run-{N}/` directory and produces group-level files in
-the run group directory.
+JSON output from every `run-{N}/` directory and produces group-level
+JSON files in the run group directory.
 
 Produce these files:
 
-1. **synthesis.md** — aggregate result derived from runs independent runs:
+1. **group-synthesis.json** — aggregate result from all runs:
    - For each claim/query: consensus verdict, divergences, union of sources
    - Overall assessment that integrates findings from all runs
    - Where runs agree: state with increased confidence
    - Where runs disagree: note the divergence and classify the root cause
 
-2. **consistency.md** — similarity metrics across the runs:
+2. **group-consistency.json** — similarity metrics across runs:
    - Source overlap (% shared between each pair, sources found in all/most/one)
    - Verdict agreement (did all runs support the same hypothesis?)
    - Scoring consistency (same source scored the same way?)
    - Overall similarity score
    - Diagnostic: if <50% overlap, flag as "query may be too ambiguous"
 
-3. **reading-list.md** — consolidated reading list across all runs,
+3. **group-reading-list.json** — consolidated reading list across all runs,
    deduplicated, with provenance (which runs found each source)
 
-4. **resources.md** — combined resource usage across all runs
+4. **usage.json** — combined usage across all runs
 
 ### Step 6: Report completion
 
@@ -399,7 +462,7 @@ When synthesis finishes, report to the user:
   (H4, H5, ...) may be added when the evidence supports more than three
   distinct explanations.
 - **Run isolation**: The subagent MUST NOT read prior run results. On a rerun,
-  read ONLY `research-input.md`. Do NOT pass prior run paths to the subagent.
+  read ONLY `research-input.json`. Do NOT pass prior run paths to the subagent.
   Prior results bias new research through anchoring and confirmation effects.
 - **Claim extraction blindness**: When extracting claims from a document
   (via `extract` or `check`), read ONLY the document body. Do NOT read or
@@ -410,20 +473,20 @@ When synthesis finishes, report to the user:
 
 ## Customization
 
-The output format can be customized without modifying the plugin. Create a
-file at `skills/research/output-formats/custom.md` in your project directory.
-If this file exists, the skill uses it instead of the default format.
+The research pipeline produces JSON at every step. The compiled sub-agent
+prompts in `skills/research/prompts/compiled/` contain both the task instructions and the
+JSON schema for each step's output. To customize, modify the source prompts
+in `src/diogenes/prompts/sub-agents/` and/or the schemas in
+`src/diogenes/schemas/`, then run `python scripts/compile-prompts.py` to
+rebuild the compiled versions.
 
-This follows the project-local override pattern: the plugin ships with a
-default, your project can override it by placing a file at the conventional
-path. Plugin updates will not affect your custom file because it lives in
-your project, not in the plugin cache.
-
-The research methodology prompt (`prompts/research.md`) defines the research
-process and is independent of the output format. You can change how results
-are presented without changing how research is conducted.
+Markdown rendering from JSON is a separate step handled by the `dio_render`
+MCP tool or a fallback text description. The research methodology is
+independent of the rendering — you can change how results are presented
+without changing how research is conducted.
 
 ## Future extensions
 
+- **dio_render** MCP tool for JSON-to-markdown rendering
 - **report** mode (topic exploration with facets)
-- Sub-agent architecture with structured output and deterministic rendering
+- **check-triggers** command to evaluate revisit conditions (#87)

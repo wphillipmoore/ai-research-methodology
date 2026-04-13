@@ -24,9 +24,9 @@ from diogenes.pipeline import (
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
 
-# Resolve prompts directory relative to repo root
-_REPO_ROOT = Path(__file__).parent.parent.parent.parent
-_PROMPTS_DIR = _REPO_ROOT / "prompts" / "sub-agents"
+# Resolve prompts from the package (works for both repo checkout and pip install)
+_PACKAGE_DIR = Path(__file__).parent.parent
+_PROMPTS_DIR = _PACKAGE_DIR / "prompts" / "sub-agents"
 
 
 def _timestamp() -> str:
@@ -218,11 +218,11 @@ def execute(input_file: str, output: str, runs: int) -> int:
     for rd in run_dirs:
         print(f"  Created: {rd.name}/")
 
-    # Step 5: Save methodology snapshots
-    prompt_snapshot_src = _REPO_ROOT / "ai-research-methodology" / "skills" / "research" / "prompts" / "research.md"
-    if prompt_snapshot_src.exists():
+    # Step 5: Save methodology snapshots (common guidelines from the package)
+    guidelines_src = _PACKAGE_DIR / "prompts" / "common-guidelines.md"
+    if guidelines_src.exists():
         snapshot_dest = group_dir / "prompt-snapshot.md"
-        snapshot_dest.write_text(prompt_snapshot_src.read_text())
+        snapshot_dest.write_text(guidelines_src.read_text())
         print("  Saved: prompt-snapshot.md")
 
     # --- Pipeline execution ---

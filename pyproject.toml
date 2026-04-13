@@ -29,6 +29,7 @@ dependencies = [
     "anthropic",
     "jsonschema",
     "jinja2",
+    "mcp",
     "requests",
 ]
 
@@ -40,6 +41,7 @@ Issues = "https://github.com/wphillipmoore/ai-research-methodology/issues"
 [project.scripts]
 dio = "diogenes.cli:main"
 diogenes = "diogenes.cli:main"
+dio-mcp = "diogenes.mcp_server:main"
 
 [dependency-groups]
 dev = [
@@ -51,6 +53,7 @@ dev = [
     "pytest-cov",
     "pip-audit",
     "pip-licenses",
+    "mcp>=1.27.0",
 ]
 
 [tool.setuptools]
@@ -60,7 +63,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-diogenes = ["py.typed", "schemas/*.json"]
+diogenes = ["py.typed", "schemas/*.json", "prompts/*.md", "prompts/sub-agents/*.md"]
 
 [tool.ruff]
 line-length = 120

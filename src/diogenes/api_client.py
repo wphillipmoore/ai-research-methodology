@@ -200,7 +200,7 @@ class APIClient:
 
     DEFAULT_MODEL = "claude-sonnet-4-20250514"
     DEFAULT_MAX_TOKENS = 8192
-    _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+    _PROMPTS_DIR = Path(__file__).parent / "prompts"
     _COMMON_GUIDELINES_PATH = _PROMPTS_DIR / "common-guidelines.md"
     _SCHEMAS_DIR = Path(__file__).parent / "schemas"
 

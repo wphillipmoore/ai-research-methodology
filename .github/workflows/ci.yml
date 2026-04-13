@@ -118,6 +118,7 @@ jobs:
           uv run pip-licenses
           --allow-only="Apache-2.0;
           Apache-2.0 OR BSD-2-Clause;
+          Apache-2.0 OR BSD-3-Clause;
           Apache Software License;
           BSD License;
           BSD-2-Clause;

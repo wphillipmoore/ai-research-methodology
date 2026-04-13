@@ -11,6 +11,9 @@ ChatGPT, Gemini, or any capable LLM).
 - [Three Input Types](#three-input-types)
 - [Installation](#installation)
 - [Usage](#usage)
+- [MCP Server (optional)](#mcp-server-optional)
+- [dio CLI](#dio-cli)
+- [Configuration](#configuration)
 - [The 11-Step Process](#the-11-step-process)
 - [Anti-Sycophancy by Design](#anti-sycophancy-by-design)
 - [Customization](#customization)
@@ -147,6 +150,153 @@ developed and tested with Claude but uses no Claude-specific features.
 
 # Fact-check in batch mode (no confirmation prompts)
 /research fact-check article.md output=research/check confirm=no
+```
+
+## MCP Server (optional)
+
+The Diogenes MCP server exposes Python-based web search and page fetching
+tools that Claude Code can use instead of its built-in AI web search.
+This is **optional** — the plugin works without it. The MCP server reduces
+token consumption during the search phase by ~93%.
+
+**Without MCP**: The AI uses its built-in web search tool. Works
+out of the box, but search-heavy research consumes more tokens.
+
+**With MCP**: The AI calls `dio_search` and `dio_fetch` instead.
+Searches are executed by Python via Serper.dev (or Brave/Google), and
+only the results (titles, URLs, snippets) are returned to the AI.
+
+**Requires**: A configured search provider with a valid API key. The
+default provider is Serper.dev (free tier: 2,500 searches/month). Brave
+Search and Google Custom Search are also supported. See
+[Configuration](#configuration) for setup.
+
+### MCP Setup
+
+1. Install the package:
+
+   ```bash
+   pip install diogenes
+   ```
+
+2. Configure your search provider API key
+   (see [Configuration](#configuration)).
+
+3. Register the MCP server with Claude Code:
+
+   ```bash
+   # Add for all projects (user scope)
+   claude mcp add --transport stdio --scope user diogenes -- dio-mcp
+   ```
+
+4. Restart Claude Code. The MCP tools are now available in all sessions.
+
+To verify: run `claude mcp list` and confirm `diogenes` appears.
+
+To remove: `claude mcp remove --scope user diogenes`
+
+### MCP Tools
+
+| Tool | Description |
+| ---- | ----------- |
+| `dio_search` | Web search via configured provider. Returns titles, URLs, snippets. |
+| `dio_fetch` | Fetch a URL, extract visible text (~2000 chars). |
+| `dio_search_batch` | Execute multiple searches at once. |
+
+## dio CLI
+
+The `dio` command-line interface runs the full 11-step research pipeline
+as a Python coordinator calling AI sub-agents via the Anthropic API. It
+uses the same methodology as the plugin but manages the process
+programmatically.
+
+**Requires**: An Anthropic API key and a configured search provider
+with a valid API key. See [Configuration](#configuration) for setup.
+
+```bash
+# Install
+pip install diogenes
+
+# Run research
+dio run input.md --output research/my-topic --runs 1
+```
+
+The CLI produces JSON output files at each pipeline step (clarified
+input, hypotheses, search plans, search results, source scorecards,
+synthesis, self-audit, and final reports), plus a `usage.json` with
+per-call token counts and estimated costs.
+
+## Configuration
+
+Diogenes resolves configuration from multiple sources in priority order.
+Higher-priority sources override lower ones.
+
+### Priority order
+
+1. **Environment variable** — highest priority, overrides everything
+2. **`.env` file** — `.env` in the current directory (standard Python
+   convention, loaded as pseudo-environment variables)
+3. **Project `.diorc`** — `.diorc` file in the current directory
+4. **User `~/.diorc`** — `~/.diorc` in your home directory (recommended
+   for personal API keys that apply across all projects)
+
+### Required keys
+
+| Key | Required for | Where to get it |
+| --- | ------------ | --------------- |
+| `ANTHROPIC_API_KEY` | dio CLI only | <https://console.anthropic.com/> |
+| Search provider API key | MCP server, dio CLI | See search providers table below |
+
+At least one search provider must be configured. The default provider is
+Serper.dev. Diogenes checks for a configured provider at startup and
+raises an error if none is found.
+
+### Search providers
+
+| Provider | Config value | API key variable | Free tier |
+| -------- | ------------ | ---------------- | --------- |
+| Serper.dev (default) | `serper` | `SERPER_API_KEY` | 2,500 searches/month |
+| Brave Search | `brave` | `BRAVE_API_KEY` | Paid only ($5/month) |
+| Google Custom Search | `google` | `GOOGLE_API_KEY` + `GOOGLE_SEARCH_ENGINE_ID` | 100/day |
+
+To use a non-default provider, set `provider` in the `[search]` section
+of your `.diorc` file. Diogenes uses the provider specified in the
+configuration and requires the corresponding API key.
+
+### Recommended: user `~/.diorc` file
+
+For personal use, create `~/.diorc` with your API keys. This keeps
+keys out of project directories and works across all projects.
+
+```toml
+[api]
+key = "sk-ant-..."
+
+[search]
+provider = "serper"
+serper_api_key = "your-serper-key"
+```
+
+### Alternative: project `.diorc` file
+
+For project-specific configuration, create `.diorc` in the project root.
+Project settings override user settings.
+
+```toml
+[api]
+key = "sk-ant-..."
+model = "claude-sonnet-4-20250514"
+
+[search]
+provider = "brave"
+brave_api_key = "your-brave-key"
+```
+
+### Alternative: environment variables
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+export SERPER_API_KEY="your-serper-key"
 ```
 
 ## The 11-Step Process
