@@ -186,11 +186,7 @@ for how to set the key.
    {
      "mcpServers": {
        "diogenes": {
-         "command": "uv",
-         "args": [
-           "--directory", "/path/to/ai-research-methodology",
-           "run", "dio-mcp"
-         ]
+         "command": "dio-mcp"
        }
      }
    }
@@ -237,11 +233,11 @@ Higher-priority sources override lower ones.
 ### Priority order
 
 1. **Environment variable** — highest priority, overrides everything
-2. **Project `.diorc`** — `.diorc` file in the current directory
-3. **User `.diorc`** — `~/.diorc` in your home directory (recommended
-   for personal API keys)
-4. **`.env` file** — `.env` in the current directory (lowest priority,
-   primarily for development)
+2. **`.env` file** — `.env` in the current directory (standard Python
+   convention, loaded as pseudo-environment variables)
+3. **Project `.diorc`** — `.diorc` file in the current directory
+4. **User `~/.diorc`** — `~/.diorc` in your home directory (recommended
+   for personal API keys that apply across all projects)
 
 ### Required keys
 
