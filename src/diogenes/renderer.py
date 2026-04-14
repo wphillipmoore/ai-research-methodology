@@ -327,10 +327,16 @@ def _write_run_index(
         item_synthesis = _item_by_id(synthesis_items, item_id)
         item_search_plan = _item_by_id(search_plan_items, item_id)
 
-        # Verdict for claims, confidence for queries
-        verdict = report.get("verdict") or report.get("confidence") or ""
-        heading = f"### {item_id} — {verdict}" if verdict else f"### {item_id}"
-        lines.extend([heading, ""])
+        # Heading: {id} — {topic title} — {verdict or confidence qualifier}
+        topic = report.get("title", "").strip()
+        qualifier = (report.get("verdict") or report.get("confidence") or "").strip()
+
+        heading_parts = [item_id]
+        if topic:
+            heading_parts.append(topic)
+        if qualifier:
+            heading_parts.append(qualifier)
+        lines.extend([f"### {' — '.join(heading_parts)}", ""])
 
         # Claim / Query text
         text_label = "Claim" if item_type == "claim" else "Query"
