@@ -96,6 +96,39 @@ def _item_by_id(items: list[dict[str, Any]], item_id: str) -> dict[str, Any]:
     return {}
 
 
+def _collect_hypothesis_ratings(report: dict[str, Any], synthesis: dict[str, Any]) -> dict[str, str]:
+    """Collect hypothesis rating/disposition strings, keyed by hypothesis ID.
+
+    Supports multiple source formats:
+    - CLI: report.assessment.hypothesis_ratings[] with probability_term/range
+    - Plugin: synthesis.assessment.hypothesis_disposition (id -> disposition string)
+    """
+    ratings: dict[str, str] = {}
+
+    # CLI format via report
+    if isinstance(report, dict):
+        assessment = report.get("assessment", {})
+        if isinstance(assessment, dict):
+            for r in assessment.get("hypothesis_ratings", []):
+                hyp_id = r.get("hypothesis_id", "")
+                if hyp_id:
+                    term = r.get("probability_term", "")
+                    rng = r.get("probability_range", "")
+                    ratings[hyp_id] = f"{term} ({rng})" if term else rng
+
+    # Plugin format via synthesis
+    if isinstance(synthesis, dict):
+        assessment = synthesis.get("assessment", {})
+        if isinstance(assessment, dict):
+            disposition = assessment.get("hypothesis_disposition", {})
+            if isinstance(disposition, dict):
+                for hyp_id, text in disposition.items():
+                    if hyp_id not in ratings:
+                        ratings[hyp_id] = str(text)
+
+    return ratings
+
+
 def render_run(run_dir: Path, output_dir: Path) -> None:
     """Render a single run's JSON output to a markdown tree.
 
@@ -150,7 +183,7 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         # Write all content files first
         _write_item_input(item_dir, item)
         if item_hypotheses:
-            _write_hypotheses(item_dir, item_hypotheses)
+            _write_hypotheses(item_dir, item_hypotheses, item_report, item_synthesis)
         if item_synthesis:
             _write_assessment(item_dir, item_synthesis, item_report)
         if audit_to_render:
@@ -161,7 +194,16 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         _write_reading_list(item_dir, audit_to_render, item_id, scorecards)
 
         # Write index LAST so existence checks see the actual files
-        _write_item_index(item_dir, item, item_report, item_synthesis)
+        _write_item_index(
+            item_dir,
+            item,
+            item_report,
+            item_synthesis,
+            item_hypotheses,
+            item_search_plan,
+            search_results,
+            scorecards,
+        )
 
 
 def render_run_group(group_dir: Path, output_dir: Path) -> None:
@@ -244,8 +286,12 @@ def _write_item_index(
     item: dict[str, Any],
     report: dict[str, Any],
     synthesis: dict[str, Any],
+    hypotheses: dict[str, Any],
+    search_plan: dict[str, Any],
+    search_results: dict[str, Any],
+    scorecards: dict[str, Any],
 ) -> None:
-    """Write the per-item index.md with BLUF and summary."""
+    """Write the per-item index.md with BLUF, summary tables, and navigation."""
     item_id = item.get("id", "?")
     item_type = item.get("type", "claim")
     input_filename = "claim.md" if item_type == "claim" else "query.md"
@@ -267,8 +313,8 @@ def _write_item_index(
     lines.extend(["## Contents", "", "| Section | Description |", "|---------|-------------|"])
     if (item_dir / input_filename).exists():
         lines.append(f"| [Input]({input_filename}) | Original text, clarification, scope, vocabulary |")
-    if (item_dir / "hypotheses.md").exists():
-        lines.append("| [Hypotheses](hypotheses.md) | Competing hypotheses |")
+    if (item_dir / "hypotheses" / "index.md").exists():
+        lines.append("| [Hypotheses](hypotheses/index.md) | Competing hypotheses |")
     if (item_dir / "assessment.md").exists():
         lines.append("| [Assessment](assessment.md) | Evidence synthesis, probability assessment, gaps |")
     if (item_dir / "self-audit.md").exists():
@@ -281,17 +327,110 @@ def _write_item_index(
         lines.append("| [Sources](sources/index.md) | Source scorecards |")
     lines.append("")
 
-    # Evidence quality snapshot
+    # Hypothesis summary table (if hypotheses exist)
+    ratings_by_hyp = _collect_hypothesis_ratings(report, synthesis)
+
+    if hypotheses and hypotheses.get("hypotheses"):
+        lines.extend(
+            [
+                "## Hypotheses",
+                "",
+                "| ID | Label | Status |",
+                "|----|-------|--------|",
+            ]
+        )
+        for h in hypotheses["hypotheses"]:
+            hyp_id = h.get("id", "?")
+            short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
+            label = h.get("label", "")
+            status = ratings_by_hyp.get(hyp_id, "—")
+            lines.append(f"| [{short_id}](hypotheses/{short_id}.md) | {label} | {status} |")
+        lines.append("")
+
+    # Searches summary table
+    if search_plan and search_plan.get("searches"):
+        execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
+        lines.extend(
+            [
+                "## Searches",
+                "",
+                "| ID | Target | Returned | Selected |",
+                "|----|--------|----------|----------|",
+            ]
+        )
+        for s in search_plan["searches"]:
+            search_id = s.get("id", "S??")
+            theme = s.get("theme") or s.get("target_hypothesis") or ""
+            exec_record = next(
+                (e for e in execution_log if e.get("search_id") == search_id or e.get("id") == search_id),
+                None,
+            )
+            returned_str = "?"
+            selected_str = "?"
+            if exec_record:
+                results_list = exec_record.get("results", [])
+                returned_str = str(exec_record.get("total_returned") or len(results_list))
+                selected_str = str(sum(1 for r in results_list if r.get("disposition") == "selected"))
+            lines.append(
+                f"| [{search_id}](searches/{search_id}/search-log.md) | {theme[:60]} | "
+                f"{returned_str} | {selected_str} |"
+            )
+        lines.append("")
+
+    # Sources summary table
+    sources = _extract_sources_for_item(scorecards, item_id)
+    if sources:
+        lines.extend(
+            [
+                "## Sources",
+                "",
+                "| ID | Title | Reliability | Relevance |",
+                "|----|-------|-------------|-----------|",
+            ]
+        )
+        for i, s in enumerate(sources, 1):
+            src_id = s.get("id") or f"SRC{i:03d}"
+            title = (s.get("title") or s.get("url", ""))[:60]
+            rel_value = s.get("reliability", "")
+            relev_value = s.get("relevance", "")
+            rel_str = rel_value.get("rating", "—") if isinstance(rel_value, dict) else (rel_value or "—")
+            relev_str = relev_value.get("rating", "—") if isinstance(relev_value, dict) else (relev_value or "—")
+            lines.append(f"| [{src_id}](sources/{src_id}/scorecard.md) | {title} | {rel_str} | {relev_str} |")
+        lines.append("")
+
+    # Evidence quality snapshot from synthesis
     if synthesis:
         syn = synthesis.get("synthesis") or synthesis
-        evidence_quality = syn.get("evidence_quality", {})
-        source_agreement = syn.get("source_agreement", {})
-        if evidence_quality or source_agreement:
-            lines.extend(["## Evidence Snapshot", "", "| Dimension | Rating |", "|-----------|--------|"])
-            if isinstance(evidence_quality, dict) and evidence_quality.get("rating"):
-                lines.append(f"| Evidence quality | {evidence_quality.get('rating')} |")
-            if isinstance(source_agreement, dict) and source_agreement.get("rating"):
-                lines.append(f"| Source agreement | {source_agreement.get('rating')} |")
+        snapshot_rows: list[str] = []
+        eq = syn.get("evidence_quality") if isinstance(syn, dict) else None
+        sa = syn.get("source_agreement") if isinstance(syn, dict) else None
+        ipcc = syn.get("ipcc_combined") if isinstance(syn, dict) else None
+        if isinstance(eq, dict) and eq.get("rating"):
+            snapshot_rows.append(f"| Evidence quality | {eq['rating']} |")
+        if isinstance(sa, dict) and sa.get("rating"):
+            snapshot_rows.append(f"| Source agreement | {sa['rating']} |")
+        if ipcc:
+            snapshot_rows.append(f"| IPCC assessment | {ipcc} |")
+        if snapshot_rows:
+            lines.extend(
+                ["## Evidence Snapshot", "", "| Dimension | Rating |", "|-----------|--------|", *snapshot_rows, ""]
+            )
+
+    # Revisit triggers from report
+    if report:
+        triggers = report.get("revisit_triggers", [])
+        if triggers:
+            lines.extend(["## Revisit Triggers", ""])
+            for t in triggers:
+                if isinstance(t, dict):
+                    trigger_text = t.get("trigger", "")
+                    trigger_type = t.get("type", "")
+                    if trigger_type:
+                        lines.append(f"- **[{trigger_type}]** {trigger_text}")
+                    else:
+                        lines.append(f"- {trigger_text}")
+                else:
+                    lines.append(f"- {t}")
             lines.append("")
 
     lines.append("[← Back to run overview](../index.md)")
@@ -339,55 +478,133 @@ def _write_item_input(item_dir: Path, item: dict[str, Any]) -> None:
     (item_dir / filename).write_text("\n".join(lines) + "\n")
 
 
-def _write_hypotheses(item_dir: Path, data: dict[str, Any]) -> None:
-    """Write hypotheses.md with the competing hypotheses table."""
-    lines = [f"# {data.get('id', '?')} — Competing Hypotheses", ""]
+def _write_hypotheses(
+    item_dir: Path, data: dict[str, Any], report: dict[str, Any], synthesis: dict[str, Any]
+) -> None:
+    """Write hypotheses/ directory with per-hypothesis files and an index.
+
+    Creates:
+        hypotheses/
+            index.md    — summary table of all hypotheses
+            H1.md       — one file per hypothesis
+            H2.md
+            ...
+    """
+    item_id = data.get("id", "?")
+    hyps_dir = item_dir / "hypotheses"
+    hyps_dir.mkdir(parents=True, exist_ok=True)
 
     approach = data.get("approach", "hypotheses")
+
+    # Collect status string per hypothesis id (handles both CLI and plugin schemas)
+    ratings_by_hyp = _collect_hypothesis_ratings(report, synthesis)
+
     if approach == "open-ended":
+        # For open-ended queries there are no discrete hypotheses; write themes instead.
+        index_lines = [f"# {item_id} — Search Themes (open-ended)", ""]
         rationale = data.get("rationale", "")
+        if rationale:
+            index_lines.extend([rationale, ""])
+
         themes = data.get("search_themes", [])
-        lines.extend(["## Approach: Open-ended", "", rationale, "", "## Search Themes", ""])
+        if themes:
+            index_lines.extend(["| ID | Theme | Derived from |", "|----|-------|--------------|"])
+            for t in themes:
+                theme_id = t.get("id", "?")
+                theme = t.get("theme", "")
+                derived = t.get("derived_from", "")
+                index_lines.append(f"| [{theme_id}]({theme_id}.md) | {theme} | {derived} |")
+            index_lines.append("")
+
         for t in themes:
-            lines.append(f"### {t.get('id', '?')} — {t.get('theme', '')}")
-            lines.append("")
+            theme_id = t.get("id", "?")
+            theme_lines = [f"# {item_id} — {theme_id}: {t.get('theme', '')}", ""]
             derived = t.get("derived_from", "")
             if derived:
-                lines.append(f"**Derived from**: {derived}")
-                lines.append("")
+                theme_lines.extend([f"**Derived from**: {derived}", ""])
             look_for = t.get("look_for", [])
             if look_for:
-                lines.append("**Look for:**")
+                theme_lines.append("**Look for:**")
                 for lf in look_for:
-                    lines.append(f"- {lf}")
-                lines.append("")
+                    theme_lines.append(f"- {lf}")
+                theme_lines.append("")
+            perspectives = t.get("perspectives", [])
+            if perspectives:
+                theme_lines.append("**Perspectives:**")
+                for p in perspectives:
+                    theme_lines.append(f"- {p}")
+                theme_lines.append("")
+            theme_lines.append("[← Back to hypotheses index](index.md)")
+            (hyps_dir / f"{theme_id}.md").write_text("\n".join(theme_lines) + "\n")
     else:
         hyps = data.get("hypotheses", [])
-        for h in hyps:
-            lines.append(f"## {h.get('id', '?')} — {h.get('statement', '')}")
-            lines.append("")
-            supporting = h.get("supporting_evidence", [])
-            eliminating = h.get("eliminating_evidence", [])
-            if supporting:
-                lines.append("**Supporting evidence would show:**")
-                for s in supporting:
-                    lines.append(f"- {s}")
-                lines.append("")
-            if eliminating:
-                lines.append("**Eliminating evidence would show:**")
-                for e in eliminating:
-                    lines.append(f"- {e}")
-                lines.append("")
 
+        index_lines = [
+            f"# {item_id} — Competing Hypotheses",
+            "",
+            "| ID | Label | Statement | Status |",
+            "|----|-------|-----------|--------|",
+        ]
+        for h in hyps:
+            hyp_id = h.get("id", "?")
+            # Support both "H1" and "C001-H1" ID styles; use short ID for filename
+            short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
+            label = h.get("label", "")
+            statement = (h.get("statement") or "")[:100]
+            status = ratings_by_hyp.get(hyp_id, "—")
+            index_lines.append(f"| [{short_id}]({short_id}.md) | {label} | {statement} | {status[:60]} |")
+        index_lines.append("")
+
+        # Discriminating questions in the index
         disc = data.get("discriminating_questions", [])
         if disc:
-            lines.extend(["## Discriminating Questions", ""])
+            index_lines.extend(["## Discriminating Questions", ""])
             for q in disc:
-                lines.append(f"- {q}")
-            lines.append("")
+                index_lines.append(f"- {q}")
+            index_lines.append("")
 
-    lines.append("[← Back to item overview](index.md)")
-    (item_dir / "hypotheses.md").write_text("\n".join(lines) + "\n")
+        # Per-hypothesis file
+        for h in hyps:
+            hyp_id = h.get("id", "?")
+            short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
+            _write_hypothesis_file(hyps_dir / f"{short_id}.md", item_id, h, ratings_by_hyp.get(hyp_id, ""))
+
+    index_lines.append("[← Back to item overview](../index.md)")
+    (hyps_dir / "index.md").write_text("\n".join(index_lines) + "\n")
+
+
+def _write_hypothesis_file(path: Path, item_id: str, h: dict[str, Any], status: str) -> None:
+    """Write a single hypothesis detail file."""
+    hyp_id = h.get("id", "?")
+    short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
+    label = h.get("label", "")
+    statement = h.get("statement", "")
+
+    lines = [f"# {item_id} — {short_id}: {label}", "", f"**Statement**: {statement}", ""]
+
+    if status:
+        lines.extend(["## Status", "", status, ""])
+
+    falsification = h.get("falsification_target")
+    if falsification:
+        lines.extend(["## Falsification Target", "", falsification, ""])
+
+    supporting = h.get("supporting_evidence", [])
+    if supporting:
+        lines.extend(["## Supporting Evidence Would Show", ""])
+        for s in supporting:
+            lines.append(f"- {s}")
+        lines.append("")
+
+    eliminating = h.get("eliminating_evidence", [])
+    if eliminating:
+        lines.extend(["## Eliminating Evidence Would Show", ""])
+        for e in eliminating:
+            lines.append(f"- {e}")
+        lines.append("")
+
+    lines.append("[← Back to hypotheses index](index.md)")
+    path.write_text("\n".join(lines) + "\n")
 
 
 def _write_assessment(item_dir: Path, synthesis: dict[str, Any], report: dict[str, Any]) -> None:
@@ -684,7 +901,12 @@ def _write_searches(
     execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
 
     # Write per-search logs and collect index entries
-    index_lines = [f"# {item_id} — Searches", "", "| ID | Target | Terms |", "|----|--------|-------|"]
+    index_lines = [
+        f"# {item_id} — Searches",
+        "",
+        "| ID | Target | Terms | Returned | Selected | Rejected |",
+        "|----|--------|-------|----------|----------|----------|",
+    ]
 
     for s in searches:
         search_id = s.get("id", "S??")
@@ -710,22 +932,102 @@ def _write_searches(
             (e for e in execution_log if e.get("search_id") == search_id or e.get("id") == search_id),
             None,
         )
+        # Write per-result files and build selected/rejected tables
+        selected_count = 0
+        rejected_count = 0
+        total_returned = 0
         if exec_record:
-            lines.extend(["## Execution", ""])
-            results = exec_record.get("results_returned") or exec_record.get("results_found", 0)
-            selected = exec_record.get("results_selected", 0)
-            rejected = exec_record.get("results_rejected", 0)
-            lines.append(f"- Results returned: {results}")
-            lines.append(f"- Selected: {selected}")
-            lines.append(f"- Rejected: {rejected}")
-            lines.append("")
+            query_str = exec_record.get("query", "")
+            if query_str:
+                lines.extend([f"**Query**: `{query_str}`", ""])
 
-        lines.append("[← Back to item overview](../../index.md)")
+            results_list = exec_record.get("results", [])
+            total_returned = exec_record.get("total_returned") or len(results_list)
+            selected_count = sum(1 for r in results_list if r.get("disposition") == "selected")
+            rejected_count = sum(1 for r in results_list if r.get("disposition") != "selected")
+
+            lines.extend(
+                [
+                    "## Execution Summary",
+                    "",
+                    f"- Results returned: {total_returned}",
+                    f"- Selected: {selected_count}",
+                    f"- Rejected: {rejected_count}",
+                    "",
+                ]
+            )
+
+            # Per-result files + tables
+            results_subdir = search_subdir / "results"
+            if results_list:
+                results_subdir.mkdir(parents=True, exist_ok=True)
+
+            selected_rows: list[str] = []
+            rejected_rows: list[str] = []
+            for idx, r in enumerate(results_list, 1):
+                result_id = f"R{idx:02d}"
+                disposition = r.get("disposition", "rejected")
+                title = r.get("title") or r.get("url", "")
+                url = r.get("url", "")
+                score = r.get("relevance_score", "?")
+                reason = r.get("reason", "")
+
+                # Write detail file
+                rlines = [
+                    f"# {search_id} — {result_id}",
+                    "",
+                    f"**Title**: {title}",
+                    "",
+                    f"**URL**: <{url}>",
+                    "",
+                    f"**Relevance score**: {score}",
+                    "",
+                    f"**Disposition**: {disposition}",
+                    "",
+                ]
+                if reason:
+                    rlines.extend([f"**Rationale**: {reason}", ""])
+                rlines.append("[← Back to search log](../search-log.md)")
+                (results_subdir / f"{result_id}.md").write_text("\n".join(rlines) + "\n")
+
+                row = f"| [{result_id}](results/{result_id}.md) | {title[:60]} | {score} | {reason[:80]} |"
+                if disposition == "selected":
+                    selected_rows.append(row)
+                else:
+                    rejected_rows.append(row)
+
+            if selected_rows:
+                lines.extend(
+                    [
+                        "## Selected Results",
+                        "",
+                        "| ID | Title | Score | Rationale |",
+                        "|----|-------|-------|-----------|",
+                        *selected_rows,
+                        "",
+                    ]
+                )
+            if rejected_rows:
+                lines.extend(
+                    [
+                        "## Rejected Results",
+                        "",
+                        "| ID | Title | Score | Rationale |",
+                        "|----|-------|-------|-----------|",
+                        *rejected_rows,
+                        "",
+                    ]
+                )
+
+        lines.append("[← Back to searches index](../index.md)")
         (search_subdir / "search-log.md").write_text("\n".join(lines) + "\n")
 
-        # Add to index
+        # Add to index with counts
         terms_short = ", ".join(f"`{t}`" for t in terms[:3])
-        index_lines.append(f"| [{search_id}]({search_id}/search-log.md) | {theme[:60]} | {terms_short} |")
+        index_lines.append(
+            f"| [{search_id}]({search_id}/search-log.md) | {theme[:60]} | {terms_short} | "
+            f"{total_returned} | {selected_count} | {rejected_count} |"
+        )
 
     index_lines.extend(["", "[← Back to item overview](../index.md)"])
     (searches_dir / "index.md").write_text("\n".join(index_lines) + "\n")
@@ -760,41 +1062,79 @@ def _write_sources(
         url = s.get("url", "")
         title = s.get("title") or url
 
-        # Index entry
-        rel_rating = s.get("reliability", {})
-        relev_rating = s.get("relevance", {})
-        rel_str = rel_rating.get("rating", "—") if isinstance(rel_rating, dict) else str(rel_rating)
-        relev_str = relev_rating.get("rating", "—") if isinstance(relev_rating, dict) else str(relev_rating)
+        # Handle both CLI-style (rated object) and plugin-style (simple string) ratings
+        rel_value = s.get("reliability", "")
+        relev_value = s.get("relevance", "")
+        rel_str = rel_value.get("rating", "—") if isinstance(rel_value, dict) else (rel_value or "—")
+        relev_str = relev_value.get("rating", "—") if isinstance(relev_value, dict) else (relev_value or "—")
         index_lines.append(f"| [{src_id}]({src_id}/scorecard.md) | {title[:60]} | {rel_str} | {relev_str} |")
 
+        # Per-source scorecard
         lines = [f"# {src_id} — {title}", ""]
+
+        # Metadata table
+        meta_rows: list[str] = []
         if url:
-            lines.append(f"URL: <{url}>")
+            meta_rows.append(f"| URL | <{url}> |")
+        if s.get("authors"):
+            meta_rows.append(f"| Authors | {s['authors']} |")
+        if s.get("date"):
+            meta_rows.append(f"| Date | {s['date']} |")
+        if s.get("items"):
+            items_refs = ", ".join(str(i) for i in s["items"])
+            meta_rows.append(f"| Referenced by | {items_refs} |")
+        if meta_rows:
+            lines.extend(["## Metadata", "", "| Field | Value |", "|-------|-------|", *meta_rows, ""])
+
+        # Content summary
+        if s.get("content_summary"):
+            lines.extend(["## Content Summary", "", s["content_summary"], ""])
+
+        # Reliability
+        if rel_str and rel_str != "—":
+            lines.append(f"## Reliability: {rel_str}")
             lines.append("")
+            rationale = (
+                rel_value.get("rationale") if isinstance(rel_value, dict) else s.get("reliability_rationale", "")
+            )
+            if rationale:
+                lines.extend([rationale, ""])
 
-        for field in ("reliability", "relevance"):
-            val = s.get(field, {})
-            if isinstance(val, dict):
-                rating = val.get("rating", "—")
-                rationale = val.get("rationale", "")
-                lines.append(f"**{field.capitalize()}**: {rating}")
-                if rationale:
-                    lines.append(f"- {rationale}")
-                lines.append("")
+        # Relevance
+        if relev_str and relev_str != "—":
+            lines.append(f"## Relevance: {relev_str}")
+            lines.append("")
+            rationale = (
+                relev_value.get("rationale") if isinstance(relev_value, dict) else s.get("relevance_rationale", "")
+            )
+            if rationale:
+                lines.extend([rationale, ""])
 
+        # Bias assessment
         bias = s.get("bias_assessment", {})
         if isinstance(bias, dict) and bias:
             lines.extend(
                 ["## Bias Assessment", "", "| Domain | Rating | Rationale |", "|--------|--------|-----------|"]
             )
             for domain, d in bias.items():
+                domain_label = domain.replace("_", " ").title()
+                # Plugin format: value is a string like "Low risk — rationale"
+                # CLI format: value is a dict with rating + rationale
                 if isinstance(d, dict):
                     rating = d.get("rating", "—")
-                    rationale = (d.get("rationale") or "")[:150]
-                    lines.append(f"| {domain.replace('_', ' ').title()} | {rating} | {rationale} |")
+                    rationale = (d.get("rationale") or "")[:200]
+                elif isinstance(d, str):
+                    # Try to split "Rating — rationale"
+                    parts = d.split("—", 1) if "—" in d else d.split("-", 1) if " - " in d else [d, ""]
+                    rating = parts[0].strip()
+                    rationale = parts[1].strip()[:200] if len(parts) > 1 else ""
+                else:
+                    rating = str(d)
+                    rationale = ""
+                lines.append(f"| {domain_label} | {rating} | {rationale} |")
             lines.append("")
 
-        lines.append("[← Back to item overview](../../index.md)")
+        lines.append("[← Back to sources index](../index.md)")
         (src_subdir / "scorecard.md").write_text("\n".join(lines) + "\n")
 
     index_lines.extend(["", "[← Back to item overview](../index.md)"])

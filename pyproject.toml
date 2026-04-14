@@ -120,6 +120,7 @@ docstring-quotes = "double"
     "C901",    # Renderer functions handle multiple JSON schema variants.
     "PERF401", # Conditional list-building is clearer with append loops.
     "PLR0912", # Renderer branches on schema variants (CLI vs plugin).
+    "PLR0913", # Renderers take many step-output args to build rich index pages.
     "PLR0915", # Markdown writers have many statements by nature.
     "TC003",   # pathlib.Path needed at runtime for type checks and operations.
 ]
