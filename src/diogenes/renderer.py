@@ -306,7 +306,6 @@ def _write_run_index(
     execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
     reports_by_id: dict[str, dict[str, Any]] = {r.get("id", ""): r for r in reports}
 
-    # Reports lookup by id (may differ from input items when plugin uses report.title)
     def _card_heading(item: dict[str, Any], report: dict[str, Any]) -> str:
         """Build a card-level heading like '{id} — {topic} — {qualifier}'."""
         iid = item.get("id", "?")
@@ -319,41 +318,42 @@ def _write_run_index(
             parts.append(qualifier)
         return " — ".join(parts)
 
-    # Build ToC entries as we go so we can insert the TOC after the meta table
-    toc_entries: list[tuple[str, str, list[tuple[str, str]]]] = []
-    # list of (section_anchor, section_label, [(subheading_anchor, subheading_label), ...])
-
-    # Collect card info so we can write the TOC, then render cards after
-    def _card_anchor(heading_text: str) -> str:
-        """GitHub-style anchor: lowercase, dashes, strip punctuation."""
-        # Keep alphanumerics, spaces, and dashes. Replace spaces with dashes.
-        normalized = re.sub(r"[^a-z0-9\s\-]", "", heading_text.lower())
-        return re.sub(r"\s+", "-", normalized.strip())
-
-    card_sections: list[tuple[str, list[dict[str, Any]]]] = []
+    # Use explicit HTML anchors rather than relying on heading-text-derived anchors.
+    # Different markdown renderers (GFM, MkDocs, VS Code preview) generate anchors
+    # differently from the same heading text — em-dashes and parentheses cause
+    # mismatches. Explicit <a id="..."></a> tags work identically everywhere.
+    #
+    # Anchor scheme:
+    #   sec-axioms, sec-claims, sec-queries, sec-collection-analysis
+    #   card-{item_id}   e.g. card-C001
+    #   sub-collection-statistics, sub-collection-self-audit
+    # Each tuple is (section_anchor, section_label, items)
+    card_sections: list[tuple[str, str, list[dict[str, Any]]]] = []
     if axioms:
-        card_sections.append(("Axioms", axioms))
+        card_sections.append(("sec-axioms", "Axioms", axioms))
     if claims:
-        card_sections.append(("Claims", claims))
+        card_sections.append(("sec-claims", "Claims", claims))
     if queries:
-        card_sections.append(("Queries", queries))
+        card_sections.append(("sec-queries", "Queries", queries))
 
-    for section_label, section_items in card_sections:
+    # Build TOC
+    toc_entries: list[tuple[str, str, list[tuple[str, str]]]] = []
+    for section_anchor, section_label, section_items in card_sections:
         sub_entries: list[tuple[str, str]] = []
         for item in section_items:
-            report = reports_by_id.get(item.get("id", ""), {})
-            h = _card_heading(item, report)
-            sub_entries.append((_card_anchor(h), h))
-        toc_entries.append((_card_anchor(section_label), section_label, sub_entries))
+            iid = item.get("id", "?")
+            report = reports_by_id.get(iid, {})
+            heading_text = _card_heading(item, report)
+            sub_entries.append((f"card-{iid}", heading_text))
+        toc_entries.append((section_anchor, section_label, sub_entries))
 
-    # Collection Analysis ToC entry (we always render at least statistics)
-    collection_subs: list[tuple[str, str]] = [("collection-statistics", "Collection Statistics")]
+    collection_subs: list[tuple[str, str]] = [("sub-collection-statistics", "Collection Statistics")]
     robis = audit.get("robis_audit", {}) if isinstance(audit, dict) else {}
     if isinstance(robis, dict) and robis:
-        collection_subs.append(("collection-self-audit", "Collection Self-Audit"))
-    toc_entries.append(("collection-analysis", "Collection Analysis", collection_subs))
+        collection_subs.append(("sub-collection-self-audit", "Collection Self-Audit"))
+    toc_entries.append(("sec-collection-analysis", "Collection Analysis", collection_subs))
 
-    # Render the TOC
+    # Render TOC
     if toc_entries:
         lines.extend(["<!-- TOC START -->", "## Contents", ""])
         for anchor, label, subs in toc_entries:
@@ -362,9 +362,9 @@ def _write_run_index(
                 lines.append(f"    - [{sub_label}](#{sub_anchor})")
         lines.extend(["", "<!-- TOC END -->", ""])
 
-    # Render card sections
-    for section_label, section_items in card_sections:
-        lines.extend([f"## {section_label}", ""])
+    # Render card sections with explicit anchors
+    for section_anchor, section_label, section_items in card_sections:
+        lines.extend([f'<a id="{section_anchor}"></a>', "", f"## {section_label}", ""])
 
         for item in section_items:
             item_id = item.get("id", "")
@@ -381,7 +381,14 @@ def _write_run_index(
             item_synthesis = _item_by_id(synthesis_items, item_id)
             item_search_plan = _item_by_id(search_plan_items, item_id)
 
-            lines.extend([f"### {_card_heading(item, report)}", ""])
+            lines.extend(
+                [
+                    f'<a id="card-{item_id}"></a>',
+                    "",
+                    f"### {_card_heading(item, report)}",
+                    "",
+                ]
+            )
 
             # Axioms don't have hypotheses, sources, etc. — just the text
             if item_type == "axiom":
@@ -438,8 +445,8 @@ def _write_run_index(
             if slug:
                 lines.extend([f"[Full analysis]({slug}/index.md)", ""])
 
-    # Collection Analysis
-    lines.extend(["---", "", "## Collection Analysis", ""])
+    # Collection Analysis (with explicit anchor)
+    lines.extend(["---", "", '<a id="sec-collection-analysis"></a>', "", "## Collection Analysis", ""])
 
     # Collection Statistics
     total_sources = len(scorecards.get("sources", [])) if isinstance(scorecards, dict) else 0
@@ -451,6 +458,8 @@ def _write_run_index(
 
     lines.extend(
         [
+            '<a id="sub-collection-statistics"></a>',
+            "",
             "### Collection Statistics",
             "",
             "| Metric | Value |",
@@ -470,10 +479,11 @@ def _write_run_index(
     lines.append("")
 
     # Collection Self-Audit (plugin format: global robis_audit)
-    robis = audit.get("robis_audit", {}) if isinstance(audit, dict) else {}
     if isinstance(robis, dict) and robis:
         lines.extend(
             [
+                '<a id="sub-collection-self-audit"></a>',
+                "",
                 "### Collection Self-Audit",
                 "",
                 "| Domain | Rating |",
