@@ -873,8 +873,22 @@ Produce a prioritized reading list from the scored sources:
 - **Should read**: High reliability OR High relevance (not both)
 - **Reference**: Everything else
 
-For each source include: URL, one-sentence summary of its contribution,
-priority ranking, origin (search-discovered or researcher-provided).
+Each reading-list entry must stand alone as a complete article reference —
+downstream renderers should never need to join back against the scorecards
+to present an entry. Copy the following fields verbatim from the matching
+source scorecard: `title`, `authors`, `date`, and `content_summary`.
+If a scorecard field is missing or unknown, omit that field from the
+entry rather than inventing a value.
+
+Then add the following entry-specific fields:
+
+- `url` — the source URL
+- `reason` — a one-sentence explanation of why a reader should consult
+  this source for *this* research question. Distinct from
+  `content_summary`, which is neutral about the reader's purpose.
+- `items` — the IDs of the claims or queries this source supports
+- `priority` — must read / should read / reference
+- `origin` — search-discovered or researcher-provided
 
 ## Output
 

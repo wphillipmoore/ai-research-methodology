@@ -391,9 +391,7 @@ def _write_run_index(
     slug_by_id: dict[str, str] = {}
     for item in input_items:
         item_id = item.get("id", "")
-        clarified = (
-            item.get("restated_for_testability") or item.get("clarified_text") or item.get("original_text", "")
-        )
+        clarified = item.get("restated_for_testability") or item.get("clarified_text") or item.get("original_text", "")
         if item_id:
             slug_by_id[item_id] = _item_slug(item_id, clarified)
 
@@ -484,18 +482,11 @@ def _write_run_index(
 
             # Claim / Query text
             text_label = "Claim" if item_type == "claim" else "Query"
-            item_text = (
-                original or clarified or report.get("original_query") or report.get("original_claim", "")
-            )
+            item_text = original or clarified or report.get("original_query") or report.get("original_claim", "")
             lines.extend([f"**{text_label}:** {item_text}", ""])
 
             # Answer / verdict summary
-            answer = (
-                report.get("verdict_summary")
-                or report.get("answer_summary")
-                or report.get("one_line")
-                or ""
-            )
+            answer = report.get("verdict_summary") or report.get("answer_summary") or report.get("one_line") or ""
             if answer:
                 answer_label = "Verdict" if item_type == "claim" else "Answer"
                 lines.extend([f"**{answer_label}:** {answer}", ""])
@@ -693,22 +684,21 @@ def _write_item_index(
             verdict_label = "Verdict" if item_type == "claim" else "Confidence"
             lines.extend([f"**{verdict_label}:** {verdict}", ""])
 
-    # --- Results section (the seven artifacts) -----------------------------
-    lines.extend(['<a id="sec-results"></a>', "", "## Results", "", "| Artifact | Description |", "|----------|-------------|"])
+    # --- Results section ---------------------------------------------------
+    # Artifact links only for pages unique to the Results view; hypotheses,
+    # searches, and sources are already surfaced in their own tables below
+    # with direct links to detail files, so no intermediate index is needed.
+    lines.extend(
+        ['<a id="sec-results"></a>', "", "## Results", "", "| Artifact | Description |", "|----------|-------------|"]
+    )
     if (item_dir / input_filename).exists():
         lines.append(f"| [Input]({input_filename}) | Original text, clarification, scope, vocabulary |")
-    if (item_dir / "hypotheses" / "index.md").exists():
-        lines.append("| [Hypotheses](hypotheses/index.md) | Competing hypotheses |")
     if (item_dir / "assessment.md").exists():
         lines.append("| [Assessment](assessment.md) | Evidence synthesis, probability assessment, gaps |")
     if (item_dir / "self-audit.md").exists():
         lines.append("| [Self-Audit](self-audit.md) | Process audit across 4 ROBIS domains |")
     if (item_dir / "reading-list.md").exists():
         lines.append("| [Reading List](reading-list.md) | Prioritized source list |")
-    if (item_dir / "searches" / "index.md").exists():
-        lines.append("| [Searches](searches/index.md) | Search plans and execution logs |")
-    if (item_dir / "sources" / "index.md").exists():
-        lines.append("| [Sources](sources/index.md) | Source scorecards |")
     lines.append("")
 
     # Hypothesis summary table (if hypotheses exist)
@@ -874,47 +864,30 @@ def _write_item_input(item_dir: Path, item: dict[str, Any], report: dict[str, An
     (item_dir / filename).write_text("\n".join(lines) + "\n")
 
 
-def _write_hypotheses(
-    item_dir: Path, data: dict[str, Any], report: dict[str, Any], synthesis: dict[str, Any]
-) -> None:
-    """Write hypotheses/ directory with per-hypothesis files and an index.
+def _write_hypotheses(item_dir: Path, data: dict[str, Any], report: dict[str, Any], synthesis: dict[str, Any]) -> None:
+    """Write hypotheses/ directory with per-hypothesis detail files.
 
     Creates:
         hypotheses/
-            index.md    — summary table of all hypotheses
             H1.md       — one file per hypothesis
             H2.md
             ...
+
+    The item-level index already carries the summary table with direct
+    links to these files, so no intermediate index is written here.
     """
     item_id = data.get("id", "?")
+    approach = data.get("approach", "hypotheses")
+
+    hyps = data.get("search_themes", []) if approach == "open-ended" else data.get("hypotheses", [])
+    if not hyps:
+        return
+
     hyps_dir = item_dir / "hypotheses"
     hyps_dir.mkdir(parents=True, exist_ok=True)
 
-    approach = data.get("approach", "hypotheses")
-    # Reconstruct a minimal item dict for title-building
-    item_for_title = {"id": item_id}
-
-    # Collect status string per hypothesis id (handles both CLI and plugin schemas)
-    ratings_by_hyp = _collect_hypothesis_ratings(report, synthesis)
-
     if approach == "open-ended":
-        # For open-ended queries there are no discrete hypotheses; write themes instead.
-        index_lines = [f"# {_subpage_title(item_for_title, report, 'Search Themes')}", ""]
-        rationale = data.get("rationale", "")
-        if rationale:
-            index_lines.extend([rationale, ""])
-
-        themes = data.get("search_themes", [])
-        if themes:
-            index_lines.extend(["| ID | Theme | Derived from |", "|----|-------|--------------|"])
-            for t in themes:
-                theme_id = t.get("id", "?")
-                theme = t.get("theme", "")
-                derived = t.get("derived_from", "")
-                index_lines.append(f"| [{theme_id}]({theme_id}.md) | {theme} | {derived} |")
-            index_lines.append("")
-
-        for t in themes:
+        for t in hyps:
             theme_id = t.get("id", "?")
             theme_lines = [f"# {item_id} — {theme_id}: {t.get('theme', '')}", ""]
             derived = t.get("derived_from", "")
@@ -932,45 +905,18 @@ def _write_hypotheses(
                 for p in perspectives:
                     theme_lines.append(f"- {p}")
                 theme_lines.append("")
-            theme_lines.append("[← Back to hypotheses index](index.md)")
+            theme_lines.append("[← Back to item overview](../index.md)")
             theme_lines = _add_toc(theme_lines)
             (hyps_dir / f"{theme_id}.md").write_text("\n".join(theme_lines) + "\n")
-    else:
-        hyps = data.get("hypotheses", [])
+        return
 
-        index_lines = [
-            f"# {_subpage_title(item_for_title, report, 'Hypotheses')}",
-            "",
-            "| ID | Label | Statement | Status |",
-            "|----|-------|-----------|--------|",
-        ]
-        for h in hyps:
-            hyp_id = h.get("id", "?")
-            # Support both "H1" and "C001-H1" ID styles; use short ID for filename
-            short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
-            label = h.get("label", "")
-            statement = (h.get("statement") or "")[:100]
-            status = ratings_by_hyp.get(hyp_id, "—")
-            index_lines.append(f"| [{short_id}]({short_id}.md) | {label} | {statement} | {status[:60]} |")
-        index_lines.append("")
-
-        # Discriminating questions in the index
-        disc = data.get("discriminating_questions", [])
-        if disc:
-            index_lines.extend(["## Discriminating Questions", ""])
-            for q in disc:
-                index_lines.append(f"- {q}")
-            index_lines.append("")
-
-        # Per-hypothesis file
-        for h in hyps:
-            hyp_id = h.get("id", "?")
-            short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
-            _write_hypothesis_file(hyps_dir / f"{short_id}.md", item_id, h, ratings_by_hyp.get(hyp_id, ""))
-
-    index_lines.append("[← Back to item overview](../index.md)")
-    index_lines = _add_toc(index_lines)
-    (hyps_dir / "index.md").write_text("\n".join(index_lines) + "\n")
+    # Discrete hypothesis mode
+    ratings_by_hyp = _collect_hypothesis_ratings(report, synthesis)
+    for h in hyps:
+        hyp_id = h.get("id", "?")
+        # Support both "H1" and "C001-H1" ID styles; use short ID for filename
+        short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
+        _write_hypothesis_file(hyps_dir / f"{short_id}.md", item_id, h, ratings_by_hyp.get(hyp_id, ""))
 
 
 def _write_hypothesis_file(path: Path, item_id: str, h: dict[str, Any], status: str) -> None:
@@ -1003,7 +949,7 @@ def _write_hypothesis_file(path: Path, item_id: str, h: dict[str, Any], status: 
             lines.append(f"- {e}")
         lines.append("")
 
-    lines.append("[← Back to hypotheses index](index.md)")
+    lines.append("[← Back to item overview](../index.md)")
     lines = _add_toc(lines)
     path.write_text("\n".join(lines) + "\n")
 
@@ -1232,11 +1178,36 @@ def _write_reading_list(
     scorecards: dict[str, Any],
     report: dict[str, Any],
 ) -> None:
-    """Write reading-list.md with prioritized sources."""
+    """Write reading-list.md with prioritized sources.
+
+    Reading-list entries are expected to be self-contained article references
+    — the self-audit step denormalizes title/authors/date/content_summary
+    from the source scorecards onto each entry, so this writer reads those
+    fields straight off the entry without any cross-artifact joining.
+    """
     item_for_title = {"id": item_id}
     lines = [f"# {_subpage_title(item_for_title, report, 'Reading List')}", ""]
 
     reading_list = audit.get("reading_list", []) if isinstance(audit, dict) else []
+
+    def _format_entry(entry: dict[str, Any]) -> list[str]:
+        url = entry.get("url", "")
+        title = entry.get("title") or url
+        authors = entry.get("authors", "")
+        date = entry.get("date", "")
+        content_summary = entry.get("content_summary", "")
+        # `summary` is the legacy field name; accept it as a fallback for reason.
+        reason = entry.get("reason") or entry.get("summary") or ""
+
+        out: list[str] = [f"- **[{title}]({url})**" if url else f"- **{title}**"]
+        meta_bits = [bit for bit in (authors, date) if bit]
+        if meta_bits:
+            out.append(f"  - {' · '.join(meta_bits)}")
+        if content_summary:
+            out.append(f"  - {content_summary}")
+        if reason:
+            out.append(f"  - _Why read:_ {reason}")
+        return out
 
     if reading_list:
         by_priority: dict[str, list[dict[str, Any]]] = {"must read": [], "should read": [], "reference": []}
@@ -1249,12 +1220,7 @@ def _write_reading_list(
             if entries:
                 lines.extend([f"## {priority_label.title()}", ""])
                 for e in entries:
-                    title = e.get("title") or e.get("url", "")
-                    summary = e.get("summary", "")
-                    url = e.get("url", "")
-                    lines.append(f"- **[{title}]({url})**")
-                    if summary:
-                        lines.append(f"  - {summary}")
+                    lines.extend(_format_entry(e))
                 lines.append("")
     else:
         # Fall back to scorecards directly
@@ -1298,25 +1264,24 @@ def _write_searches(
     item_id: str,
     item_plan: dict[str, Any],
     search_results: dict[str, Any],
-    report: dict[str, Any],
+    report: dict[str, Any],  # noqa: ARG001 - accepted for symmetry with other artifact writers
 ) -> None:
-    """Write searches/ subdirectory with per-search logs and an index."""
+    """Write searches/ subdirectory with per-search logs.
+
+    Per-search subdirectories contain a search-log.md plus a results/
+    subfolder with one file per hit. The item-level index already renders
+    a summary table that links directly into each search-log.md, so no
+    intermediate searches/index.md is produced.
+    """
     if not item_plan:
+        return
+    searches = item_plan.get("searches", [])
+    if not searches:
         return
     searches_dir = item_dir / "searches"
     searches_dir.mkdir(parents=True, exist_ok=True)
 
-    searches = item_plan.get("searches", [])
     execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
-
-    # Write per-search logs and collect index entries
-    item_for_title = {"id": item_id}
-    index_lines = [
-        f"# {_subpage_title(item_for_title, report, 'Searches')}",
-        "",
-        "| ID | Target | Terms | Returned | Selected | Rejected |",
-        "|----|--------|-------|----------|----------|----------|",
-    ]
 
     for s in searches:
         search_id = s.get("id", "S??")
@@ -1429,20 +1394,9 @@ def _write_searches(
                     ]
                 )
 
-        lines.append("[← Back to searches index](../index.md)")
+        lines.append("[← Back to item overview](../../index.md)")
         lines = _add_toc(lines)
         (search_subdir / "search-log.md").write_text("\n".join(lines) + "\n")
-
-        # Add to index with counts
-        terms_short = ", ".join(f"`{t}`" for t in terms[:3])
-        index_lines.append(
-            f"| [{search_id}]({search_id}/search-log.md) | {theme[:60]} | {terms_short} | "
-            f"{total_returned} | {selected_count} | {rejected_count} |"
-        )
-
-    index_lines.extend(["", "[← Back to item overview](../index.md)"])
-    index_lines = _add_toc(index_lines)
-    (searches_dir / "index.md").write_text("\n".join(index_lines) + "\n")
 
 
 def _write_sources(
@@ -1450,23 +1404,19 @@ def _write_sources(
     item_id: str,
     scorecards: dict[str, Any],
     search_results: dict[str, Any],  # noqa: ARG001
-    report: dict[str, Any],
+    report: dict[str, Any],  # noqa: ARG001 - accepted for symmetry with other artifact writers
 ) -> None:
-    """Write sources/ subdirectory with per-source scorecards."""
+    """Write sources/ subdirectory with per-source scorecards.
+
+    The item-level index already renders a summary table linking directly
+    to each scorecard, so no intermediate sources/index.md is produced.
+    """
     sources = _extract_sources_for_item(scorecards, item_id)
     if not sources:
         return
 
     sources_dir = item_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
-
-    item_for_title = {"id": item_id}
-    index_lines = [
-        f"# {_subpage_title(item_for_title, report, 'Sources')}",
-        "",
-        "| ID | Title | Reliability | Relevance |",
-        "|----|-------|-------------|-----------|",
-    ]
 
     for i, s in enumerate(sources, 1):
         src_id = s.get("id") or f"SRC{i:03d}"
@@ -1481,7 +1431,6 @@ def _write_sources(
         relev_value = s.get("relevance", "")
         rel_str = rel_value.get("rating", "—") if isinstance(rel_value, dict) else (rel_value or "—")
         relev_str = relev_value.get("rating", "—") if isinstance(relev_value, dict) else (relev_value or "—")
-        index_lines.append(f"| [{src_id}]({src_id}/scorecard.md) | {title[:60]} | {rel_str} | {relev_str} |")
 
         # Per-source scorecard
         lines = [f"# {src_id} — {title}", ""]
@@ -1548,13 +1497,9 @@ def _write_sources(
                 lines.append(f"| {domain_label} | {rating} | {rationale} |")
             lines.append("")
 
-        lines.append("[← Back to sources index](../index.md)")
+        lines.append("[← Back to item overview](../../index.md)")
         lines = _add_toc(lines)
         (src_subdir / "scorecard.md").write_text("\n".join(lines) + "\n")
-
-    index_lines.extend(["", "[← Back to item overview](../index.md)"])
-    index_lines = _add_toc(index_lines)
-    (sources_dir / "index.md").write_text("\n".join(index_lines) + "\n")
 
 
 # ---------------------------------------------------------------------------
