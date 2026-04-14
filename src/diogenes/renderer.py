@@ -575,19 +575,19 @@ def _write_item_index(
     if has_summary:
         lines.extend(['<a id="sec-summary"></a>', "", "## Summary", ""])
 
-        # Claim / Query
+        # Claim / Query (single paragraph: label + text inline)
         if item_type == "axiom":
-            lines.extend(["**Axiom:**", "", original, ""])
+            lines.extend([f"**Axiom:** {original}", ""])
         else:
             label = "Claim" if item_type == "claim" else "Query"
-            lines.extend([f"**{label}:**", "", original or clarified, ""])
+            lines.extend([f"**{label}:** {original or clarified}", ""])
 
         # Bottom Line (BLUF) from report
         bluf = ""
         if isinstance(report, dict):
             bluf = report.get("verdict_summary") or report.get("answer_summary") or report.get("one_line") or ""
         if bluf:
-            lines.extend(["**Bottom Line:**", "", bluf, ""])
+            lines.extend([f"**Bottom Line:** {bluf}", ""])
 
         # Verdict / Confidence
         verdict = ""
