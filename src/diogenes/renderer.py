@@ -153,10 +153,7 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
     input_items = _unwrap_items(research_input)
     report_items = _unwrap_items(reports, key="reports")
 
-    # Write run index
-    _write_run_index(output_dir, input_items, report_items)
-
-    # Write per-item content
+    # Write per-item content first (so run index can count sources etc.)
     for item in input_items:
         item_id = item.get("id", "")
         if not item_id:
@@ -174,13 +171,10 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         item_report = _item_by_id(report_items, item_id)
 
         # Plugin format has a single global audit (not per-item).
-        # Use it when no per-item audit exists.
         audit_to_render = item_audit or audit
-        # Tag with item id so the writer's heading is correct
         if audit_to_render and not audit_to_render.get("id"):
             audit_to_render = {**audit_to_render, "id": item_id}
 
-        # Write all content files first
         _write_item_input(item_dir, item)
         if item_hypotheses:
             _write_hypotheses(item_dir, item_hypotheses, item_report, item_synthesis)
@@ -193,7 +187,6 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         _write_sources(item_dir, item_id, scorecards, search_results)
         _write_reading_list(item_dir, audit_to_render, item_id, scorecards)
 
-        # Write index LAST so existence checks see the actual files
         _write_item_index(
             item_dir,
             item,
@@ -204,6 +197,19 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
             search_results,
             scorecards,
         )
+
+    # Write run index LAST, with full context for cards + collection analysis
+    _write_run_index(
+        output_dir,
+        input_items,
+        report_items,
+        hypotheses,
+        search_plans,
+        search_results,
+        scorecards,
+        synthesis,
+        audit,
+    )
 
 
 def render_run_group(group_dir: Path, output_dir: Path) -> None:
@@ -244,39 +250,186 @@ def render_run_group(group_dir: Path, output_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _write_run_index(output_dir: Path, input_items: list[dict[str, Any]], reports: list[dict[str, Any]]) -> None:
-    """Write the run-level index.md with a verdict summary table."""
-    lines: list[str] = ["# Run Overview", ""]
-    lines.append(f"Items investigated: {len(input_items)}")
-    lines.append("")
+def _write_run_index(
+    output_dir: Path,
+    input_items: list[dict[str, Any]],
+    reports: list[dict[str, Any]],
+    hypotheses: dict[str, Any],
+    search_plans: dict[str, Any],
+    search_results: dict[str, Any],
+    scorecards: dict[str, Any],
+    synthesis: dict[str, Any],
+    audit: dict[str, Any],
+) -> None:
+    """Write the run-level index.md.
 
-    # Build a lookup from item ID to the slug used by input items (for consistent links)
+    Structure modeled on past research runs (see
+    docs/site/docs/research/R0044-*/2026-04-01/index.md as canonical):
+
+    1. Meta table (item counts)
+    2. Per-item cards — claim/query text, answer/verdict, hypothesis
+       status table, sources/searches counts, Full analysis link
+    3. Collection analysis — statistics table and self-audit summary
+    """
+    lines: list[str] = ["# Run Overview", ""]
+
+    # Meta table
+    claims = [i for i in input_items if i.get("type") == "claim"]
+    queries = [i for i in input_items if i.get("type") == "query"]
+    axioms = [i for i in input_items if i.get("type") == "axiom"]
+
+    lines.extend(
+        [
+            "| | |",
+            "|---|---|",
+            f"| **Items** | {len(input_items)} |",
+            f"| **Claims** | {len(claims)} |",
+            f"| **Queries** | {len(queries)} |",
+            f"| **Axioms** | {len(axioms)} |",
+            "",
+        ]
+    )
+
+    # Slug lookup
     slug_by_id: dict[str, str] = {}
     for item in input_items:
         item_id = item.get("id", "")
-        clarified = item.get("restated_for_testability") or item.get("clarified_text") or item.get("original_text", "")
+        clarified = (
+            item.get("restated_for_testability") or item.get("clarified_text") or item.get("original_text", "")
+        )
         if item_id:
             slug_by_id[item_id] = _item_slug(item_id, clarified)
 
-    if reports:
-        lines.extend(
-            ["## Verdict Summary", "", "| ID | Type | Verdict | Summary |", "|----|------|---------|---------|"]
+    # Unwrap step outputs once
+    hypotheses_items = _unwrap_items(hypotheses)
+    synthesis_items = _unwrap_items(synthesis)
+    search_plan_items = _unwrap_items(search_plans)
+    execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
+    reports_by_id: dict[str, dict[str, Any]] = {r.get("id", ""): r for r in reports}
+
+    # Section heading
+    section_label = "Claims & Queries" if (claims and queries) else ("Claims" if claims else "Queries")
+    lines.extend([f"## {section_label}", ""])
+
+    # Per-item cards
+    for item in input_items:
+        item_id = item.get("id", "")
+        if not item_id:
+            continue
+        item_type = item.get("type", "claim")
+        slug = slug_by_id.get(item_id, "")
+
+        original = item.get("original_text", "")
+        clarified = item.get("restated_for_testability") or item.get("clarified_text") or original
+
+        report = reports_by_id.get(item_id, {})
+        item_hypotheses = _item_by_id(hypotheses_items, item_id)
+        item_synthesis = _item_by_id(synthesis_items, item_id)
+        item_search_plan = _item_by_id(search_plan_items, item_id)
+
+        # Verdict for claims, confidence for queries
+        verdict = report.get("verdict") or report.get("confidence") or ""
+        heading = f"### {item_id} — {verdict}" if verdict else f"### {item_id}"
+        lines.extend([heading, ""])
+
+        # Claim / Query text
+        text_label = "Claim" if item_type == "claim" else "Query"
+        item_text = original or clarified or report.get("original_query") or report.get("original_claim", "")
+        lines.extend([f"**{text_label}:** {item_text}", ""])
+
+        # Answer / verdict summary
+        answer = (
+            report.get("verdict_summary")
+            or report.get("answer_summary")
+            or report.get("one_line")
+            or ""
         )
-        for report in reports:
-            item_id = report.get("id", "?")
-            item_type = report.get("type", "?")
-            verdict = report.get("verdict", "—")
-            summary = (report.get("verdict_summary") or report.get("one_line") or "")[:120]
-            slug = slug_by_id.get(item_id) or _item_slug(item_id, report.get("title", ""))
-            lines.append(f"| [{item_id}]({slug}/index.md) | {item_type} | {verdict} | {summary} |")
+        if answer:
+            answer_label = "Verdict" if item_type == "claim" else "Answer"
+            lines.extend([f"**{answer_label}:** {answer}", ""])
+
+        # Hypothesis status table
+        hyp_ratings = _collect_hypothesis_ratings(report, item_synthesis)
+        hyps_list = item_hypotheses.get("hypotheses", []) if isinstance(item_hypotheses, dict) else []
+        if hyps_list:
+            lines.extend(["| Hypothesis | Status |", "|------------|--------|"])
+            for h in hyps_list:
+                hid = h.get("id", "?")
+                short_id = hid.split("-")[-1] if "-" in hid else hid
+                label_text = h.get("label", "")
+                status = (hyp_ratings.get(hid, "—") or "—")[:80]
+                lines.append(f"| {short_id}: *{label_text}* | {status} |")
+            lines.append("")
+
+        # Confidence · Sources · Searches metadata line
+        source_count = len(_extract_sources_for_item(scorecards, item_id))
+        search_count = len(item_search_plan.get("searches", [])) if isinstance(item_search_plan, dict) else 0
+        confidence = ""
+        if isinstance(item_synthesis, dict):
+            assessment = item_synthesis.get("assessment", {})
+            if isinstance(assessment, dict):
+                confidence = assessment.get("probability_label") or assessment.get("confidence", "")
+        meta_parts: list[str] = []
+        if confidence:
+            meta_parts.append(f"**Confidence:** {confidence}")
+        meta_parts.extend([f"**Sources:** {source_count}", f"**Searches:** {search_count}"])
+        lines.append(" · ".join(meta_parts))
         lines.append("")
 
-    lines.extend(["## Items", ""])
-    for item in input_items:
-        item_id = item.get("id", "?")
-        clarified = item.get("restated_for_testability") or item.get("clarified_text") or item.get("original_text", "")
-        slug = _item_slug(item_id, clarified)
-        lines.append(f"- [{item_id} — {clarified[:100]}]({slug}/index.md)")
+        if slug:
+            lines.extend([f"[Full analysis]({slug}/index.md)", ""])
+
+    # Collection Analysis
+    lines.extend(["---", "", "## Collection Analysis", ""])
+
+    # Collection Statistics
+    total_sources = len(scorecards.get("sources", [])) if isinstance(scorecards, dict) else 0
+    total_searches = len(execution_log)
+    total_results = sum(e.get("total_returned", 0) or len(e.get("results", [])) for e in execution_log)
+    total_selected = sum(
+        sum(1 for r in e.get("results", []) if r.get("disposition") == "selected") for e in execution_log
+    )
+
+    lines.extend(
+        [
+            "### Collection Statistics",
+            "",
+            "| Metric | Value |",
+            "|--------|-------|",
+            f"| Items investigated | {len(input_items)} |",
+        ]
+    )
+    if total_sources:
+        lines.append(f"| Sources scored | {total_sources} |")
+    if total_searches:
+        lines.append(f"| Searches executed | {total_searches} |")
+    if total_results:
+        rejected = total_results - total_selected
+        lines.append(
+            f"| Results dispositioned | {total_selected} selected + {rejected} rejected = {total_results} total |"
+        )
+    lines.append("")
+
+    # Collection Self-Audit (plugin format: global robis_audit)
+    robis = audit.get("robis_audit", {}) if isinstance(audit, dict) else {}
+    if isinstance(robis, dict) and robis:
+        lines.extend(
+            [
+                "### Collection Self-Audit",
+                "",
+                "| Domain | Rating |",
+                "|--------|--------|",
+            ]
+        )
+        for key in sorted(k for k in robis if k.startswith("domain_")):
+            d = robis[key]
+            if isinstance(d, dict):
+                rating = d.get("risk", "—")
+                label_text = key.replace("domain_", "Domain ").replace("_", " ").title()
+                lines.append(f"| {label_text} | {rating} |")
+        lines.append("")
+        if robis.get("overall_risk_of_bias"):
+            lines.extend([f"**Overall risk of bias:** {robis['overall_risk_of_bias']}", ""])
 
     (output_dir / "index.md").write_text("\n".join(lines) + "\n")
 
