@@ -273,22 +273,21 @@ def _write_run_index(
     """
     lines: list[str] = ["# Run Overview", ""]
 
-    # Meta table
+    # Separate items by type, in display order: axioms → claims → queries
+    axioms = [i for i in input_items if i.get("type") == "axiom"]
     claims = [i for i in input_items if i.get("type") == "claim"]
     queries = [i for i in input_items if i.get("type") == "query"]
-    axioms = [i for i in input_items if i.get("type") == "axiom"]
 
-    lines.extend(
-        [
-            "| | |",
-            "|---|---|",
-            f"| **Items** | {len(input_items)} |",
-            f"| **Claims** | {len(claims)} |",
-            f"| **Queries** | {len(queries)} |",
-            f"| **Axioms** | {len(axioms)} |",
-            "",
-        ]
-    )
+    # Meta table — only include rows with non-zero counts
+    meta_rows: list[str] = []
+    if axioms:
+        meta_rows.append(f"| **Axioms** | {len(axioms)} |")
+    if claims:
+        meta_rows.append(f"| **Claims** | {len(claims)} |")
+    if queries:
+        meta_rows.append(f"| **Queries** | {len(queries)} |")
+    if meta_rows:
+        lines.extend(["| | |", "|---|---|", *meta_rows, ""])
 
     # Slug lookup
     slug_by_id: dict[str, str] = {}
@@ -307,83 +306,137 @@ def _write_run_index(
     execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
     reports_by_id: dict[str, dict[str, Any]] = {r.get("id", ""): r for r in reports}
 
-    # Section heading
-    section_label = "Claims & Queries" if (claims and queries) else ("Claims" if claims else "Queries")
-    lines.extend([f"## {section_label}", ""])
-
-    # Per-item cards
-    for item in input_items:
-        item_id = item.get("id", "")
-        if not item_id:
-            continue
-        item_type = item.get("type", "claim")
-        slug = slug_by_id.get(item_id, "")
-
-        original = item.get("original_text", "")
-        clarified = item.get("restated_for_testability") or item.get("clarified_text") or original
-
-        report = reports_by_id.get(item_id, {})
-        item_hypotheses = _item_by_id(hypotheses_items, item_id)
-        item_synthesis = _item_by_id(synthesis_items, item_id)
-        item_search_plan = _item_by_id(search_plan_items, item_id)
-
-        # Heading: {id} — {topic title} — {verdict or confidence qualifier}
+    # Reports lookup by id (may differ from input items when plugin uses report.title)
+    def _card_heading(item: dict[str, Any], report: dict[str, Any]) -> str:
+        """Build a card-level heading like '{id} — {topic} — {qualifier}'."""
+        iid = item.get("id", "?")
         topic = report.get("title", "").strip()
         qualifier = (report.get("verdict") or report.get("confidence") or "").strip()
-
-        heading_parts = [item_id]
+        parts = [iid]
         if topic:
-            heading_parts.append(topic)
+            parts.append(topic)
         if qualifier:
-            heading_parts.append(qualifier)
-        lines.extend([f"### {' — '.join(heading_parts)}", ""])
+            parts.append(qualifier)
+        return " — ".join(parts)
 
-        # Claim / Query text
-        text_label = "Claim" if item_type == "claim" else "Query"
-        item_text = original or clarified or report.get("original_query") or report.get("original_claim", "")
-        lines.extend([f"**{text_label}:** {item_text}", ""])
+    # Build ToC entries as we go so we can insert the TOC after the meta table
+    toc_entries: list[tuple[str, str, list[tuple[str, str]]]] = []
+    # list of (section_anchor, section_label, [(subheading_anchor, subheading_label), ...])
 
-        # Answer / verdict summary
-        answer = (
-            report.get("verdict_summary")
-            or report.get("answer_summary")
-            or report.get("one_line")
-            or ""
-        )
-        if answer:
-            answer_label = "Verdict" if item_type == "claim" else "Answer"
-            lines.extend([f"**{answer_label}:** {answer}", ""])
+    # Collect card info so we can write the TOC, then render cards after
+    def _card_anchor(heading_text: str) -> str:
+        """GitHub-style anchor: lowercase, dashes, strip punctuation."""
+        # Keep alphanumerics, spaces, and dashes. Replace spaces with dashes.
+        normalized = re.sub(r"[^a-z0-9\s\-]", "", heading_text.lower())
+        return re.sub(r"\s+", "-", normalized.strip())
 
-        # Hypothesis status table
-        hyp_ratings = _collect_hypothesis_ratings(report, item_synthesis)
-        hyps_list = item_hypotheses.get("hypotheses", []) if isinstance(item_hypotheses, dict) else []
-        if hyps_list:
-            lines.extend(["| Hypothesis | Status |", "|------------|--------|"])
-            for h in hyps_list:
-                hid = h.get("id", "?")
-                short_id = hid.split("-")[-1] if "-" in hid else hid
-                label_text = h.get("label", "")
-                status = (hyp_ratings.get(hid, "—") or "—")[:80]
-                lines.append(f"| {short_id}: *{label_text}* | {status} |")
+    card_sections: list[tuple[str, list[dict[str, Any]]]] = []
+    if axioms:
+        card_sections.append(("Axioms", axioms))
+    if claims:
+        card_sections.append(("Claims", claims))
+    if queries:
+        card_sections.append(("Queries", queries))
+
+    for section_label, section_items in card_sections:
+        sub_entries: list[tuple[str, str]] = []
+        for item in section_items:
+            report = reports_by_id.get(item.get("id", ""), {})
+            h = _card_heading(item, report)
+            sub_entries.append((_card_anchor(h), h))
+        toc_entries.append((_card_anchor(section_label), section_label, sub_entries))
+
+    # Collection Analysis ToC entry (we always render at least statistics)
+    collection_subs: list[tuple[str, str]] = [("collection-statistics", "Collection Statistics")]
+    robis = audit.get("robis_audit", {}) if isinstance(audit, dict) else {}
+    if isinstance(robis, dict) and robis:
+        collection_subs.append(("collection-self-audit", "Collection Self-Audit"))
+    toc_entries.append(("collection-analysis", "Collection Analysis", collection_subs))
+
+    # Render the TOC
+    if toc_entries:
+        lines.extend(["<!-- TOC START -->", "## Contents", ""])
+        for anchor, label, subs in toc_entries:
+            lines.append(f"- [{label}](#{anchor})")
+            for sub_anchor, sub_label in subs:
+                lines.append(f"    - [{sub_label}](#{sub_anchor})")
+        lines.extend(["", "<!-- TOC END -->", ""])
+
+    # Render card sections
+    for section_label, section_items in card_sections:
+        lines.extend([f"## {section_label}", ""])
+
+        for item in section_items:
+            item_id = item.get("id", "")
+            if not item_id:
+                continue
+            item_type = item.get("type", "claim")
+            slug = slug_by_id.get(item_id, "")
+
+            original = item.get("original_text", "")
+            clarified = item.get("restated_for_testability") or item.get("clarified_text") or original
+
+            report = reports_by_id.get(item_id, {})
+            item_hypotheses = _item_by_id(hypotheses_items, item_id)
+            item_synthesis = _item_by_id(synthesis_items, item_id)
+            item_search_plan = _item_by_id(search_plan_items, item_id)
+
+            lines.extend([f"### {_card_heading(item, report)}", ""])
+
+            # Axioms don't have hypotheses, sources, etc. — just the text
+            if item_type == "axiom":
+                axiom_text = original or clarified or item.get("text", "")
+                lines.extend([axiom_text, ""])
+                continue
+
+            # Claim / Query text
+            text_label = "Claim" if item_type == "claim" else "Query"
+            item_text = (
+                original or clarified or report.get("original_query") or report.get("original_claim", "")
+            )
+            lines.extend([f"**{text_label}:** {item_text}", ""])
+
+            # Answer / verdict summary
+            answer = (
+                report.get("verdict_summary")
+                or report.get("answer_summary")
+                or report.get("one_line")
+                or ""
+            )
+            if answer:
+                answer_label = "Verdict" if item_type == "claim" else "Answer"
+                lines.extend([f"**{answer_label}:** {answer}", ""])
+
+            # Hypothesis status table
+            hyp_ratings = _collect_hypothesis_ratings(report, item_synthesis)
+            hyps_list = item_hypotheses.get("hypotheses", []) if isinstance(item_hypotheses, dict) else []
+            if hyps_list:
+                lines.extend(["| Hypothesis | Status |", "|------------|--------|"])
+                for h in hyps_list:
+                    hid = h.get("id", "?")
+                    short_id = hid.split("-")[-1] if "-" in hid else hid
+                    label_text = h.get("label", "")
+                    status = (hyp_ratings.get(hid, "—") or "—")[:80]
+                    lines.append(f"| {short_id}: *{label_text}* | {status} |")
+                lines.append("")
+
+            # Confidence · Sources · Searches metadata line
+            source_count = len(_extract_sources_for_item(scorecards, item_id))
+            search_count = len(item_search_plan.get("searches", [])) if isinstance(item_search_plan, dict) else 0
+            confidence = ""
+            if isinstance(item_synthesis, dict):
+                assessment = item_synthesis.get("assessment", {})
+                if isinstance(assessment, dict):
+                    confidence = assessment.get("probability_label") or assessment.get("confidence", "")
+            meta_parts: list[str] = []
+            if confidence:
+                meta_parts.append(f"**Confidence:** {confidence}")
+            meta_parts.extend([f"**Sources:** {source_count}", f"**Searches:** {search_count}"])
+            lines.append(" · ".join(meta_parts))
             lines.append("")
 
-        # Confidence · Sources · Searches metadata line
-        source_count = len(_extract_sources_for_item(scorecards, item_id))
-        search_count = len(item_search_plan.get("searches", [])) if isinstance(item_search_plan, dict) else 0
-        confidence = ""
-        if isinstance(item_synthesis, dict):
-            assessment = item_synthesis.get("assessment", {})
-            if isinstance(assessment, dict):
-                confidence = assessment.get("probability_label") or assessment.get("confidence", "")
-        meta_parts: list[str] = []
-        if confidence:
-            meta_parts.append(f"**Confidence:** {confidence}")
-        meta_parts.extend([f"**Sources:** {source_count}", f"**Searches:** {search_count}"])
-        lines.append(" · ".join(meta_parts))
-        lines.append("")
-
-        if slug:
-            lines.extend([f"[Full analysis]({slug}/index.md)", ""])
+            if slug:
+                lines.extend([f"[Full analysis]({slug}/index.md)", ""])
 
     # Collection Analysis
     lines.extend(["---", "", "## Collection Analysis", ""])
