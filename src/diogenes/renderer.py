@@ -109,6 +109,87 @@ def _card_heading_for(item: dict[str, Any], report: dict[str, Any]) -> str:
     return " — ".join(parts)
 
 
+def _add_toc(lines: list[str], min_sections: int = 2) -> list[str]:
+    """Insert a table of contents after the page title.
+
+    Scans the lines list for H2 headings (## ...), auto-generates
+    anchor IDs if not already present, and prepends a TOC block
+    right after the top-level # title. Returns the modified list.
+
+    The TOC is only added if the page has at least ``min_sections``
+    H2 headings — tiny pages skip the TOC.
+
+    Idempotent: if a TOC is already present (detected by
+    '<!-- TOC START -->' sentinel), returns lines unchanged.
+    """
+    # Already has a TOC — leave as-is
+    if any("<!-- TOC START -->" in line for line in lines):
+        return lines
+
+    # Find the title line (first line starting with "# ")
+    title_idx = -1
+    for i, line in enumerate(lines):
+        if line.startswith("# "):
+            title_idx = i
+            break
+    if title_idx < 0:
+        return lines
+
+    # Scan for H2 headings and the anchor (if any) immediately preceding them.
+    # A heading is preceded by its anchor if the line before (skipping blanks)
+    # is an <a id="..."></a> tag.
+    toc_entries: list[tuple[str, str]] = []  # (anchor_id, label)
+    pending_inserts: list[tuple[int, str]] = []  # (line_index, anchor_line_to_insert)
+
+    for i, line in enumerate(lines):
+        if i <= title_idx:
+            continue
+        if not line.startswith("## "):
+            continue
+        label = line[3:].strip()
+
+        # Look backwards for existing <a id="..."></a>
+        anchor_id: str | None = None
+        for j in range(i - 1, max(title_idx, i - 3) - 1, -1):
+            stripped = lines[j].strip()
+            if not stripped:
+                continue
+            m = re.match(r'<a id="([^"]+)"></a>', stripped)
+            if m:
+                anchor_id = m.group(1)
+                break
+            break  # hit a non-anchor, non-blank line — stop looking back
+
+        if anchor_id is None:
+            # Generate one from the label
+            anchor_id = "sec-" + re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+            pending_inserts.append((i, f'<a id="{anchor_id}"></a>'))
+
+        toc_entries.append((anchor_id, label))
+
+    if len(toc_entries) < min_sections:
+        return lines
+
+    # Insert pending anchors in reverse so indices remain valid
+    result = list(lines)
+    for idx, anchor_line in reversed(pending_inserts):
+        result.insert(idx, "")
+        result.insert(idx, anchor_line)
+
+    # Build the TOC block
+    toc_block: list[str] = ["<!-- TOC START -->", "## Contents", ""]
+    for anchor_id, label in toc_entries:
+        toc_block.append(f"- [{label}](#{anchor_id})")
+    toc_block.extend(["", "<!-- TOC END -->", ""])
+
+    # Insert TOC after the title (and any blank line following it)
+    insert_at = title_idx + 1
+    if insert_at < len(result) and not result[insert_at].strip():
+        insert_at += 1
+
+    return [*result[:insert_at], *toc_block, *result[insert_at:]]
+
+
 def _subpage_title(item: dict[str, Any], report: dict[str, Any], artifact: str) -> str:
     """Build a sub-page title like '{id} — {topic} — {artifact}'.
 
@@ -789,6 +870,7 @@ def _write_item_input(item_dir: Path, item: dict[str, Any], report: dict[str, An
                 lines.append("")
 
     lines.append("[← Back to item overview](index.md)")
+    lines = _add_toc(lines)
     (item_dir / filename).write_text("\n".join(lines) + "\n")
 
 
@@ -851,6 +933,7 @@ def _write_hypotheses(
                     theme_lines.append(f"- {p}")
                 theme_lines.append("")
             theme_lines.append("[← Back to hypotheses index](index.md)")
+            theme_lines = _add_toc(theme_lines)
             (hyps_dir / f"{theme_id}.md").write_text("\n".join(theme_lines) + "\n")
     else:
         hyps = data.get("hypotheses", [])
@@ -886,6 +969,7 @@ def _write_hypotheses(
             _write_hypothesis_file(hyps_dir / f"{short_id}.md", item_id, h, ratings_by_hyp.get(hyp_id, ""))
 
     index_lines.append("[← Back to item overview](../index.md)")
+    index_lines = _add_toc(index_lines)
     (hyps_dir / "index.md").write_text("\n".join(index_lines) + "\n")
 
 
@@ -920,6 +1004,7 @@ def _write_hypothesis_file(path: Path, item_id: str, h: dict[str, Any], status: 
         lines.append("")
 
     lines.append("[← Back to hypotheses index](index.md)")
+    lines = _add_toc(lines)
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -1038,6 +1123,7 @@ def _write_assessment(item_dir: Path, synthesis: dict[str, Any], report: dict[st
                 lines.append("")
 
     lines.append("[← Back to item overview](index.md)")
+    lines = _add_toc(lines)
     (item_dir / "assessment.md").write_text("\n".join(lines) + "\n")
 
 
@@ -1135,6 +1221,7 @@ def _write_self_audit(item_dir: Path, audit: dict[str, Any], report: dict[str, A
             lines.append("")
 
     lines.append("[← Back to item overview](index.md)")
+    lines = _add_toc(lines)
     (item_dir / "self-audit.md").write_text("\n".join(lines) + "\n")
 
 
@@ -1187,6 +1274,7 @@ def _write_reading_list(
             lines.append("")
 
     lines.append("[← Back to item overview](index.md)")
+    lines = _add_toc(lines)
     (item_dir / "reading-list.md").write_text("\n".join(lines) + "\n")
 
 
@@ -1342,6 +1430,7 @@ def _write_searches(
                 )
 
         lines.append("[← Back to searches index](../index.md)")
+        lines = _add_toc(lines)
         (search_subdir / "search-log.md").write_text("\n".join(lines) + "\n")
 
         # Add to index with counts
@@ -1352,6 +1441,7 @@ def _write_searches(
         )
 
     index_lines.extend(["", "[← Back to item overview](../index.md)"])
+    index_lines = _add_toc(index_lines)
     (searches_dir / "index.md").write_text("\n".join(index_lines) + "\n")
 
 
@@ -1459,9 +1549,11 @@ def _write_sources(
             lines.append("")
 
         lines.append("[← Back to sources index](../index.md)")
+        lines = _add_toc(lines)
         (src_subdir / "scorecard.md").write_text("\n".join(lines) + "\n")
 
     index_lines.extend(["", "[← Back to item overview](../index.md)"])
+    index_lines = _add_toc(index_lines)
     (sources_dir / "index.md").write_text("\n".join(index_lines) + "\n")
 
 
@@ -1498,6 +1590,7 @@ def _write_group_index(
             lines.append(f"- [{label}]({filename})")
         lines.append("")
 
+    lines = _add_toc(lines)
     (output_dir / "index.md").write_text("\n".join(lines) + "\n")
 
 
@@ -1537,6 +1630,7 @@ def _write_group_synthesis(output_dir: Path, data: dict[str, Any]) -> None:
                 lines.append("")
 
     lines.append("[← Back to group overview](index.md)")
+    lines = _add_toc(lines)
     (output_dir / "synthesis.md").write_text("\n".join(lines) + "\n")
 
 
@@ -1565,6 +1659,7 @@ def _write_group_consistency(output_dir: Path, data: dict[str, Any]) -> None:
         lines.extend(["## Diagnostic", "", diagnostic, ""])
 
     lines.append("[← Back to group overview](index.md)")
+    lines = _add_toc(lines)
     (output_dir / "consistency.md").write_text("\n".join(lines) + "\n")
 
 
@@ -1607,4 +1702,5 @@ def _write_group_reading_list(output_dir: Path, data: dict[str, Any]) -> None:
         lines.append("")
 
     lines.append("[← Back to group overview](index.md)")
+    lines = _add_toc(lines)
     (output_dir / "reading-list.md").write_text("\n".join(lines) + "\n")
