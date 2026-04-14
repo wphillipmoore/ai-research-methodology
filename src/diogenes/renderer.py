@@ -109,6 +109,21 @@ def _card_heading_for(item: dict[str, Any], report: dict[str, Any]) -> str:
     return " — ".join(parts)
 
 
+def _subpage_title(item: dict[str, Any], report: dict[str, Any], artifact: str) -> str:
+    """Build a sub-page title like '{id} — {topic} — {artifact}'.
+
+    E.g., 'C001 — RLHF and Sycophantic Behavior in Language Models — Input'.
+    Falls back gracefully if there's no report/topic available.
+    """
+    iid = item.get("id", "?")
+    topic = (report.get("title") or "").strip() if isinstance(report, dict) else ""
+    parts = [iid]
+    if topic:
+        parts.append(topic)
+    parts.append(artifact)
+    return " — ".join(parts)
+
+
 def _collect_hypothesis_ratings(report: dict[str, Any], synthesis: dict[str, Any]) -> dict[str, str]:
     """Collect hypothesis rating/disposition strings, keyed by hypothesis ID.
 
@@ -188,17 +203,17 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         if audit_to_render and not audit_to_render.get("id"):
             audit_to_render = {**audit_to_render, "id": item_id}
 
-        _write_item_input(item_dir, item)
+        _write_item_input(item_dir, item, item_report)
         if item_hypotheses:
             _write_hypotheses(item_dir, item_hypotheses, item_report, item_synthesis)
         if item_synthesis:
             _write_assessment(item_dir, item_synthesis, item_report)
         if audit_to_render:
-            _write_self_audit(item_dir, audit_to_render)
+            _write_self_audit(item_dir, audit_to_render, item_report)
 
-        _write_searches(item_dir, item_id, item_search_plan, search_results)
-        _write_sources(item_dir, item_id, scorecards, search_results)
-        _write_reading_list(item_dir, audit_to_render, item_id, scorecards)
+        _write_searches(item_dir, item_id, item_search_plan, search_results, item_report)
+        _write_sources(item_dir, item_id, scorecards, search_results, item_report)
+        _write_reading_list(item_dir, audit_to_render, item_id, scorecards, item_report)
 
         _write_item_index(
             item_dir,
@@ -736,12 +751,12 @@ def _write_item_index(
     (item_dir / "index.md").write_text("\n".join(lines) + "\n")
 
 
-def _write_item_input(item_dir: Path, item: dict[str, Any]) -> None:
+def _write_item_input(item_dir: Path, item: dict[str, Any], report: dict[str, Any]) -> None:
     """Write claim.md or query.md with input details."""
     item_type = item.get("type", "claim")
     filename = "claim.md" if item_type == "claim" else "query.md"
 
-    lines = [f"# {item.get('id', '?')} — Input", ""]
+    lines = [f"# {_subpage_title(item, report, 'Input')}", ""]
 
     original = item.get("original_text", "")
     clarified = item.get("restated_for_testability") or item.get("clarified_text", "")
@@ -794,13 +809,15 @@ def _write_hypotheses(
     hyps_dir.mkdir(parents=True, exist_ok=True)
 
     approach = data.get("approach", "hypotheses")
+    # Reconstruct a minimal item dict for title-building
+    item_for_title = {"id": item_id}
 
     # Collect status string per hypothesis id (handles both CLI and plugin schemas)
     ratings_by_hyp = _collect_hypothesis_ratings(report, synthesis)
 
     if approach == "open-ended":
         # For open-ended queries there are no discrete hypotheses; write themes instead.
-        index_lines = [f"# {item_id} — Search Themes (open-ended)", ""]
+        index_lines = [f"# {_subpage_title(item_for_title, report, 'Search Themes')}", ""]
         rationale = data.get("rationale", "")
         if rationale:
             index_lines.extend([rationale, ""])
@@ -839,7 +856,7 @@ def _write_hypotheses(
         hyps = data.get("hypotheses", [])
 
         index_lines = [
-            f"# {item_id} — Competing Hypotheses",
+            f"# {_subpage_title(item_for_title, report, 'Hypotheses')}",
             "",
             "| ID | Label | Statement | Status |",
             "|----|-------|-----------|--------|",
@@ -908,7 +925,8 @@ def _write_hypothesis_file(path: Path, item_id: str, h: dict[str, Any], status: 
 
 def _write_assessment(item_dir: Path, synthesis: dict[str, Any], report: dict[str, Any]) -> None:
     """Write assessment.md with evidence synthesis, probability assessment, gaps."""
-    lines = [f"# {synthesis.get('id', '?')} — Assessment", ""]
+    item_for_title = {"id": synthesis.get("id", "?")}
+    lines = [f"# {_subpage_title(item_for_title, report, 'Assessment')}", ""]
 
     # Verdict from report
     if report:
@@ -1023,13 +1041,14 @@ def _write_assessment(item_dir: Path, synthesis: dict[str, Any], report: dict[st
     (item_dir / "assessment.md").write_text("\n".join(lines) + "\n")
 
 
-def _write_self_audit(item_dir: Path, audit: dict[str, Any]) -> None:
+def _write_self_audit(item_dir: Path, audit: dict[str, Any], report: dict[str, Any]) -> None:
     """Write self-audit.md with ROBIS 4-domain audit + source verification.
 
     Handles both per-item audit (CLI format with 'process_audit') and
     per-run global audit (plugin format with 'robis_audit' at top level).
     """
-    lines = [f"# {audit.get('id', '?')} — Self-Audit", ""]
+    item_for_title = {"id": audit.get("id", "?")}
+    lines = [f"# {_subpage_title(item_for_title, report, 'Self-Audit')}", ""]
 
     # CLI format: process_audit with named domains
     process = audit.get("process_audit", {})
@@ -1124,9 +1143,11 @@ def _write_reading_list(
     audit: dict[str, Any],
     item_id: str,
     scorecards: dict[str, Any],
+    report: dict[str, Any],
 ) -> None:
     """Write reading-list.md with prioritized sources."""
-    lines = [f"# {item_id} — Reading List", ""]
+    item_for_title = {"id": item_id}
+    lines = [f"# {_subpage_title(item_for_title, report, 'Reading List')}", ""]
 
     reading_list = audit.get("reading_list", []) if isinstance(audit, dict) else []
 
@@ -1189,6 +1210,7 @@ def _write_searches(
     item_id: str,
     item_plan: dict[str, Any],
     search_results: dict[str, Any],
+    report: dict[str, Any],
 ) -> None:
     """Write searches/ subdirectory with per-search logs and an index."""
     if not item_plan:
@@ -1200,8 +1222,9 @@ def _write_searches(
     execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
 
     # Write per-search logs and collect index entries
+    item_for_title = {"id": item_id}
     index_lines = [
-        f"# {item_id} — Searches",
+        f"# {_subpage_title(item_for_title, report, 'Searches')}",
         "",
         "| ID | Target | Terms | Returned | Selected | Rejected |",
         "|----|--------|-------|----------|----------|----------|",
@@ -1337,6 +1360,7 @@ def _write_sources(
     item_id: str,
     scorecards: dict[str, Any],
     search_results: dict[str, Any],  # noqa: ARG001
+    report: dict[str, Any],
 ) -> None:
     """Write sources/ subdirectory with per-source scorecards."""
     sources = _extract_sources_for_item(scorecards, item_id)
@@ -1346,8 +1370,9 @@ def _write_sources(
     sources_dir = item_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
 
+    item_for_title = {"id": item_id}
     index_lines = [
-        f"# {item_id} — Sources",
+        f"# {_subpage_title(item_for_title, report, 'Sources')}",
         "",
         "| ID | Title | Reliability | Relevance |",
         "|----|-------|-------------|-----------|",
