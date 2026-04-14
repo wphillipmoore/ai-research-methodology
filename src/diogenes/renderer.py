@@ -140,18 +140,28 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         item_audit = _item_by_id(_unwrap_items(audit), item_id)
         item_report = _item_by_id(report_items, item_id)
 
-        _write_item_index(item_dir, item, item_report, item_synthesis)
+        # Plugin format has a single global audit (not per-item).
+        # Use it when no per-item audit exists.
+        audit_to_render = item_audit or audit
+        # Tag with item id so the writer's heading is correct
+        if audit_to_render and not audit_to_render.get("id"):
+            audit_to_render = {**audit_to_render, "id": item_id}
+
+        # Write all content files first
         _write_item_input(item_dir, item)
         if item_hypotheses:
             _write_hypotheses(item_dir, item_hypotheses)
         if item_synthesis:
             _write_assessment(item_dir, item_synthesis, item_report)
-        if item_audit:
-            _write_self_audit(item_dir, item_audit)
+        if audit_to_render:
+            _write_self_audit(item_dir, audit_to_render)
 
         _write_searches(item_dir, item_id, item_search_plan, search_results)
         _write_sources(item_dir, item_id, scorecards, search_results)
-        _write_reading_list(item_dir, item_audit, item_id, scorecards)
+        _write_reading_list(item_dir, audit_to_render, item_id, scorecards)
+
+        # Write index LAST so existence checks see the actual files
+        _write_item_index(item_dir, item, item_report, item_synthesis)
 
 
 def render_run_group(group_dir: Path, output_dir: Path) -> None:
@@ -176,14 +186,15 @@ def render_run_group(group_dir: Path, output_dir: Path) -> None:
     group_consistency = _load_json(group_dir / "group-consistency.json")
     group_reading_list = _load_json(group_dir / "group-reading-list.json")
 
-    _write_group_index(output_dir, run_dirs, group_synthesis)
-
     if group_synthesis:
         _write_group_synthesis(output_dir, group_synthesis)
     if group_consistency:
         _write_group_consistency(output_dir, group_consistency)
     if group_reading_list:
         _write_group_reading_list(output_dir, group_reading_list)
+
+    # Write index LAST so existence checks see the actual files
+    _write_group_index(output_dir, run_dirs, group_synthesis)
 
 
 # ---------------------------------------------------------------------------
@@ -252,15 +263,22 @@ def _write_item_index(
         if summary:
             lines.extend(["## Bottom Line", "", summary, ""])
 
-    # Summary of what's in this directory
+    # Summary of what's in this directory — only link to files that exist
     lines.extend(["## Contents", "", "| Section | Description |", "|---------|-------------|"])
-    lines.append(f"| [Input]({input_filename}) | Original text, clarification, scope, vocabulary |")
-    lines.append("| [Hypotheses](hypotheses.md) | Competing hypotheses |")
-    lines.append("| [Assessment](assessment.md) | Evidence synthesis, probability assessment, gaps |")
-    lines.append("| [Self-Audit](self-audit.md) | Process audit across 4 ROBIS domains |")
-    lines.append("| [Reading List](reading-list.md) | Prioritized source list |")
-    lines.append("| [Searches](searches/) | Search plans and execution logs |")
-    lines.append("| [Sources](sources/) | Source scorecards |")
+    if (item_dir / input_filename).exists():
+        lines.append(f"| [Input]({input_filename}) | Original text, clarification, scope, vocabulary |")
+    if (item_dir / "hypotheses.md").exists():
+        lines.append("| [Hypotheses](hypotheses.md) | Competing hypotheses |")
+    if (item_dir / "assessment.md").exists():
+        lines.append("| [Assessment](assessment.md) | Evidence synthesis, probability assessment, gaps |")
+    if (item_dir / "self-audit.md").exists():
+        lines.append("| [Self-Audit](self-audit.md) | Process audit across 4 ROBIS domains |")
+    if (item_dir / "reading-list.md").exists():
+        lines.append("| [Reading List](reading-list.md) | Prioritized source list |")
+    if (item_dir / "searches" / "index.md").exists():
+        lines.append("| [Searches](searches/index.md) | Search plans and execution logs |")
+    if (item_dir / "sources" / "index.md").exists():
+        lines.append("| [Sources](sources/index.md) | Source scorecards |")
     lines.append("")
 
     # Evidence quality snapshot
@@ -490,9 +508,14 @@ def _write_assessment(item_dir: Path, synthesis: dict[str, Any], report: dict[st
 
 
 def _write_self_audit(item_dir: Path, audit: dict[str, Any]) -> None:
-    """Write self-audit.md with ROBIS 4-domain audit + source verification."""
+    """Write self-audit.md with ROBIS 4-domain audit + source verification.
+
+    Handles both per-item audit (CLI format with 'process_audit') and
+    per-run global audit (plugin format with 'robis_audit' at top level).
+    """
     lines = [f"# {audit.get('id', '?')} — Self-Audit", ""]
 
+    # CLI format: process_audit with named domains
     process = audit.get("process_audit", {})
     if isinstance(process, dict) and process:
         lines.extend(
@@ -516,6 +539,35 @@ def _write_self_audit(item_dir: Path, audit: dict[str, Any]) -> None:
                 lines.append(f"| {domain_key.replace('_', ' ').title()} | {rating} | {rationale} |")
         lines.append("")
 
+    # Plugin format: robis_audit with domain_N_* keys (global, not per-item)
+    robis = audit.get("robis_audit", {})
+    if isinstance(robis, dict) and robis:
+        lines.extend(
+            [
+                "## ROBIS Audit (4 Domains)",
+                "",
+                "| Domain | Risk | Assessment |",
+                "|--------|------|------------|",
+            ]
+        )
+        for key in sorted(k for k in robis if k.startswith("domain_")):
+            d = robis[key]
+            if isinstance(d, dict):
+                risk = d.get("risk", "—")
+                assessment_text = (d.get("assessment") or "")[:300]
+                domain_label = key.replace("_", " ").replace("domain ", "Domain ").title()
+                lines.append(f"| {domain_label} | {risk} | {assessment_text} |")
+        lines.append("")
+        if robis.get("overall_risk_of_bias"):
+            lines.append(f"**Overall risk of bias**: {robis['overall_risk_of_bias']}")
+            lines.append("")
+        if robis.get("overall_assessment"):
+            lines.append("### Overall Assessment")
+            lines.append("")
+            lines.append(robis["overall_assessment"])
+            lines.append("")
+
+    # Source-back verification (CLI format)
     verification = audit.get("source_verification", {})
     if isinstance(verification, dict) and verification:
         count = verification.get("sources_verified", 0)
@@ -531,6 +583,20 @@ def _write_self_audit(item_dir: Path, audit: dict[str, Any]) -> None:
             lines.append("")
         else:
             lines.append("No discrepancies found.")
+            lines.append("")
+
+    # Plugin format: source_interpretation_verification (different field name)
+    plugin_verification = audit.get("source_interpretation_verification", {})
+    if isinstance(plugin_verification, dict) and plugin_verification:
+        lines.extend(["## Source Interpretation Verification", ""])
+        if plugin_verification.get("sources_checked"):
+            lines.append(f"Sources checked: {plugin_verification['sources_checked']}")
+            lines.append("")
+        if plugin_verification.get("findings"):
+            lines.append(plugin_verification["findings"])
+            lines.append("")
+        if plugin_verification.get("assessment"):
+            lines.append(plugin_verification["assessment"])
             lines.append("")
 
     lines.append("[← Back to item overview](index.md)")
@@ -608,7 +674,7 @@ def _write_searches(
     item_plan: dict[str, Any],
     search_results: dict[str, Any],
 ) -> None:
-    """Write searches/ subdirectory with per-search logs."""
+    """Write searches/ subdirectory with per-search logs and an index."""
     if not item_plan:
         return
     searches_dir = item_dir / "searches"
@@ -616,6 +682,9 @@ def _write_searches(
 
     searches = item_plan.get("searches", [])
     execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
+
+    # Write per-search logs and collect index entries
+    index_lines = [f"# {item_id} — Searches", "", "| ID | Target | Terms |", "|----|--------|-------|"]
 
     for s in searches:
         search_id = s.get("id", "S??")
@@ -654,6 +723,13 @@ def _write_searches(
         lines.append("[← Back to item overview](../../index.md)")
         (search_subdir / "search-log.md").write_text("\n".join(lines) + "\n")
 
+        # Add to index
+        terms_short = ", ".join(f"`{t}`" for t in terms[:3])
+        index_lines.append(f"| [{search_id}]({search_id}/search-log.md) | {theme[:60]} | {terms_short} |")
+
+    index_lines.extend(["", "[← Back to item overview](../index.md)"])
+    (searches_dir / "index.md").write_text("\n".join(index_lines) + "\n")
+
 
 def _write_sources(
     item_dir: Path,
@@ -669,6 +745,13 @@ def _write_sources(
     sources_dir = item_dir / "sources"
     sources_dir.mkdir(parents=True, exist_ok=True)
 
+    index_lines = [
+        f"# {item_id} — Sources",
+        "",
+        "| ID | Title | Reliability | Relevance |",
+        "|----|-------|-------------|-----------|",
+    ]
+
     for i, s in enumerate(sources, 1):
         src_id = s.get("id") or f"SRC{i:03d}"
         src_subdir = sources_dir / src_id
@@ -676,6 +759,13 @@ def _write_sources(
 
         url = s.get("url", "")
         title = s.get("title") or url
+
+        # Index entry
+        rel_rating = s.get("reliability", {})
+        relev_rating = s.get("relevance", {})
+        rel_str = rel_rating.get("rating", "—") if isinstance(rel_rating, dict) else str(rel_rating)
+        relev_str = relev_rating.get("rating", "—") if isinstance(relev_rating, dict) else str(relev_rating)
+        index_lines.append(f"| [{src_id}]({src_id}/scorecard.md) | {title[:60]} | {rel_str} | {relev_str} |")
 
         lines = [f"# {src_id} — {title}", ""]
         if url:
@@ -707,6 +797,9 @@ def _write_sources(
         lines.append("[← Back to item overview](../../index.md)")
         (src_subdir / "scorecard.md").write_text("\n".join(lines) + "\n")
 
+    index_lines.extend(["", "[← Back to item overview](../index.md)"])
+    (sources_dir / "index.md").write_text("\n".join(index_lines) + "\n")
+
 
 # ---------------------------------------------------------------------------
 # Group-level writers
@@ -729,15 +822,17 @@ def _write_group_index(
             lines.append(f"- [{rd.name}]({rd.name}/index.md)")
         lines.append("")
 
-    lines.extend(["## Group-Level Reports", ""])
-    for filename, label in [
+    group_links = [
         ("synthesis.md", "Cross-run synthesis"),
         ("consistency.md", "Cross-run consistency metrics"),
         ("reading-list.md", "Consolidated reading list"),
-    ]:
-        if (output_dir / filename).exists() or True:
+    ]
+    existing_links = [(f, lab) for f, lab in group_links if (output_dir / f).exists()]
+    if existing_links:
+        lines.extend(["## Group-Level Reports", ""])
+        for filename, label in existing_links:
             lines.append(f"- [{label}]({filename})")
-    lines.append("")
+        lines.append("")
 
     (output_dir / "index.md").write_text("\n".join(lines) + "\n")
 
@@ -745,19 +840,107 @@ def _write_group_index(
 def _write_group_synthesis(output_dir: Path, data: dict[str, Any]) -> None:
     """Write group-level synthesis.md."""
     lines = ["# Cross-Run Synthesis", ""]
-    lines.append(json.dumps(data, indent=2))
+
+    total_runs = data.get("total_runs", 0)
+    if total_runs:
+        lines.append(f"**Total runs**: {total_runs}")
+        lines.append("")
+    note = data.get("note")
+    if note:
+        lines.extend([f"> {note}", ""])
+
+    items = data.get("items", [])
+    if items:
+        lines.extend(["## Consensus Per Item", ""])
+        for item in items:
+            item_id = item.get("id", "?")
+            verdict = item.get("consensus_verdict", "—")
+            summary = item.get("summary", "")
+            lines.append(f"### {item_id} — {verdict}")
+            lines.append("")
+            if summary:
+                lines.append(summary)
+                lines.append("")
+            divergences = item.get("divergences", [])
+            if divergences:
+                lines.append("**Divergences across runs:**")
+                for d in divergences:
+                    lines.append(f"- {d}")
+                lines.append("")
+            sources_count = item.get("sources_union_count")
+            if sources_count is not None:
+                lines.append(f"Sources (union across runs): {sources_count}")
+                lines.append("")
+
+    lines.append("[← Back to group overview](index.md)")
     (output_dir / "synthesis.md").write_text("\n".join(lines) + "\n")
 
 
 def _write_group_consistency(output_dir: Path, data: dict[str, Any]) -> None:
     """Write group-level consistency.md."""
     lines = ["# Cross-Run Consistency Metrics", ""]
-    lines.append(json.dumps(data, indent=2))
+
+    total_runs = data.get("total_runs", 0)
+    if total_runs:
+        lines.append(f"**Total runs**: {total_runs}")
+        lines.append("")
+    note = data.get("note")
+    if note:
+        lines.extend([f"> {note}", ""])
+
+    metrics = data.get("metrics", {})
+    if isinstance(metrics, dict) and metrics:
+        lines.extend(["## Metrics", "", "| Metric | Value |", "|--------|-------|"])
+        for k, v in metrics.items():
+            label = k.replace("_", " ").title()
+            lines.append(f"| {label} | {v} |")
+        lines.append("")
+
+    diagnostic = data.get("diagnostic")
+    if diagnostic:
+        lines.extend(["## Diagnostic", "", diagnostic, ""])
+
+    lines.append("[← Back to group overview](index.md)")
     (output_dir / "consistency.md").write_text("\n".join(lines) + "\n")
 
 
 def _write_group_reading_list(output_dir: Path, data: dict[str, Any]) -> None:
     """Write group-level reading-list.md."""
     lines = ["# Consolidated Reading List", ""]
-    lines.append(json.dumps(data, indent=2))
+
+    reading_list = data.get("reading_list", [])
+    if not reading_list:
+        lines.append("No sources recorded.")
+        lines.append("")
+        (output_dir / "reading-list.md").write_text("\n".join(lines) + "\n")
+        return
+
+    # Group by priority
+    by_priority: dict[str, list[dict[str, Any]]] = {"must read": [], "should read": [], "reference": []}
+    for entry in reading_list:
+        priority = entry.get("priority", "reference")
+        if priority in by_priority:
+            by_priority[priority].append(entry)
+
+    for priority_label in ("must read", "should read", "reference"):
+        entries = by_priority[priority_label]
+        if not entries:
+            continue
+        lines.extend([f"## {priority_label.title()}", ""])
+        for e in entries:
+            title = e.get("title") or e.get("url", "")
+            url = e.get("url", "")
+            summary = e.get("summary", "")
+            items_refs = e.get("items", [])
+            runs_found = e.get("found_in_runs", [])
+            lines.append(f"- **[{title}]({url})**")
+            if summary:
+                lines.append(f"  - {summary}")
+            if items_refs:
+                lines.append(f"  - Referenced by: {', '.join(items_refs)}")
+            if runs_found:
+                lines.append(f"  - Found in runs: {', '.join(runs_found)}")
+        lines.append("")
+
+    lines.append("[← Back to group overview](index.md)")
     (output_dir / "reading-list.md").write_text("\n".join(lines) + "\n")
