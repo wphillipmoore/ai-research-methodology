@@ -278,17 +278,6 @@ def _write_run_index(
     claims = [i for i in input_items if i.get("type") == "claim"]
     queries = [i for i in input_items if i.get("type") == "query"]
 
-    # Meta table — only include rows with non-zero counts
-    meta_rows: list[str] = []
-    if axioms:
-        meta_rows.append(f"| **Axioms** | {len(axioms)} |")
-    if claims:
-        meta_rows.append(f"| **Claims** | {len(claims)} |")
-    if queries:
-        meta_rows.append(f"| **Queries** | {len(queries)} |")
-    if meta_rows:
-        lines.extend(["| | |", "|---|---|", *meta_rows, ""])
-
     # Slug lookup
     slug_by_id: dict[str, str] = {}
     for item in input_items:
