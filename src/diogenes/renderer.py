@@ -96,6 +96,19 @@ def _item_by_id(items: list[dict[str, Any]], item_id: str) -> dict[str, Any]:
     return {}
 
 
+def _card_heading_for(item: dict[str, Any], report: dict[str, Any]) -> str:
+    """Build '{id} — {topic} — {qualifier}' heading string used across pages."""
+    iid = item.get("id", "?")
+    topic = report.get("title", "").strip()
+    qualifier = (report.get("verdict") or report.get("confidence") or "").strip()
+    parts = [iid]
+    if topic:
+        parts.append(topic)
+    if qualifier:
+        parts.append(qualifier)
+    return " — ".join(parts)
+
+
 def _collect_hypothesis_ratings(report: dict[str, Any], synthesis: dict[str, Any]) -> dict[str, str]:
     """Collect hypothesis rating/disposition strings, keyed by hypothesis ID.
 
@@ -295,18 +308,6 @@ def _write_run_index(
     execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
     reports_by_id: dict[str, dict[str, Any]] = {r.get("id", ""): r for r in reports}
 
-    def _card_heading(item: dict[str, Any], report: dict[str, Any]) -> str:
-        """Build a card-level heading like '{id} — {topic} — {qualifier}'."""
-        iid = item.get("id", "?")
-        topic = report.get("title", "").strip()
-        qualifier = (report.get("verdict") or report.get("confidence") or "").strip()
-        parts = [iid]
-        if topic:
-            parts.append(topic)
-        if qualifier:
-            parts.append(qualifier)
-        return " — ".join(parts)
-
     # Use explicit HTML anchors rather than relying on heading-text-derived anchors.
     # Different markdown renderers (GFM, MkDocs, VS Code preview) generate anchors
     # differently from the same heading text — em-dashes and parentheses cause
@@ -332,7 +333,7 @@ def _write_run_index(
         for item in section_items:
             iid = item.get("id", "?")
             report = reports_by_id.get(iid, {})
-            heading_text = _card_heading(item, report)
+            heading_text = _card_heading_for(item, report)
             sub_entries.append((f"card-{iid}", heading_text))
         toc_entries.append((section_anchor, section_label, sub_entries))
 
@@ -374,7 +375,7 @@ def _write_run_index(
                 [
                     f'<a id="card-{item_id}"></a>',
                     "",
-                    f"### {_card_heading(item, report)}",
+                    f"### {_card_heading_for(item, report)}",
                     "",
                 ]
             )
@@ -502,26 +503,102 @@ def _write_item_index(
     search_results: dict[str, Any],
     scorecards: dict[str, Any],
 ) -> None:
-    """Write the per-item index.md with BLUF, summary tables, and navigation."""
+    """Write the per-item index.md with Summary, Results table, and analytical tables.
+
+    Page structure:
+        # {id} — {topic} — {qualifier}          (title matches run-index card)
+        ## Contents                             (table of contents, TOC sentinels)
+        ## Summary                              (Claim/Query, Bottom Line, Verdict)
+        ## Results                              (links to the seven artifacts)
+        ## Hypotheses                           (summary table)
+        ## Searches                             (summary table)
+        ## Sources                              (summary table)
+        ## Evidence Snapshot
+        ## Revisit Triggers
+    """
     item_id = item.get("id", "?")
     item_type = item.get("type", "claim")
     input_filename = "claim.md" if item_type == "claim" else "query.md"
 
     clarified = item.get("restated_for_testability") or item.get("clarified_text") or item.get("original_text", "")
+    original = item.get("original_text", "") or clarified
 
-    lines = [f"# {item_id}", "", f"**{clarified}**", ""]
+    # Page title — same as the card heading in the run index
+    page_title = _card_heading_for(item, report) if report else f"{item_id} — {clarified[:80]}"
+    lines: list[str] = [f"# {page_title}", ""]
 
-    # BLUF from report
-    if report:
-        verdict = report.get("verdict", "")
-        summary = report.get("verdict_summary") or report.get("one_line") or ""
+    # --- Determine which sections will actually render -------------------
+    # (so we can build the TOC before writing the body)
+    has_summary = bool(report) or bool(clarified)
+    ratings_by_hyp = _collect_hypothesis_ratings(report, synthesis)
+    hyps_list = hypotheses.get("hypotheses", []) if isinstance(hypotheses, dict) else []
+    has_hypotheses_table = bool(hyps_list)
+
+    search_plan_searches = search_plan.get("searches", []) if isinstance(search_plan, dict) else []
+    has_searches_table = bool(search_plan_searches)
+
+    sources = _extract_sources_for_item(scorecards, item_id)
+    has_sources_table = bool(sources)
+
+    syn = synthesis.get("synthesis") or synthesis if isinstance(synthesis, dict) else {}
+    has_evidence_snapshot = bool(
+        isinstance(syn, dict)
+        and (syn.get("evidence_quality") or syn.get("source_agreement") or syn.get("ipcc_combined"))
+    )
+
+    triggers = report.get("revisit_triggers", []) if isinstance(report, dict) else []
+    has_triggers = bool(triggers)
+
+    # --- TOC ---------------------------------------------------------------
+    toc: list[tuple[str, str]] = []
+    if has_summary:
+        toc.append(("sec-summary", "Summary"))
+    toc.append(("sec-results", "Results"))
+    if has_hypotheses_table:
+        toc.append(("sec-hypotheses", "Hypotheses"))
+    if has_searches_table:
+        toc.append(("sec-searches", "Searches"))
+    if has_sources_table:
+        toc.append(("sec-sources", "Sources"))
+    if has_evidence_snapshot:
+        toc.append(("sec-evidence-snapshot", "Evidence Snapshot"))
+    if has_triggers:
+        toc.append(("sec-revisit-triggers", "Revisit Triggers"))
+
+    if len(toc) > 2:  # noqa: PLR2004 - Only include TOC when there is more than a trivial nav benefit
+        lines.extend(["<!-- TOC START -->", "## Contents", ""])
+        for anchor, label in toc:
+            lines.append(f"- [{label}](#{anchor})")
+        lines.extend(["", "<!-- TOC END -->", ""])
+
+    # --- Summary section ---------------------------------------------------
+    if has_summary:
+        lines.extend(['<a id="sec-summary"></a>', "", "## Summary", ""])
+
+        # Claim / Query
+        if item_type == "axiom":
+            lines.extend(["**Axiom:**", "", original, ""])
+        else:
+            label = "Claim" if item_type == "claim" else "Query"
+            lines.extend([f"**{label}:**", "", original or clarified, ""])
+
+        # Bottom Line (BLUF) from report
+        bluf = ""
+        if isinstance(report, dict):
+            bluf = report.get("verdict_summary") or report.get("answer_summary") or report.get("one_line") or ""
+        if bluf:
+            lines.extend(["**Bottom Line:**", "", bluf, ""])
+
+        # Verdict / Confidence
+        verdict = ""
+        if isinstance(report, dict):
+            verdict = report.get("verdict") or report.get("confidence") or ""
         if verdict:
-            lines.extend([f"**Verdict:** {verdict}", ""])
-        if summary:
-            lines.extend(["## Bottom Line", "", summary, ""])
+            verdict_label = "Verdict" if item_type == "claim" else "Confidence"
+            lines.extend([f"**{verdict_label}:** {verdict}", ""])
 
-    # Summary of what's in this directory — only link to files that exist
-    lines.extend(["## Contents", "", "| Section | Description |", "|---------|-------------|"])
+    # --- Results section (the seven artifacts) -----------------------------
+    lines.extend(['<a id="sec-results"></a>', "", "## Results", "", "| Artifact | Description |", "|----------|-------------|"])
     if (item_dir / input_filename).exists():
         lines.append(f"| [Input]({input_filename}) | Original text, clarification, scope, vocabulary |")
     if (item_dir / "hypotheses" / "index.md").exists():
@@ -539,18 +616,18 @@ def _write_item_index(
     lines.append("")
 
     # Hypothesis summary table (if hypotheses exist)
-    ratings_by_hyp = _collect_hypothesis_ratings(report, synthesis)
-
-    if hypotheses and hypotheses.get("hypotheses"):
+    if has_hypotheses_table:
         lines.extend(
             [
+                '<a id="sec-hypotheses"></a>',
+                "",
                 "## Hypotheses",
                 "",
                 "| ID | Label | Status |",
                 "|----|-------|--------|",
             ]
         )
-        for h in hypotheses["hypotheses"]:
+        for h in hyps_list:
             hyp_id = h.get("id", "?")
             short_id = hyp_id.split("-")[-1] if "-" in hyp_id else hyp_id
             label = h.get("label", "")
@@ -559,17 +636,19 @@ def _write_item_index(
         lines.append("")
 
     # Searches summary table
-    if search_plan and search_plan.get("searches"):
+    if has_searches_table:
         execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
         lines.extend(
             [
+                '<a id="sec-searches"></a>',
+                "",
                 "## Searches",
                 "",
                 "| ID | Target | Returned | Selected |",
                 "|----|--------|----------|----------|",
             ]
         )
-        for s in search_plan["searches"]:
+        for s in search_plan_searches:
             search_id = s.get("id", "S??")
             theme = s.get("theme") or s.get("target_hypothesis") or ""
             exec_record = next(
@@ -589,10 +668,11 @@ def _write_item_index(
         lines.append("")
 
     # Sources summary table
-    sources = _extract_sources_for_item(scorecards, item_id)
-    if sources:
+    if has_sources_table:
         lines.extend(
             [
+                '<a id="sec-sources"></a>',
+                "",
                 "## Sources",
                 "",
                 "| ID | Title | Reliability | Relevance |",
@@ -610,8 +690,7 @@ def _write_item_index(
         lines.append("")
 
     # Evidence quality snapshot from synthesis
-    if synthesis:
-        syn = synthesis.get("synthesis") or synthesis
+    if has_evidence_snapshot:
         snapshot_rows: list[str] = []
         eq = syn.get("evidence_quality") if isinstance(syn, dict) else None
         sa = syn.get("source_agreement") if isinstance(syn, dict) else None
@@ -624,14 +703,23 @@ def _write_item_index(
             snapshot_rows.append(f"| IPCC assessment | {ipcc} |")
         if snapshot_rows:
             lines.extend(
-                ["## Evidence Snapshot", "", "| Dimension | Rating |", "|-----------|--------|", *snapshot_rows, ""]
+                [
+                    '<a id="sec-evidence-snapshot"></a>',
+                    "",
+                    "## Evidence Snapshot",
+                    "",
+                    "| Dimension | Rating |",
+                    "|-----------|--------|",
+                    *snapshot_rows,
+                    "",
+                ]
             )
 
     # Revisit triggers from report
     if report:
         triggers = report.get("revisit_triggers", [])
         if triggers:
-            lines.extend(["## Revisit Triggers", ""])
+            lines.extend(['<a id="sec-revisit-triggers"></a>', "", "## Revisit Triggers", ""])
             for t in triggers:
                 if isinstance(t, dict):
                     trigger_text = t.get("trigger", "")
