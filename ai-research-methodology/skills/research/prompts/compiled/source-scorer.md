@@ -309,13 +309,15 @@ You receive a JSON object with this structure:
       "url": "https://...",
       "title": "...",
       "snippet": "...",
-      "content_extract": "first ~2000 chars of page content if available"
+      "content_extract": "article body text extracted by trafilatura; may be long"
     }
   ]
 }
 ```
 
-The `content_extract` may be empty if the page could not be fetched.
+If a page could not be fetched or had no extractable article body, it
+is dropped by the Python coordinator before reaching this sub-agent —
+so every source you see here has substantive `content_extract` content.
 Score based on whatever information is available (title, snippet, URL
 domain, and content extract if present).
 
@@ -361,18 +363,41 @@ use "N/A" when the source is not based on a randomized controlled trial.
 
 ## Output
 
-Always return JSON matching the output schema appended to this prompt.
-Never return markdown, prose, or formatted text.
+Always return JSON matching the output schema appended to this prompt
+(`source-scorer-output.schema.json`). Never return markdown, prose, or
+formatted text.
 
-Return ONLY the url and the scoring fields (reliability, relevance,
-bias_assessment, overall_quality). Do NOT echo back the title, snippet,
-or content_extract — the coordinator already has those.
+Your output is narrower than the persisted scorecard that downstream
+sub-agents read. You emit only the scoring fields and light metadata;
+the Python coordinator attaches `title`, `snippet`, `content_extract`,
+and `items` from its own copy of the input afterwards. **The schema
+appended below does not include those fields. If you include them
+anyway, your output will fail validation.** This is deliberate — forcing
+you to not transcribe `content_extract` back saves substantial output
+tokens and eliminates transcription drift on long article bodies.
 
-Keep ALL rationales to one sentence maximum. This is a triage scorecard,
-not a detailed analysis. Brevity is critical.
+For every scorecard, return:
 
-The canonical output schema (source-scorecards.schema.json) is provided
-below this prompt by the coordinator.
+- **url** — echoed verbatim from the input, so the coordinator can
+  match your scorecard to the input source.
+- **reliability, relevance, bias_assessment, overall_quality** — the
+  scoring outputs (required).
+- **content_summary** — one-to-three-sentence neutral description of what
+  the source actually says. Not a judgment about reliability or
+  relevance — just what the content communicates. Downstream sub-agents
+  and human readers use this as the canonical short description of the
+  source, so write it to stand alone.
+- **authors** — author line if discoverable from the content (names,
+  institutions, publisher). Omit if not present.
+- **date** — publication or last-updated date if discoverable. Omit if
+  not present.
+
+Keep ALL rationales in reliability / relevance / bias_assessment to one
+sentence maximum. This is a triage scorecard, not a detailed analysis.
+Brevity is critical.
+
+The canonical output schema is provided below this prompt by the
+coordinator.
 
 ---
 
@@ -383,51 +408,47 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/source-scorecards.schema.json",
-  "title": "Source Scorecards",
-  "description": "Output of the source-scorer sub-agent. Contains reliability, relevance, and bias scorecards for a batch of sources.",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/source-scorer-output.schema.json",
+  "title": "Source Scorer Output",
+  "description": "The exact JSON the source-scorer sub-agent is permitted to emit. Intentionally narrower than source-scorecards.schema.json (the persisted format): the scorer must not echo back url metadata (title, snippet, content_extract, authors, date) — the Python coordinator re-attaches these from its own copy of the input, saving output tokens and removing the temptation to transcribe long content incorrectly. Downstream sub-agents read the persisted scorecard (which includes the Python-attached fields), not this output schema.",
   "type": "object",
   "required": ["scorecards"],
   "properties": {
     "scorecards": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/source_scorecard" }
+      "items": { "$ref": "#/$defs/scorer_emission" }
     }
   },
   "additionalProperties": false,
   "$defs": {
-    "source_scorecard": {
+    "scorer_emission": {
       "type": "object",
-      "required": ["url", "reliability", "relevance", "bias_assessment"],
+      "description": "Exactly what the source-scorer emits for one source: a URL (so the coordinator can match it back to the input) plus the three rating components. Everything else is re-attached by the coordinator from its own copy of the scorer input.",
+      "required": ["url", "reliability", "relevance", "bias_assessment", "overall_quality"],
       "properties": {
         "url": {
           "type": "string",
-          "description": "URL of the scored source."
+          "description": "URL of the scored source. Must echo the URL from the corresponding input source so the coordinator can match it back."
         },
-        "title": {
+        "content_summary": {
           "type": "string",
-          "description": "Title of the source."
+          "description": "One-to-three-sentence neutral description of what the source actually says. Not a judgment about reliability or relevance — just what the content communicates. Downstream sub-agents and human readers use this as the canonical short description."
         },
-        "snippet": {
+        "authors": {
           "type": "string",
-          "description": "Snippet from the source."
+          "description": "Author line (names, institutions, or publisher) discoverable from the content. Omit if not present."
         },
-        "reliability": {
-          "$ref": "#/$defs/rating_with_rationale",
-          "description": "How trustworthy is this source."
+        "date": {
+          "type": "string",
+          "description": "Publication or last-updated date discoverable from the content. Omit if not present."
         },
-        "relevance": {
-          "$ref": "#/$defs/rating_with_rationale",
-          "description": "How directly this addresses the research item."
-        },
-        "bias_assessment": {
-          "$ref": "#/$defs/bias_assessment"
-        },
+        "reliability": { "$ref": "#/$defs/rating_with_rationale" },
+        "relevance": { "$ref": "#/$defs/rating_with_rationale" },
+        "bias_assessment": { "$ref": "#/$defs/bias_assessment" },
         "overall_quality": {
           "type": "string",
-          "enum": ["strong", "moderate", "weak"],
-          "description": "Summary quality rating derived from the three components."
+          "enum": ["strong", "moderate", "weak"]
         }
       },
       "additionalProperties": false
@@ -442,7 +463,7 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
         },
         "rationale": {
           "type": "string",
-          "description": "Brief explanation of the rating."
+          "description": "Brief explanation of the rating — one sentence."
         }
       },
       "additionalProperties": false
@@ -470,7 +491,7 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
         },
         "rationale": {
           "type": "string",
-          "description": "Brief explanation."
+          "description": "Brief explanation — one sentence."
         }
       },
       "additionalProperties": false

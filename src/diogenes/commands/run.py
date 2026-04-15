@@ -15,6 +15,7 @@ from diogenes.pipeline import (
     step3_design_searches,
     step4_execute_searches,
     step5_score_sources,
+    step5b_extract_evidence,
     step9_self_audit,
     step10_report,
     step11_archive,
@@ -279,6 +280,22 @@ def execute(input_file: str, output: str, runs: int) -> int:
         scorecards_path = write_step_output(run_dir, "source-scorecards.json", scorecards)
         print(f"  Wrote: {scorecards_path}")
 
+        # Step 5b: Extract grounded evidence packets from scored sources
+        print("Step 5b: Extracting evidence packets...")
+        try:
+            evidence_packets = step5b_extract_evidence(
+                research_input,
+                hypotheses,
+                scorecards,
+                client,
+            )
+        except SubAgentError as e:
+            print(f"ERROR: {e}")
+            return 1
+
+        evidence_path = write_step_output(run_dir, "evidence-packets.json", evidence_packets)
+        print(f"  Wrote: {evidence_path}")
+
         # Steps 6+7+8: Synthesize, assess, identify gaps
         print("Steps 6-8: Synthesizing evidence and assessing...")
         try:
@@ -286,6 +303,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
                 research_input,
                 hypotheses,
                 scorecards,
+                evidence_packets,
                 client,
             )
         except SubAgentError as e:
@@ -303,6 +321,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
                 hypotheses,
                 search_results,
                 scorecards,
+                evidence_packets,
                 synthesis,
                 client,
             )

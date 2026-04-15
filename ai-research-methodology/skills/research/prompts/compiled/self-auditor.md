@@ -303,11 +303,27 @@ You receive a JSON object with this structure:
   "hypotheses": { ... },
   "search_results": { ... },
   "scorecards": [ ... ],
+  "evidence_packets": [ ... ],
   "synthesis": { ... }
 }
 ```
 
 The full chain of evidence from clarification through synthesis.
+`evidence_packets` is the Step 5b output — the verbatim excerpts that
+synthesis was asked to ground itself in. When verifying source
+interpretations (Step 9b), check that the assessment's claims about
+each source can be traced back to an actual packet excerpt, not just
+to the scorecard summary.
+
+**Note on `scorecards`:** the scorecards you receive include
+url / title / authors / date / content_summary plus reliability /
+relevance / bias_assessment ratings, but **not** the original
+`content_extract` (the full article body). After Step 5b, the verbatim
+text from each source is represented in the `evidence_packets` —
+that's what you should use to verify quotes and check source-back
+linkage. If you find yourself wanting to "go back to the source," go
+to the packets first; the scorecards are for source-meta only at this
+stage.
 
 ## Task
 

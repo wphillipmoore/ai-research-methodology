@@ -200,7 +200,7 @@ To remove: `claude mcp remove --scope user diogenes`
 | Tool | Description |
 | ---- | ----------- |
 | `dio_search` | Web search via configured provider. Returns titles, URLs, snippets. |
-| `dio_fetch` | Fetch a URL, extract visible text (~2000 chars). |
+| `dio_fetch` | Fetch a URL; extract article body (HTML via trafilatura, PDF via pypdf). Raises on failure. |
 | `dio_search_batch` | Execute multiple searches at once. |
 
 ## dio CLI

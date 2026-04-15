@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/evidence-packets.schema.json",
+  "title": "Evidence Packets",
+  "description": "Output of the evidence-extractor sub-agent for a single claim or query. Grounds synthesis in specific passages from scored sources: each packet links a verbatim excerpt to a hypothesis (or theme) with an explicit supports / refutes / nuances / context relationship.",
+  "type": "object",
+  "required": ["id", "packets"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[CQ][0-9]+$"
+    },
+    "packets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence_packet" }
+    },
+    "extraction_notes": {
+      "type": "string",
+      "description": "Optional brief summary of extraction coverage — e.g. which hypotheses were under-supported, which sources yielded nothing quotable, how many packets the Python verbatim-validator dropped."
+    },
+    "verbatim_stats": {
+      "type": "object",
+      "description": "Python-populated record of how many packets the extractor claimed vs. how many survived deterministic verbatim verification. Extractor adherence metric for tracking across runs and model versions.",
+      "required": ["claimed", "kept", "dropped"],
+      "properties": {
+        "claimed": { "type": "integer", "minimum": 0 },
+        "kept": { "type": "integer", "minimum": 0 },
+        "dropped": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "evidence_packet": {
+      "type": "object",
+      "description": "One verbatim excerpt from one source, tied to one hypothesis or theme. The excerpt MUST be findable as a substring of the source's content_extract (modulo whitespace normalization and '...' trims of material inside a single contiguous passage). Paraphrase is not permitted. If no such substring exists, the extractor must drop the candidate rather than invent one from prior knowledge of the source.",
+      "required": ["source_url", "target_id", "relationship", "excerpt", "rationale"],
+      "properties": {
+        "source_url": {
+          "type": "string",
+          "description": "URL of the source the excerpt was taken from. Must match a scorecard in the input."
+        },
+        "source_title": {
+          "type": "string",
+          "description": "Title of the source, echoed from the scorecard for convenience."
+        },
+        "target_id": {
+          "type": "string",
+          "description": "The hypothesis ID (e.g. C001-H1) or query theme ID (e.g. Q001-T2) this excerpt speaks to."
+        },
+        "relationship": {
+          "type": "string",
+          "enum": ["supports", "refutes", "nuances", "context"],
+          "description": "How the excerpt relates to the target. 'supports' = direct corroborating evidence. 'refutes' = direct contradictory evidence. 'nuances' = qualifies or narrows the hypothesis without overturning it. 'context' = relevant background that neither supports nor refutes but frames the question."
+        },
+        "excerpt": {
+          "type": "string",
+          "description": "Verbatim text from the source's content_extract — a literal substring of that field, character-for-character (modulo whitespace normalization). Prefer a short, self-contained passage (one or two sentences). Use '...' to trim irrelevant material inside a single continuous passage, but never to join non-contiguous fragments — use separate packets for those. Do NOT paraphrase. Do NOT supplement from prior knowledge of the source."
+        },
+        "location": {
+          "type": "string",
+          "description": "Section, heading, paragraph number, or other pointer telling a reader where in the source the excerpt was found. Free text; precision optional."
+        },
+        "strength": {
+          "type": "string",
+          "enum": ["strong", "moderate", "weak"],
+          "description": "How load-bearing this excerpt is for the relationship it claims. Strong = direct and unambiguous. Moderate = supportive but indirect or requiring interpretation. Weak = suggestive only."
+        },
+        "rationale": {
+          "type": "string",
+          "description": "One-to-two-sentence explanation of how the excerpt bears on the target — making the extractor's reasoning inspectable to a human reader and to downstream synthesis."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
