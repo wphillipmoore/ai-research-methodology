@@ -307,14 +307,34 @@ You receive a JSON object with this structure:
 {
   "item": { ... },
   "hypotheses": { ... },
-  "scorecards": [ ... ]
+  "scorecards": [ ... ],
+  "evidence_packets": [ ... ]
 }
 ```
 
-Where `item` is the clarified claim or query, `hypotheses` is the
-hypothesis-generator output (with approach: "hypotheses" or
-"open-ended"), and `scorecards` is the array of source scorecards
-from Step 5.
+Where:
+
+- `item` is the clarified claim or query
+- `hypotheses` is the hypothesis-generator output (with approach:
+  "hypotheses" or "open-ended")
+- `scorecards` is the array of source scorecards from Step 5 —
+  reliability, relevance, and bias judgments about each source, plus
+  url / title / authors / date / content_summary metadata.
+  **The full article body (`content_extract`) is intentionally not
+  included here** — the verbatim text you should reason from lives in
+  `evidence_packets`, not in the scorecards.
+- `evidence_packets` is the array of verbatim excerpts from Step 5b,
+  each tying a specific source passage to a specific hypothesis or
+  theme with an explicit supports / refutes / nuances / context
+  relationship
+
+The packets are your **primary grounded input**. Treat them as the
+evidence base against which hypotheses are assessed. Use the scorecards
+to weight packets — a "supports" packet from a high-reliability,
+high-relevance source counts for more than the same from a weak source —
+and to reason about source agreement and independence. Do not invent
+evidence that is not in a packet; if a packet does not exist for a
+claim you are tempted to make, that claim belongs in the gaps list.
 
 ## Task
 

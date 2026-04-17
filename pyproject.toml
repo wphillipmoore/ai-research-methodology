@@ -31,6 +31,16 @@ dependencies = [
     "jinja2",
     "mcp",
     "requests",
+    # trafilatura extracts the article body from HTML (dropping nav, headers,
+    # footers, sidebars, ads). Rolling this as a regex previously produced
+    # content_extracts dominated by page chrome, which the evidence-extractor
+    # then "quoted" by filling in from training-data memory of the source.
+    "trafilatura",
+    # pypdf extracts text from PDF fetches. Academic sources (aclanthology,
+    # usenix, openreview, many journal PDF alternates) serve full papers as
+    # PDFs; trafilatura only handles HTML. Without pypdf we drop PDF sources
+    # entirely — a major coverage gap for peer-reviewed content.
+    "pypdf",
 ]
 
 [project.urls]

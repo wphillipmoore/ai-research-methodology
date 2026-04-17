@@ -26,7 +26,7 @@ from mcp.server.fastmcp import FastMCP
 
 from diogenes.config import ConfigError, load_config
 from diogenes.renderer import render_run, render_run_group
-from diogenes.search import fetch_page_extract
+from diogenes.search import FetchError, fetch_page_extract
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
 
 server = FastMCP(
@@ -100,24 +100,31 @@ def dio_search(query: str, max_results: int = 5) -> str:
 @server.tool(
     name="dio_fetch",
     description=(
-        "Fetch a web page and extract visible text content for Diogenes "
-        "research workflows. Returns the first ~2000 characters. ONLY "
+        "Fetch a web page and extract the article body as plain text for "
+        "Diogenes research workflows. Navigation, headers, footers, and "
+        "sidebars are stripped. No length truncation. Returns a structured "
+        "error if the page cannot be retrieved or has no extractable article "
+        "body — callers must not silently substitute empty content. ONLY "
         "use within /research workflows."
     ),
 )
 def dio_fetch(url: str) -> str:
-    """Fetch a URL and return a text extract.
+    """Fetch a URL and return the extracted article body.
 
     Args:
         url: The URL to fetch.
 
     Returns:
-        Extracted text content (first ~2000 chars), or error message.
+        JSON string with either the extracted content or a structured
+        error. Failure surfaces as ``{"error": true, "message": ...}`` so
+        the LLM caller has an unambiguous signal to skip the source rather
+        than invent content for it.
 
     """
-    content = fetch_page_extract(url)
-    if not content:
-        return json.dumps({"error": True, "message": f"Could not fetch content from {url}"})
+    try:
+        content = fetch_page_extract(url)
+    except FetchError as exc:
+        return json.dumps({"error": True, "message": str(exc)})
 
     output: dict[str, Any] = {
         "url": url,

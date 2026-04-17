@@ -15,3 +15,10 @@ MIT License
 Mozilla Public License 2.0 (MPL 2.0)
 PSF-2.0
 Python Software Foundation License
+# Added 2026-04-15 for trafilatura transitive deps on feature/94.
+# CNRI-Python is an OSI-approved, permissive Python-Foundation license
+# (used by the `regex` package).
+Apache-2.0 AND CNRI-Python
+# Tri-licensed MPL/GPL/LGPL used by the `tld` package. LGPL-2.1-or-later
+# extends to LGPL-3.0 which is compatible with this project's GPL-3.0-only.
+MPL-1.1 OR GPL-2.0-only OR LGPL-2.1-or-later

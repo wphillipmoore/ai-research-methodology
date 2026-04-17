@@ -7,12 +7,14 @@ result selection, not full page content.
 
 from __future__ import annotations
 
-import re
+import io
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+import pypdf
 import requests
+import trafilatura
 
 
 @dataclass
@@ -79,16 +81,101 @@ class SearchProvider(Protocol):
         ...
 
 
-_FETCH_TIMEOUT = 10
-_CONTENT_EXTRACT_LENGTH = 2000
+_FETCH_TIMEOUT = 15
+
+
+class FetchError(Exception):
+    """Raised when a page cannot be fetched or no article body can be extracted.
+
+    Callers must catch this and decide whether to skip the source, retry,
+    or abort — never silently substitute an empty string. An empty extract
+    downstream becomes an invitation for the LLM to fabricate quotes from
+    training-data memory of the URL.
+    """
+
+
+def _looks_like_pdf(url: str, content_type: str, body: bytes) -> bool:
+    """Return True if the response is a PDF by any reliable signal."""
+    # Content-Type is the primary signal; many academic hosts serve PDFs
+    # correctly labeled.
+    if "application/pdf" in content_type.lower():
+        return True
+    # PDF magic number is a belt-and-braces check for servers that mislabel
+    # (e.g., serve application/octet-stream).
+    if body[:5] == b"%PDF-":
+        return True
+    # URL suffix is the weakest signal — use only if everything else failed.
+    # Some URLs end in .pdf but serve an HTML landing page; we still want
+    # to try PDF extraction if the body looks like a PDF, and otherwise
+    # fall through to HTML extraction.
+    return url.lower().endswith(".pdf") and body[:5] == b"%PDF-"
+
+
+def _extract_pdf(url: str, body: bytes) -> str:
+    """Extract text from PDF bytes using pypdf. Raises FetchError on failure."""
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(body))
+        pages = [page.extract_text() or "" for page in reader.pages]
+    except (pypdf.errors.PdfReadError, ValueError, OSError) as exc:
+        msg = f"pypdf failed to parse PDF from {url}: {exc}"
+        raise FetchError(msg) from exc
+
+    text = "\n\n".join(p.strip() for p in pages if p and p.strip())
+    if not text.strip():
+        msg = (
+            f"pypdf returned no text from {url} "
+            f"({len(body)} bytes, {len(pages)} pages). "
+            "The PDF may be scanned/image-only (no OCR applied) or encrypted."
+        )
+        raise FetchError(msg)
+
+    return text.strip()
+
+
+def _extract_html(url: str, html: str, status_code: int) -> str:
+    """Extract article body from HTML via trafilatura. Raises FetchError on failure."""
+    extracted = trafilatura.extract(
+        html,
+        url=url,
+        favor_recall=True,
+        include_comments=False,
+        include_tables=True,
+    )
+
+    if not extracted or not extracted.strip():
+        msg = (
+            f"trafilatura returned no article body for {url} "
+            f"(HTTP {status_code}, {len(html)} bytes HTML). "
+            "The page may be JS-rendered, paywalled, or pure navigation."
+        )
+        raise FetchError(msg)
+
+    return extracted.strip()
 
 
 def fetch_page_extract(url: str) -> str:
-    """Fetch a page and return a text extract of the content.
+    """Fetch a page and return the extracted article body as plain text.
 
-    Returns the first ~2000 characters of visible text, or an empty
-    string if the fetch fails. This is intentionally simple — we only
-    need enough context for the scorer to assess quality and relevance.
+    Routes by Content-Type / body magic: PDFs are extracted via pypdf,
+    HTML via trafilatura. Both strip format-specific chrome (page headers,
+    nav, running headers in PDFs) so the returned text is substantive
+    article body. No truncation is applied — downstream token-cost concerns
+    are addressed by reducing source count, not by chopping mid-article.
+
+    Args:
+        url: The URL to fetch.
+
+    Returns:
+        The extracted article body as plain text. Never the empty string —
+        if extraction would yield nothing substantive, FetchError is raised
+        instead so the caller can handle the failure explicitly.
+
+    Raises:
+        FetchError: The page could not be retrieved (network, HTTP error,
+            timeout), or neither the PDF path nor the HTML path could
+            extract substantive text (JS-rendered, paywalled, binary,
+            scanned image PDF, encrypted PDF, etc.).
+
     """
     try:
         resp = requests.get(
@@ -97,19 +184,18 @@ def fetch_page_extract(url: str) -> str:
             headers={"User-Agent": "Diogenes/0.1 (research-methodology)"},
         )
         resp.raise_for_status()
-    except (requests.RequestException, ValueError):
-        return ""
+    except requests.RequestException as exc:
+        msg = f"Fetch failed for {url}: {exc}"
+        raise FetchError(msg) from exc
+    except ValueError as exc:
+        msg = f"Invalid URL or response decoding for {url}: {exc}"
+        raise FetchError(msg) from exc
 
-    # Simple text extraction: strip HTML tags
-    text = resp.text
-    # Remove script and style blocks
-    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", text, flags=re.DOTALL | re.IGNORECASE)
-    # Remove HTML tags
-    text = re.sub(r"<[^>]+>", " ", text)
-    # Collapse whitespace
-    text = re.sub(r"\s+", " ", text).strip()
+    content_type = resp.headers.get("Content-Type", "")
+    if _looks_like_pdf(url, content_type, resp.content):
+        return _extract_pdf(url, resp.content)
 
-    return text[:_CONTENT_EXTRACT_LENGTH]
+    return _extract_html(url, resp.text, resp.status_code)
 
 
 def execute_search_plan(

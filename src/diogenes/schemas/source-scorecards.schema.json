@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/source-scorecards.schema.json",
   "title": "Source Scorecards",
-  "description": "Output of the source-scorer sub-agent. Contains reliability, relevance, and bias scorecards for a batch of sources.",
+  "description": "Persisted source scorecard format. Combines the source-scorer sub-agent's judgment output (reliability, relevance, bias_assessment, overall_quality, optional content_summary/authors/date) with Python-coordinator-attached metadata (title, snippet, content_extract, items). Downstream sub-agents — evidence-extractor, synthesizer, self-auditor — read this combined format. The scorer itself emits only the narrower source-scorer-output.schema.json; the coordinator re-attaches content_extract/title/snippet from its own copy of the input, so the scorer never has to transcribe long article bodies back through the LLM.",
   "type": "object",
   "required": ["scorecards"],
   "properties": {
@@ -16,6 +16,7 @@
   "$defs": {
     "source_scorecard": {
       "type": "object",
+      "description": "Self-contained judgment about one source plus the metadata needed to cite and quote it downstream. Fields split into two groups: scorer-emitted (reliability, relevance, bias_assessment, overall_quality, optional content_summary/authors/date) and Python-coordinator-attached (title, snippet, content_extract, items). The coordinator joins them after the scorer's LLM call.",
       "required": ["url", "reliability", "relevance", "bias_assessment"],
       "properties": {
         "url": {
@@ -24,11 +25,32 @@
         },
         "title": {
           "type": "string",
-          "description": "Title of the source."
+          "description": "Title of the source. Attached by the Python coordinator from the original search result — NOT emitted by the scorer sub-agent."
         },
         "snippet": {
           "type": "string",
-          "description": "Snippet from the source."
+          "description": "Snippet from the source. Attached by the Python coordinator from the original search result — NOT emitted by the scorer sub-agent."
+        },
+        "content_extract": {
+          "type": "string",
+          "description": "The fetched article body (via trafilatura for HTML, pypdf for PDFs) that was handed to the scorer. Attached by the Python coordinator from its own copy — NOT emitted by the scorer sub-agent. Preserved verbatim so downstream sub-agents (evidence-extractor, synthesizer) can quote and cite without re-fetching. No length truncation."
+        },
+        "content_summary": {
+          "type": "string",
+          "description": "Neutral short description of what the source says. Denormalized onto the scorecard so downstream artifacts (reading list, evidence packets) can carry it forward without joining back."
+        },
+        "authors": {
+          "type": "string",
+          "description": "Author line (names, institutions, or publisher) — denormalized for downstream use."
+        },
+        "date": {
+          "type": "string",
+          "description": "Publication or last-updated date — denormalized for downstream use."
+        },
+        "items": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "IDs of the claims or queries this scorecard was produced in support of. Attached by the Python coordinator — NOT emitted by the scorer sub-agent."
         },
         "reliability": {
           "$ref": "#/$defs/rating_with_rationale",

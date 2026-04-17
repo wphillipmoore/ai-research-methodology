@@ -282,13 +282,14 @@ correct sort order in all file browsers.
 
 ### Step 4: Save methodology snapshot
 
-Copy the common guidelines into the run group directory (not into each
-run subdirectory — one copy shared across all runs):
+Copy the compiled unified methodology into the run group directory (not
+into each run subdirectory — one copy shared across all runs):
 
-- `prompt-snapshot.md` — copy of `prompts/common-guidelines.md`
+- `prompt-snapshot.md` — copy of `ai-research-methodology/standalone/research.md`
 
-This creates a permanent record of what behavioral constraints were in
-effect.
+This captures both the common behavioral guidelines and every sub-agent
+prompt as compiled at run time, producing a permanent record of the
+methodology that was in effect.
 
 ### Step 5: Execute independent research runs
 
@@ -353,23 +354,36 @@ deduplicate by URL. Write `search-results.json`.
 Score reliability, relevance, and six bias domains per
 `skills/research/prompts/compiled/source-scorer.md`. Write `source-scorecards.json`.
 
-**Step 5f: Synthesize, assess, gaps** — Read
+**Step 5f: Extract evidence packets** — Read
+`skills/research/prompts/compiled/evidence-extractor.md`. For each item, pass
+the clarified item, its hypotheses, and the scorecards (including
+`content_extract`). The extractor emits verbatim excerpts tied to specific
+hypotheses (or search themes, in open-ended mode) with an explicit
+supports / refutes / nuances / context relationship. Write
+`evidence-packets.json`. This is the grounding layer between source
+scoring and synthesis — synthesis downstream should cite packets rather
+than paraphrase from memory.
+
+**Step 5g: Synthesize, assess, gaps** — Read
 `skills/research/prompts/compiled/evidence-synthesizer.md`. For each item, pass the
-scorecards and hypotheses. Synthesize the evidence collection, produce
-probability assessment, identify gaps. Write `synthesis.json`.
+scorecards, hypotheses, and evidence packets from Step 5f. Synthesize the
+evidence collection, produce probability assessment, identify gaps. The
+packets are the primary grounded input; the scorecards weight them.
+Write `synthesis.json`.
 
-**Step 5g: Self-audit** — Read `skills/research/prompts/compiled/self-auditor.md`. For
-each item, audit the process, verify source interpretations, produce
-reading list. Write `self-audit.json`.
+**Step 5h: Self-audit** — Read `skills/research/prompts/compiled/self-auditor.md`. For
+each item, pass the full chain including `evidence_packets`. Audit the
+process, verify source interpretations (Step 9b traces assessment claims
+back to packet excerpts), produce reading list. Write `self-audit.json`.
 
-**Step 5h: Report** — Read `skills/research/prompts/compiled/report-assembler.md`. For
+**Step 5i: Report** — Read `skills/research/prompts/compiled/report-assembler.md`. For
 each item, assemble the final report from all prior steps. Write
 `reports.json`.
 
-**Step 5i: Archive** — Combine all JSON outputs into `archive.json`
+**Step 5j: Archive** — Combine all JSON outputs into `archive.json`
 with a timestamp and pipeline version.
 
-**Step 5j: Usage** — Record token usage, API call counts, and estimated
+**Step 5k: Usage** — Record token usage, API call counts, and estimated
 costs. Write `usage.json` to the run group directory.
 
 **Output files per run directory** (all JSON, no markdown):
@@ -381,13 +395,14 @@ run-{N}/
 ├── search-plans.json
 ├── search-results.json
 ├── source-scorecards.json
+├── evidence-packets.json
 ├── synthesis.json
 ├── self-audit.json
 ├── reports.json
 └── archive.json
 ```
 
-### Step 5k: Synthesize across runs
+### Step 5l: Synthesize across runs
 
 **This step runs ONLY after ALL runs have completed.** It reads the
 JSON output from every `run-{N}/` directory and produces group-level

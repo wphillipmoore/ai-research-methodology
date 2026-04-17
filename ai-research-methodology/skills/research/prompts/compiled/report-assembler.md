@@ -310,6 +310,14 @@ You receive a JSON object with the complete research chain:
 }
 ```
 
+**Note on `scorecards`:** the scorecards you receive carry url / title /
+authors / date / content_summary metadata plus reliability / relevance /
+bias_assessment ratings, but **not** the original `content_extract`
+(the full article body). Your job here is formatting — the evidence
+narrative and verdict have already been produced by synthesis and
+audited in self_audit. Treat scorecards as source-meta for citation
+purposes only; do not attempt to re-interpret the sources yourself.
+
 ## Task
 
 Produce the final report. Every claim must be sourced. Every judgment

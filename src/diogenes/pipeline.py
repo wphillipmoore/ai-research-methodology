@@ -8,11 +8,13 @@ The coordinator (run command) calls these in sequence.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from diogenes.search import SearchProvider, execute_search_plan, fetch_page_extract
+from diogenes.api_client import SubAgentError
+from diogenes.search import FetchError, SearchProvider, execute_search_plan, fetch_page_extract
 
 if TYPE_CHECKING:
     from diogenes.api_client import APIClient
@@ -316,6 +318,46 @@ _SCORING_BATCH_SIZE = 1
 _MAX_SOURCES_TO_SCORE = 15
 
 
+def _fetch_sources_for_scoring(
+    item_id: str,
+    selected: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Fetch article bodies for a list of selected sources.
+
+    Sources whose bodies cannot be retrieved or parsed are dropped with a
+    loud log entry rather than passed forward with an empty content_extract
+    — an empty extract is an invitation for the evidence-extractor to
+    fabricate quotes from training-data memory of the URL.
+    """
+    enriched_sources: list[dict[str, Any]] = []
+    fetch_failures: list[str] = []
+    for source in selected:
+        url = source.get("url", "")
+        print(f"    Fetching {url[:60]}...")
+        try:
+            content = fetch_page_extract(url)
+        except FetchError as exc:
+            print(f"      FETCH FAILED — dropping source: {exc}")
+            fetch_failures.append(url)
+            continue
+        enriched_sources.append(
+            {
+                "url": url,
+                "title": source.get("title", ""),
+                "snippet": source.get("snippet", ""),
+                "content_extract": content,
+            }
+        )
+
+    if fetch_failures:
+        print(
+            f"    {item_id}: {len(fetch_failures)} of {len(selected)} sources "
+            f"dropped due to fetch failures (see logs above)."
+        )
+
+    return enriched_sources
+
+
 def step5_score_sources(
     research_input: dict[str, Any],
     search_results: dict[str, Any],
@@ -354,20 +396,8 @@ def step5_score_sources(
         else:
             print(f"  Scoring {len(selected)} sources for {item_id}...")
 
-        # Phase A: Python fetches page content
-        enriched_sources = []
-        for source in selected:
-            url = source.get("url", "")
-            print(f"    Fetching {url[:60]}...")
-            content = fetch_page_extract(url)
-            enriched_sources.append(
-                {
-                    "url": url,
-                    "title": source.get("title", ""),
-                    "snippet": source.get("snippet", ""),
-                    "content_extract": content,
-                }
-            )
+        # Phase A: Python fetches page content.
+        enriched_sources = _fetch_sources_for_scoring(item_id, selected)
 
         # Phase B: LLM scores in batches
         all_scorecards: list[dict[str, Any]] = []
@@ -382,15 +412,281 @@ def step5_score_sources(
             response = client.call_sub_agent(
                 prompt_path=scorer_prompt,
                 user_input=batch_input,
-                output_schema="source-scorecards.schema.json",
+                output_schema="source-scorer-output.schema.json",
                 max_tokens=8192,
                 model=_SCORING_MODEL,
             )
 
             all_scorecards.extend(response.get("scorecards", []))
 
+        # Attach title/snippet/content_extract/items from the Python-side
+        # copy of the input. The scorer's output schema explicitly forbids
+        # these fields (see source-scorer-output.schema.json and the
+        # source-scorer prompt) — they are Python-coordinator metadata,
+        # joined here to produce the persisted source-scorecards format
+        # that downstream steps read. Requiring the scorer to transcribe a
+        # 60KB article body through the LLM was the root cause of
+        # max_tokens overruns and invalid JSON on long sources.
+        input_by_url = {src["url"]: src for src in enriched_sources}
+        for sc in all_scorecards:
+            src = input_by_url.get(sc.get("url"), {})
+            for field in ("title", "snippet", "content_extract"):
+                value = src.get(field)
+                if value:
+                    sc[field] = value
+            if "items" not in sc:
+                sc["items"] = [item_id]
+
         print(f"    {item_id}: {len(all_scorecards)} sources scored")
         results[item_id] = {"id": item_id, "scorecards": all_scorecards}
+
+    return results
+
+
+# Sources with content_extract shorter than this are not passed to the
+# evidence-extractor — there is nothing substantive to quote, and handing
+# the LLM a near-empty source is a direct invitation for it to fabricate
+# plausible-sounding quotes from training-data memory.
+_MIN_CONTENT_EXTRACT_CHARS = 100
+
+
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _verify_packet_verbatim(
+    packet: dict[str, Any],
+    content_extract: str,
+) -> bool:
+    """Return True iff the packet's excerpt is a verbatim substring of the source.
+
+    The extractor prompt and schema both mandate verbatim excerpts. In
+    practice frontier LLMs partially obey this instruction — they anchor
+    on real phrases from the source, then smooth the continuation from
+    training-data knowledge of the article, producing plausible-looking
+    "quotes" that are not actually substrings of what was fetched. This
+    function is the deterministic backstop: whatever the model claimed,
+    we accept the packet only if the excerpt actually occurs in the
+    source text.
+
+    Matching is whitespace-normalized. Ellipses ('...') in the excerpt
+    are treated as permitted trims: each dot-delimited segment must
+    independently appear in the normalized content_extract.
+    """
+    excerpt = packet.get("excerpt") or ""
+    if not excerpt.strip():
+        return False
+
+    norm_source = _WHITESPACE_RE.sub(" ", content_extract)
+    segments = [_WHITESPACE_RE.sub(" ", seg).strip() for seg in excerpt.split("...") if seg.strip()]
+    return bool(segments) and all(seg in norm_source for seg in segments)
+
+
+def _extract_evidence_for_item(
+    item: dict[str, Any],
+    item_hypotheses: dict[str, Any],
+    substantive: list[dict[str, Any]],
+    prompt_path: Path,
+    client: APIClient,
+) -> tuple[list[dict[str, Any]], list[str], dict[str, int]]:
+    """Call the extractor once per source, aggregate packets, drop non-verbatim.
+
+    Calling once per source — instead of once for all sources together —
+    keeps the input per call bounded (~1 scorecard's worth of article body,
+    typically 10-100 KB) so the model does not drop instructions or the
+    output schema under long-context pressure, and keeps the task framing
+    crisp.
+
+    After each call, every returned packet is verified against the
+    source's content_extract as a deterministic backstop. Packets whose
+    excerpt is not actually a substring of the source are DROPPED — this
+    is the "do not trust the AI" layer: the model may claim verbatim
+    extraction, but we accept only what string-matches.
+
+    Returns (aggregated verified packets, list of per-source error
+    messages, verbatim stats dict with keys 'claimed', 'kept', 'dropped').
+    """
+    aggregated_packets: list[dict[str, Any]] = []
+    errors: list[str] = []
+    stats = {"claimed": 0, "kept": 0, "dropped": 0}
+
+    for idx, sc in enumerate(substantive, start=1):
+        url = sc.get("url", "<unknown URL>")
+        source_extract = sc.get("content_extract") or ""
+        agent_input = {
+            "id": item["id"],
+            "item": item,
+            "hypotheses": item_hypotheses,
+            # Intentionally one-element scorecards list — same shape the
+            # extractor prompt documents, so no prompt changes are needed.
+            "scorecards": [sc],
+        }
+        try:
+            response = client.call_sub_agent(
+                prompt_path=prompt_path,
+                user_input=agent_input,
+                output_schema="evidence-packets.schema.json",
+                max_tokens=8192,
+            )
+        except SubAgentError as exc:
+            err = f"source {idx}/{len(substantive)} ({url}): {exc}"
+            errors.append(err)
+            print(f"      extractor FAILED on {url[:60]}: {exc}")
+            continue
+
+        claimed_packets = response.get("packets", []) or []
+        verified_packets: list[dict[str, Any]] = []
+        dropped = 0
+        for pk in claimed_packets:
+            if _verify_packet_verbatim(pk, source_extract):
+                verified_packets.append(pk)
+            else:
+                dropped += 1
+
+        stats["claimed"] += len(claimed_packets)
+        stats["kept"] += len(verified_packets)
+        stats["dropped"] += dropped
+
+        aggregated_packets.extend(verified_packets)
+        if dropped:
+            print(f"      {url[:60]}: {len(verified_packets)} verified / {dropped} dropped (non-verbatim)")
+        else:
+            print(f"      {url[:60]}: {len(verified_packets)} packet(s) verified")
+
+    return aggregated_packets, errors, stats
+
+
+def _scorecards_without_content(scorecards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return scorecards with `content_extract` stripped.
+
+    Used to avoid passing full article bodies to downstream sub-agents
+    (synthesizer, self-auditor) whose contracts call for scorecards as
+    source-meta inputs, not as evidence text. After Step 5b the verbatim
+    article text is represented in the evidence packets; the scorecards
+    only need to carry url/title/authors/date/scoring/content_summary for
+    those steps. Stripping the (potentially 100+ KB) content_extract field
+    is what keeps downstream calls from blowing past the 200 K context
+    limit when many sources have substantive bodies.
+
+    The persisted scorecards in source-scorecards.json still carry
+    content_extract — this only affects what is passed to the LLM.
+    """
+    return [{k: v for k, v in sc.items() if k != "content_extract"} for sc in scorecards]
+
+
+def step5b_extract_evidence(
+    research_input: dict[str, Any],
+    hypotheses: dict[str, Any],
+    scorecards: dict[str, Any],
+    client: APIClient,
+) -> dict[str, Any]:
+    """Extract verbatim evidence packets tying source excerpts to hypotheses.
+
+    Bridges source scoring and evidence synthesis so that downstream verdicts
+    are grounded in inspectable quotations rather than the synthesizer's
+    paraphrased memory of the sources. Calls the extractor **once per
+    source** (not once per item) — long combined inputs cause the model to
+    drop instructions, echo synthesis-style prose instead of JSON, and
+    exceed context bounds. Per-source calls keep inputs bounded and the
+    task framing crisp.
+
+    Sources whose content_extract is missing, empty, or shorter than
+    ``_MIN_CONTENT_EXTRACT_CHARS`` are filtered out before any LLM call;
+    their URLs are recorded in ``extraction_notes`` for auditability. An
+    empty content_extract cannot yield a verbatim quote, and passing such a
+    source to the extractor invites fabrication.
+
+    Args:
+        research_input: The clarified research input (output of step 1).
+        hypotheses: Hypothesis results keyed by item ID (output of step 2).
+        scorecards: Source scorecards keyed by item ID (output of step 5).
+        client: Configured API client with common guidelines loaded.
+
+    Returns:
+        A dict mapping item IDs to their evidence packet results, shape:
+        ``{"id": "<ItemID>", "packets": [...], "extraction_notes": "..."}``.
+
+    """
+    prompt_path = _PROMPTS_DIR / "evidence-extractor.md"
+    results: dict[str, Any] = {}
+
+    items = [*research_input.get("claims", []), *research_input.get("queries", [])]
+
+    for item in items:
+        item_id = item["id"]
+        item_hypotheses = hypotheses.get(item_id, {})
+        item_scorecards = scorecards.get(item_id, {}).get("scorecards", [])
+
+        if not item_scorecards:
+            print(f"  No scorecards for {item_id}; skipping evidence extraction.")
+            results[item_id] = {"id": item_id, "packets": []}
+            continue
+
+        substantive: list[dict[str, Any]] = []
+        skipped: list[str] = []
+        for sc in item_scorecards:
+            extract = sc.get("content_extract") or ""
+            if len(extract.strip()) < _MIN_CONTENT_EXTRACT_CHARS:
+                skipped.append(sc.get("url", "<unknown URL>"))
+            else:
+                substantive.append(sc)
+
+        print(
+            f"  Extracting evidence for {item_id} "
+            f"({len(substantive)} sources, one call each; "
+            f"{len(skipped)} skipped for insufficient content)..."
+        )
+
+        if not substantive:
+            note = (
+                "No sources had a content_extract of sufficient length "
+                f"(>= {_MIN_CONTENT_EXTRACT_CHARS} chars) to extract verbatim "
+                f"evidence from. Skipped {len(skipped)} source(s): " + ", ".join(skipped)
+            )
+            results[item_id] = {
+                "id": item_id,
+                "packets": [],
+                "extraction_notes": note,
+            }
+            print(f"    {item_id}: 0 evidence packets (all sources insufficient)")
+            continue
+
+        aggregated_packets, extractor_errors, verbatim_stats = _extract_evidence_for_item(
+            item=item,
+            item_hypotheses=item_hypotheses,
+            substantive=substantive,
+            prompt_path=prompt_path,
+            client=client,
+        )
+
+        response: dict[str, Any] = {
+            "id": item_id,
+            "packets": aggregated_packets,
+            "verbatim_stats": verbatim_stats,
+        }
+
+        notes_parts: list[str] = []
+        if skipped:
+            notes_parts.append(
+                f"Python pre-filter skipped {len(skipped)} source(s) for "
+                f"insufficient content_extract (< {_MIN_CONTENT_EXTRACT_CHARS} chars): " + ", ".join(skipped)
+            )
+        if extractor_errors:
+            notes_parts.append(
+                f"Extractor failed on {len(extractor_errors)} of {len(substantive)} "
+                "source(s): " + "; ".join(extractor_errors)
+            )
+        if verbatim_stats["dropped"]:
+            adherence = 100.0 * verbatim_stats["kept"] / max(verbatim_stats["claimed"], 1)
+            notes_parts.append(
+                f"Verbatim validator dropped {verbatim_stats['dropped']} of "
+                f"{verbatim_stats['claimed']} claimed packets "
+                f"(extractor adherence: {adherence:.1f}%)."
+            )
+        if notes_parts:
+            response["extraction_notes"] = " ".join(notes_parts)
+
+        results[item_id] = response
+        print(f"    {item_id}: {len(aggregated_packets)} evidence packets total")
 
     return results
 
@@ -399,17 +695,21 @@ def steps678_synthesize_and_assess(
     research_input: dict[str, Any],
     hypotheses: dict[str, Any],
     scorecards: dict[str, Any],
+    evidence_packets: dict[str, Any],
     client: APIClient,
 ) -> dict[str, Any]:
     """Synthesize evidence, assess, and identify gaps (Steps 6+7+8 combined).
 
     One LLM call per item. These steps are tightly coupled — synthesis informs
-    assessment, assessment reveals gaps.
+    assessment, assessment reveals gaps. Takes the evidence packets from
+    Step 5b as the primary grounded-quote input; scorecards remain available
+    for meta-judgments about reliability and source agreement.
 
     Args:
         research_input: The clarified research input (output of step 1).
         hypotheses: Hypothesis results keyed by item ID (output of step 2).
         scorecards: Source scorecards keyed by item ID (output of step 5).
+        evidence_packets: Evidence packets keyed by item ID (output of step 5b).
         client: Configured API client with common guidelines loaded.
 
     Returns:
@@ -425,12 +725,17 @@ def steps678_synthesize_and_assess(
         item_id = item["id"]
         item_hypotheses = hypotheses.get(item_id, {})
         item_scorecards = scorecards.get(item_id, {}).get("scorecards", [])
-        print(f"  Synthesizing {item_id} ({len(item_scorecards)} sources)...")
+        item_packets = evidence_packets.get(item_id, {}).get("packets", [])
+        print(f"  Synthesizing {item_id} ({len(item_scorecards)} sources, {len(item_packets)} packets)...")
 
         agent_input = {
             "item": item,
             "hypotheses": item_hypotheses,
-            "scorecards": item_scorecards,
+            # Strip content_extract — packets carry the verbatim text the
+            # synthesizer should reason from. Including the full article
+            # bodies here was both wasteful and a context-limit risk.
+            "scorecards": _scorecards_without_content(item_scorecards),
+            "evidence_packets": item_packets,
         }
 
         response = client.call_sub_agent(
@@ -453,6 +758,7 @@ def step9_self_audit(
     hypotheses: dict[str, Any],
     search_results: dict[str, Any],
     scorecards: dict[str, Any],
+    evidence_packets: dict[str, Any],
     synthesis: dict[str, Any],
     client: APIClient,
 ) -> dict[str, Any]:
@@ -465,6 +771,7 @@ def step9_self_audit(
         hypotheses: Hypothesis results (step 2).
         search_results: Search results (step 4).
         scorecards: Source scorecards (step 5).
+        evidence_packets: Evidence packets (step 5b).
         synthesis: Synthesis/assessment/gaps (steps 6-8).
         client: Configured API client.
 
@@ -485,7 +792,13 @@ def step9_self_audit(
             "item": item,
             "hypotheses": hypotheses.get(item_id, {}),
             "search_results": search_results.get(item_id, {}),
-            "scorecards": scorecards.get(item_id, {}).get("scorecards", []),
+            # Strip content_extract — Step 9b verifies assessment→packet
+            # linkage, not assessment→source. The packets are the ground
+            # truth for what was quoted; the auditor reads them directly.
+            # Including the full article bodies blew past the 200 K context
+            # on multi-source runs (smoke test 2026-04-15: 190 K input).
+            "scorecards": _scorecards_without_content(scorecards.get(item_id, {}).get("scorecards", [])),
+            "evidence_packets": evidence_packets.get(item_id, {}).get("packets", []),
             "synthesis": synthesis.get(item_id, {}),
         }
 
@@ -551,7 +864,13 @@ def step10_report(
             "item": item,
             "hypotheses": hypotheses.get(item_id, {}),
             "search_results": search_results.get(item_id, {}),
-            "scorecards": scorecards.get(item_id, {}).get("scorecards", []),
+            # Strip content_extract — report assembly formats what the
+            # earlier steps produced (synthesis + audit), using scorecards
+            # only for source-meta (title / url / authors / date /
+            # content_summary / scoring). The full article bodies are not
+            # needed here and push the combined input past the 200 K
+            # context limit on multi-source runs.
+            "scorecards": _scorecards_without_content(scorecards.get(item_id, {}).get("scorecards", [])),
             "synthesis": synthesis.get(item_id, {}),
             "self_audit": audit.get(item_id, {}),
         }
