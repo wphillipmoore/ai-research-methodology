@@ -80,13 +80,34 @@
     },
     "reading_list_entry": {
       "type": "object",
-      "required": ["url", "summary", "priority"],
+      "description": "Stands alone as a rich article reference — all metadata needed to cite and describe the source is denormalized onto the entry so downstream renderers do not need to join back against the source scorecards.",
+      "required": ["url", "title", "reason", "priority"],
       "properties": {
         "url": { "type": "string" },
-        "title": { "type": "string" },
-        "summary": {
+        "title": {
           "type": "string",
-          "description": "One-sentence summary of what this source contributes."
+          "description": "Title of the source, copied from the matching scorecard."
+        },
+        "authors": {
+          "type": "string",
+          "description": "Author line (names, institutions, or publisher as appropriate) copied from the scorecard."
+        },
+        "date": {
+          "type": "string",
+          "description": "Publication or last-updated date copied from the scorecard."
+        },
+        "content_summary": {
+          "type": "string",
+          "description": "Short neutral description of what the source says, copied from the scorecard."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why this entry is on the reading list — how it advances the research question. Distinct from content_summary, which is neutral about the reader's purpose."
+        },
+        "items": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "IDs of claims or queries this source speaks to."
         },
         "priority": {
           "type": "string",

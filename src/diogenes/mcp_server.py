@@ -19,11 +19,13 @@ Usage with Claude Code:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from diogenes.config import ConfigError, load_config
+from diogenes.renderer import render_run, render_run_group
 from diogenes.search import fetch_page_extract
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
 
@@ -171,6 +173,56 @@ def dio_search_batch(queries: list[str], max_results_per_query: int = 5) -> str:
         "results": all_results,
     }
     return json.dumps(output, indent=2)
+
+
+@server.tool(
+    name="dio_render",
+    description=(
+        "Render a Diogenes JSON research output directory to a tree of "
+        "linked markdown files. Pure Python — zero LLM tokens. Reads the "
+        "JSON files written by the /research workflow (research-input.json, "
+        "hypotheses.json, reports.json, etc.) and produces clean browsable "
+        "markdown with relative links. ONLY use within /research workflows."
+    ),
+)
+def dio_render(input_dir: str, output_dir: str) -> str:
+    """Render JSON research output to linked markdown.
+
+    Args:
+        input_dir: Path to a run directory (with JSON files) or a run group
+            directory (containing run-N/ subdirectories).
+        output_dir: Path where the markdown tree should be written.
+
+    Returns:
+        JSON status report with paths and counts.
+
+    """
+    input_path = Path(input_dir)
+    output_path = Path(output_dir)
+
+    if not input_path.exists():
+        return json.dumps({"error": True, "message": f"Input directory not found: {input_dir}"})
+
+    has_run_subdirs = any(d.is_dir() and d.name.startswith("run-") for d in input_path.iterdir())
+
+    if has_run_subdirs:
+        render_run_group(input_path, output_path)
+        mode = "run-group"
+    else:
+        render_run(input_path, output_path)
+        mode = "single-run"
+
+    md_files = list(output_path.rglob("*.md"))
+    return json.dumps(
+        {
+            "mode": mode,
+            "input_dir": str(input_path),
+            "output_dir": str(output_path),
+            "markdown_files_written": len(md_files),
+            "entry_point": str(output_path / "index.md"),
+        },
+        indent=2,
+    )
 
 
 def main() -> None:

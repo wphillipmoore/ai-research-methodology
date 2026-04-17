@@ -78,6 +78,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Number of independent runs (default: 3)",
     )
 
+    # --- dio render ---
+    render_parser = subparsers.add_parser(
+        "render",
+        help="Render a JSON research output directory to linked markdown",
+    )
+    render_parser.add_argument(
+        "input_dir",
+        help="Path to a run group directory (containing run-N/ subdirs) or a single run directory",
+    )
+    render_parser.add_argument(
+        "--output",
+        required=True,
+        help="Output directory for rendered markdown tree",
+    )
+
     return parser
 
 
@@ -100,6 +115,26 @@ def main() -> int:
         print(f"dio fact-check: doc={args.document} output={args.output} runs={args.runs}")
         print("Not yet implemented.")
         return 1
+
+    if args.command == "render":
+        from pathlib import Path
+
+        from diogenes.renderer import render_run, render_run_group
+
+        input_path = Path(args.input_file if hasattr(args, "input_file") else args.input_dir)
+        output_path = Path(args.output)
+
+        # Detect: run-N directory (single run) vs run group (contains run-N subdirs)
+        has_run_subdirs = any(d.is_dir() and d.name.startswith("run-") for d in input_path.iterdir())
+        if has_run_subdirs:
+            print(f"Rendering run group: {input_path}")
+            render_run_group(input_path, output_path)
+        else:
+            print(f"Rendering single run: {input_path}")
+            render_run(input_path, output_path)
+
+        print(f"Rendered to: {output_path}")
+        return 0
 
     return 1
 
