@@ -163,7 +163,7 @@ pyjwt==2.12.1
     # via mcp
 pyparsing==3.3.2
     # via pip-requirements-parser
-pypdf==6.10.1
+pypdf==6.10.2
     # via diogenes
 pytest==9.0.3
     # via pytest-cov
