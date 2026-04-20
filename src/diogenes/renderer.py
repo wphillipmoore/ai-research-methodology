@@ -96,6 +96,110 @@ def _item_by_id(items: list[dict[str, Any]], item_id: str) -> dict[str, Any]:
     return {}
 
 
+def _pipeline_status_line(events: dict[str, Any]) -> str:
+    """Produce a one-line status indicator for the top of a rendered page."""
+    event_list = events.get("events", [])
+    if not event_list:
+        return "**Pipeline: ✅ No issues**"
+
+    has_structural_failure = any(e.get("kind") in ("subagent_failed", "missing_step_output") for e in event_list)
+
+    summary = events.get("summary", {})
+    by_kind = summary.get("by_kind", {})
+    coverage = summary.get("coverage", {})
+
+    details: list[str] = []
+    fetch_kinds = ("fetch_failed", "fetch_failed_pdf", "fetch_failed_html")
+    n_fetch = sum(by_kind.get(k, 0) for k in fetch_kinds)
+    if n_fetch:
+        details.append(f"{n_fetch} sources dropped")
+    # Sum actual packet counts from events, not event counts from summary
+    verbatim_events = [e for e in event_list if e.get("kind") == "packet_dropped_non_verbatim"]
+    n_packets_dropped = sum(e.get("count", 1) for e in verbatim_events)
+    if n_packets_dropped:
+        adherence = coverage.get("verbatim_adherence_pct")
+        if adherence is not None:
+            details.append(f"{adherence:.0f}% verbatim adherence")
+        else:
+            details.append(f"{n_packets_dropped} packets dropped")
+    n_subagent = by_kind.get("subagent_failed", 0)
+    if n_subagent:
+        details.append(f"{n_subagent} sub-agent failures")
+
+    n_total = len(event_list)
+    detail_str = f" ({', '.join(details)})" if details else ""
+
+    if has_structural_failure:
+        return f"**Pipeline: ❌ {n_total} issues{detail_str}** — [details](#pipeline-notes)"
+    return f"**Pipeline: ⚠️ {n_total} issues{detail_str}** — [details](#pipeline-notes)"
+
+
+def _pipeline_notes_section(events: dict[str, Any]) -> list[str]:
+    """Produce the detailed Pipeline Notes section for the bottom of a page."""
+    event_list = events.get("events", [])
+    if not event_list:
+        return []
+
+    lines: list[str] = [
+        "---",
+        "",
+        '<a id="pipeline-notes"></a>',
+        "",
+        "## Pipeline Notes",
+        "",
+    ]
+
+    # Summary table
+    by_kind: dict[str, list[dict[str, Any]]] = {}
+    for ev in event_list:
+        by_kind.setdefault(ev["kind"], []).append(ev)
+
+    lines.extend(["| Category | Count | Detail |", "|----------|-------|--------|"])
+    kind_labels = {
+        "fetch_failed": "Fetch failures (HTTP)",
+        "fetch_failed_pdf": "Fetch failures (PDF)",
+        "fetch_failed_html": "Fetch failures (HTML extraction)",
+        "search_error": "Search provider errors",
+        "below_threshold": "Below relevance threshold",
+        "source_capped": "Sources beyond scoring cap",
+        "subagent_failed": "Sub-agent failures",
+        "packet_dropped_non_verbatim": "Verbatim validator drops",
+        "empty_content_skipped": "Empty content skipped",
+        "missing_step_output": "Missing step output",
+        "structural_gap": "Structural gaps (reconciler)",
+    }
+    for kind, evts in by_kind.items():
+        label = kind_labels.get(kind, kind)
+        total_count = sum(e.get("count", 1) for e in evts)
+        first_detail = evts[0].get("detail", "")[:80]
+        if len(evts) > 1:
+            first_detail = f"{first_detail} (and {len(evts) - 1} more)"
+        lines.append(f"| {label} | {total_count} | {first_detail} |")
+    lines.append("")
+
+    # Per-kind detail sections
+    for kind, evts in by_kind.items():
+        label = kind_labels.get(kind, kind)
+        lines.extend([f"### {label}", ""])
+        for ev in evts:
+            url = ev.get("url", "")
+            detail = ev.get("detail", "")
+            item_id = ev.get("item_id", "")
+            count = ev.get("count")
+            parts = []
+            if url:
+                parts.append(f"`{url}`")
+            if item_id:
+                parts.append(f"[{item_id}]")
+            if count and count > 1:
+                parts.append(f"({count}x)")
+            parts.append(f"— {detail}")
+            lines.append(f"- {' '.join(parts)}")
+        lines.append("")
+
+    return lines
+
+
 def _card_heading_for(item: dict[str, Any], report: dict[str, Any]) -> str:
     """Build '{id} — {topic} — {qualifier}' heading string used across pages."""
     iid = item.get("id", "?")
@@ -257,9 +361,16 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
     synthesis = _load_json(run_dir / "synthesis.json")
     audit = _load_json(run_dir / "self-audit.json")
     reports = _load_json(run_dir / "reports.json")
+    pipeline_events = _load_json(run_dir / "pipeline-events.json")
 
-    # Extract items
+    # Extract items — handle both CLI format (claims/queries top-level keys)
+    # and plugin format (items list or dict-keyed-by-ID).
     input_items = _unwrap_items(research_input)
+    if not input_items:
+        input_items = [
+            *research_input.get("claims", []),
+            *research_input.get("queries", []),
+        ]
     report_items = _unwrap_items(reports, key="reports")
 
     # Write per-item content first (so run index can count sources etc.)
@@ -305,6 +416,7 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
             item_search_plan,
             search_results,
             scorecards,
+            pipeline_events,
         )
 
     # Write run index LAST, with full context for cards + collection analysis
@@ -318,6 +430,7 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         scorecards,
         synthesis,
         audit,
+        pipeline_events,
     )
 
 
@@ -369,6 +482,7 @@ def _write_run_index(
     scorecards: dict[str, Any],
     synthesis: dict[str, Any],
     audit: dict[str, Any],
+    pipeline_events: dict[str, Any] | None = None,
 ) -> None:
     """Write the run-level index.md.
 
@@ -381,6 +495,10 @@ def _write_run_index(
     3. Collection analysis — statistics table and self-audit summary
     """
     lines: list[str] = ["# Run Overview", ""]
+
+    # Pipeline status indicator (Option A: one-line with anchor link)
+    if pipeline_events and pipeline_events.get("events"):
+        lines.extend([_pipeline_status_line(pipeline_events), ""])
 
     # Separate items by type, in display order: axioms → claims → queries
     axioms = [i for i in input_items if i.get("type") == "axiom"]
@@ -436,6 +554,10 @@ def _write_run_index(
     if isinstance(robis, dict) and robis:
         collection_subs.append(("sub-collection-self-audit", "Collection Self-Audit"))
     toc_entries.append(("sec-collection-analysis", "Collection Analysis", collection_subs))
+
+    # Add Pipeline Notes to TOC if events exist
+    if pipeline_events and pipeline_events.get("events"):
+        toc_entries.append(("pipeline-notes", "Pipeline Notes", []))
 
     # Render TOC
     if toc_entries:
@@ -577,6 +699,10 @@ def _write_run_index(
         if robis.get("overall_risk_of_bias"):
             lines.extend([f"**Overall risk of bias:** {robis['overall_risk_of_bias']}", ""])
 
+    # Pipeline Notes section (bottom of page, detailed error/event breakdown)
+    if pipeline_events and pipeline_events.get("events"):
+        lines.extend(_pipeline_notes_section(pipeline_events))
+
     (output_dir / "index.md").write_text("\n".join(lines) + "\n")
 
 
@@ -589,6 +715,7 @@ def _write_item_index(
     search_plan: dict[str, Any],
     search_results: dict[str, Any],
     scorecards: dict[str, Any],
+    pipeline_events: dict[str, Any] | None = None,
 ) -> None:
     """Write the per-item index.md with Summary, Results table, and analytical tables.
 
@@ -613,6 +740,16 @@ def _write_item_index(
     # Page title — same as the card heading in the run index
     page_title = _card_heading_for(item, report) if report else f"{item_id} — {clarified[:80]}"
     lines: list[str] = [f"# {page_title}", ""]
+
+    # Per-item pipeline status (Tier 2 — filter events by this item's ID)
+    if pipeline_events and pipeline_events.get("events"):
+        item_events = [e for e in pipeline_events["events"] if e.get("item_id") == item_id]
+        if item_events:
+            item_events_data: dict[str, Any] = {
+                "events": item_events,
+                "summary": {"coverage": pipeline_events.get("summary", {}).get("coverage", {})},
+            }
+            lines.extend([_pipeline_status_line(item_events_data), ""])
 
     # --- Determine which sections will actually render -------------------
     # (so we can build the TOC before writing the body)

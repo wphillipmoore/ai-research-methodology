@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/pipeline-events.schema.json",
+  "title": "Pipeline Events",
+  "description": "Structured event log for a single research run. Captures errors, drops, filtering decisions, and structural gaps across the pipeline. Written by three deterministic layers: MCP-tool-side logging, Python pipeline logging, and post-run reconciliation. The LLM never writes to this file.",
+  "type": "object",
+  "required": ["run_id", "events"],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Run identifier (e.g., 'run-1')."
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pipeline_event" }
+    },
+    "summary": {
+      "$ref": "#/$defs/event_summary",
+      "description": "Aggregate statistics computed by the post-run reconciler."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "pipeline_event": {
+      "type": "object",
+      "required": ["step", "kind", "detail", "timestamp", "layer"],
+      "properties": {
+        "step": {
+          "type": "string",
+          "description": "Pipeline step that produced this event (e.g., 'step5_score_sources')."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fetch_failed",
+            "fetch_failed_pdf",
+            "fetch_failed_html",
+            "search_error",
+            "below_threshold",
+            "source_capped",
+            "subagent_failed",
+            "packet_dropped_non_verbatim",
+            "empty_content_skipped",
+            "missing_step_output",
+            "structural_gap"
+          ],
+          "description": "Event category."
+        },
+        "item_id": {
+          "type": "string",
+          "description": "Research item this event relates to (e.g., 'Q001', 'C002'). Omitted for run-level events."
+        },
+        "url": {
+          "type": "string",
+          "description": "Source URL this event relates to, when applicable."
+        },
+        "detail": {
+          "type": "string",
+          "description": "Human-readable description of what happened."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "For aggregate events (e.g., packet_dropped_non_verbatim), the count of occurrences."
+        },
+        "score": {
+          "type": "number",
+          "description": "For threshold events, the actual score that was below/above the cutoff."
+        },
+        "threshold": {
+          "type": "number",
+          "description": "For threshold events, the cutoff value applied."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the event occurred."
+        },
+        "layer": {
+          "type": "string",
+          "enum": ["mcp", "pipeline", "reconciler"],
+          "description": "Which capture layer produced this event."
+        }
+      },
+      "additionalProperties": false
+    },
+    "event_summary": {
+      "type": "object",
+      "properties": {
+        "total_events": { "type": "integer", "minimum": 0 },
+        "by_kind": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "by_step": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "sources_attempted": { "type": "integer", "minimum": 0 },
+            "sources_scored": { "type": "integer", "minimum": 0 },
+            "sources_dropped_fetch": { "type": "integer", "minimum": 0 },
+            "packets_claimed": { "type": "integer", "minimum": 0 },
+            "packets_verified": { "type": "integer", "minimum": 0 },
+            "packets_dropped": { "type": "integer", "minimum": 0 },
+            "verbatim_adherence_pct": { "type": "number" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

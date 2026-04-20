@@ -125,6 +125,9 @@ docstring-quotes = "double"
 "src/diogenes/api_client.py" = [
     "PLR0913", # call_sub_agent has keyword-only params for composability.
     "C901",    # _parse_json_response handles multiple extraction strategies.
+    "PLR0912", # _strip_to_schema recurses through schema structure.
+    "ANN401",  # _strip_to_schema and _preview accept Any — JSON data is untyped.
+    "T201",    # Schema-strip notifications printed for observability.
 ]
 "src/diogenes/renderer.py" = [
     "C901",    # Renderer functions handle multiple JSON schema variants.

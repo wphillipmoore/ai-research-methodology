@@ -25,6 +25,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from diogenes.config import ConfigError, load_config
+from diogenes.events import get_mcp_logger, reconcile_run, reset_mcp_logger
 from diogenes.renderer import render_run, render_run_group
 from diogenes.search import FetchError, fetch_page_extract
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
@@ -58,6 +59,34 @@ def _create_search_provider() -> SerperSearchProvider | BraveSearchProvider | Go
 
 
 @server.tool(
+    name="dio_init_run",
+    description=(
+        "Initialize event logging for a Diogenes research run. Call this "
+        "ONCE at the start of each research run, passing the run output "
+        "directory. All subsequent dio_fetch and dio_search calls will log "
+        "events (errors, failures) to pipeline-events.json in this directory. "
+        "MUST be called before any dio_fetch or dio_search calls in a run."
+    ),
+)
+def dio_init_run(output_dir: str, run_id: str = "run-1") -> str:
+    """Initialize event logging for a research run.
+
+    Args:
+        output_dir: Path to the run output directory.
+        run_id: Run identifier (e.g., 'run-1').
+
+    Returns:
+        JSON confirmation.
+
+    """
+    reset_mcp_logger()
+    logger = get_mcp_logger()
+    logger.run_id = run_id
+    logger.set_output_dir(Path(output_dir))
+    return json.dumps({"initialized": True, "output_dir": output_dir, "run_id": run_id})
+
+
+@server.tool(
     name="dio_search",
     description=(
         "Execute a web search for the Diogenes research methodology. "
@@ -78,7 +107,17 @@ def dio_search(query: str, max_results: int = 5) -> str:
 
     """
     provider = _create_search_provider()
-    results, total = provider.search(query, max_results=max_results)
+    try:
+        results, total = provider.search(query, max_results=max_results)
+    except Exception as exc:  # noqa: BLE001
+        logger = get_mcp_logger()
+        logger.log(
+            step="step4_execute_searches",
+            kind="search_error",
+            detail=f"Search provider '{provider.name}' error for query '{query}': {exc}",
+            layer="mcp",
+        )
+        return json.dumps({"error": True, "message": f"Search failed: {exc}", "query": query})
 
     output: dict[str, Any] = {
         "provider": provider.name,
@@ -124,6 +163,19 @@ def dio_fetch(url: str) -> str:
     try:
         content = fetch_page_extract(url)
     except FetchError as exc:
+        logger = get_mcp_logger()
+        kind = "fetch_failed"
+        if ".pdf" in url.lower():
+            kind = "fetch_failed_pdf"
+        elif "trafilatura" in str(exc).lower():
+            kind = "fetch_failed_html"
+        logger.log(
+            step="step5_score_sources",
+            kind=kind,
+            detail=str(exc),
+            url=url,
+            layer="mcp",
+        )
         return json.dumps({"error": True, "message": str(exc)})
 
     output: dict[str, Any] = {
@@ -157,7 +209,18 @@ def dio_search_batch(queries: list[str], max_results_per_query: int = 5) -> str:
     all_results: list[dict[str, Any]] = []
 
     for query in queries:
-        results, total = provider.search(query, max_results=max_results_per_query)
+        try:
+            results, total = provider.search(query, max_results=max_results_per_query)
+        except Exception as exc:  # noqa: BLE001
+            logger = get_mcp_logger()
+            logger.log(
+                step="step4_execute_searches",
+                kind="search_error",
+                detail=f"Search provider '{provider.name}' error for query '{query}': {exc}",
+                layer="mcp",
+            )
+            all_results.append({"query": query, "error": str(exc), "results": []})
+            continue
         all_results.append(
             {
                 "query": query,
@@ -180,6 +243,46 @@ def dio_search_batch(queries: list[str], max_results_per_query: int = 5) -> str:
         "results": all_results,
     }
     return json.dumps(output, indent=2)
+
+
+@server.tool(
+    name="dio_flush_events",
+    description=(
+        "Flush the accumulated pipeline event log to disk. Call this AFTER "
+        "all research steps complete and BEFORE rendering. Writes "
+        "pipeline-events.json to the run directory initialized by "
+        "dio_init_run. Returns event summary statistics."
+    ),
+)
+def dio_flush_events() -> str:
+    """Write the MCP event log to pipeline-events.json.
+
+    Returns:
+        JSON summary of events written, or an error if dio_init_run
+        was never called.
+
+    """
+    logger = get_mcp_logger()
+    if logger.output_dir is None:
+        return json.dumps(
+            {
+                "error": True,
+                "message": "No output directory set — call dio_init_run first.",
+            }
+        )
+    # Run reconciler before flushing — detects gaps + computes coverage
+    reconcile_run(logger.output_dir, logger)
+
+    path = logger.write()
+    summary = logger.summary()
+    return json.dumps(
+        {
+            "written_to": str(path),
+            "total_events": summary["total_events"],
+            "by_kind": summary.get("by_kind", {}),
+            "coverage": summary.get("coverage", {}),
+        }
+    )
 
 
 @server.tool(

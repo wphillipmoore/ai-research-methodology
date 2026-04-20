@@ -10,6 +10,7 @@ from typing import Any
 
 from diogenes.api_client import APIClient, SubAgentError
 from diogenes.config import load_config
+from diogenes.events import EventLogger, reconcile_run
 from diogenes.pipeline import (
     step2_generate_hypotheses,
     step3_design_searches,
@@ -231,6 +232,12 @@ def execute(input_file: str, output: str, runs: int) -> int:
         print()
         print(f"=== {run_dir.name} ===")
 
+        # Copy research-input.json into the run dir so the renderer can
+        # find it when rendering a single run (not just via run-group).
+        write_step_output(run_dir, "research-input.json", research_input)
+
+        event_logger = EventLogger(run_id=run_dir.name, output_dir=run_dir)
+
         # Step 2: Generate competing hypotheses
         print("Step 2: Generating competing hypotheses...")
         try:
@@ -261,6 +268,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
                 search_plans,
                 client,
                 search_provider,
+                event_logger,
             )
         except SubAgentError as e:
             print(f"ERROR: {e}")
@@ -272,7 +280,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
         # Step 5: Score each source
         print("Step 5: Scoring sources...")
         try:
-            scorecards = step5_score_sources(research_input, search_results, client)
+            scorecards = step5_score_sources(research_input, search_results, client, event_logger)
         except SubAgentError as e:
             print(f"ERROR: {e}")
             return 1
@@ -288,6 +296,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
                 hypotheses,
                 scorecards,
                 client,
+                event_logger,
             )
         except SubAgentError as e:
             print(f"ERROR: {e}")
@@ -365,6 +374,20 @@ def execute(input_file: str, output: str, runs: int) -> int:
         }
         archive_path = step11_archive(run_dir, all_outputs)
         print(f"  Wrote: {archive_path}")
+
+        # Reconcile: detect structural gaps + compute coverage stats
+        coverage = reconcile_run(run_dir, event_logger)
+        adherence = coverage.get("verbatim_adherence_pct")
+        if adherence is not None:
+            print(
+                f"  Coverage: {coverage['sources_scored']}/{coverage['sources_attempted']} sources, {adherence}% verbatim adherence"
+            )
+
+        # Flush pipeline events log (includes reconciler events + coverage)
+        events_path = event_logger.write()
+        n_events = len(event_logger.events)
+        if n_events:
+            print(f"  Wrote: {events_path} ({n_events} events)")
 
     # Write usage report
     usage_data = client.usage.to_dict()
