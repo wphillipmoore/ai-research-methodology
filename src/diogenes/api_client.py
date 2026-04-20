@@ -312,6 +312,11 @@ class APIClient:
 
         self.usage = UsageAccumulator()
 
+    @property
+    def model(self) -> str:
+        """The model ID configured for this client."""
+        return self._model
+
     def _compose_system_prompt(
         self,
         agent_prompt: str,
