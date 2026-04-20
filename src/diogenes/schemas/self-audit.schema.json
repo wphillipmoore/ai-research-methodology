@@ -4,29 +4,53 @@
   "title": "Self-Audit, Source-Back Verification, and Reading List",
   "description": "Combined output of Steps 9, 9b, and 9c for a single claim or query.",
   "type": "object",
-  "required": ["id", "process_audit", "source_verification", "reading_list"],
+  "required": [
+    "id",
+    "process_audit",
+    "source_verification",
+    "reading_list"
+  ],
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[CQ][0-9]+$"
     },
-    "process_audit": { "$ref": "#/$defs/process_audit" },
-    "source_verification": { "$ref": "#/$defs/source_verification" },
+    "process_audit": {
+      "$ref": "#/$defs/process_audit"
+    },
+    "source_verification": {
+      "$ref": "#/$defs/source_verification"
+    },
     "reading_list": {
       "type": "array",
-      "items": { "$ref": "#/$defs/reading_list_entry" }
+      "items": {
+        "$ref": "#/$defs/reading_list_entry"
+      }
     }
   },
   "additionalProperties": false,
   "$defs": {
     "process_audit": {
       "type": "object",
-      "required": ["eligibility_criteria", "search_comprehensiveness", "evaluation_consistency", "synthesis_fairness"],
+      "required": [
+        "eligibility_criteria",
+        "search_comprehensiveness",
+        "evaluation_consistency",
+        "synthesis_fairness"
+      ],
       "properties": {
-        "eligibility_criteria": { "$ref": "#/$defs/audit_domain" },
-        "search_comprehensiveness": { "$ref": "#/$defs/audit_domain" },
-        "evaluation_consistency": { "$ref": "#/$defs/audit_domain" },
-        "synthesis_fairness": { "$ref": "#/$defs/audit_domain" },
+        "eligibility_criteria": {
+          "$ref": "#/$defs/audit_domain"
+        },
+        "search_comprehensiveness": {
+          "$ref": "#/$defs/audit_domain"
+        },
+        "evaluation_consistency": {
+          "$ref": "#/$defs/audit_domain"
+        },
+        "synthesis_fairness": {
+          "$ref": "#/$defs/audit_domain"
+        },
         "researcher_bias_impact": {
           "type": "string",
           "description": "Assessment of whether researcher biases influenced the process."
@@ -36,13 +60,22 @@
     },
     "audit_domain": {
       "type": "object",
-      "required": ["rating", "rationale"],
+      "required": [
+        "rating",
+        "rationale"
+      ],
       "properties": {
         "rating": {
           "type": "string",
-          "enum": ["Pass", "Concern", "Fail"]
+          "enum": [
+            "Pass",
+            "Concern",
+            "Fail"
+          ]
         },
-        "rationale": { "type": "string" },
+        "rationale": {
+          "type": "string"
+        },
         "impact": {
           "type": "string",
           "description": "Impact on conclusions if Concern or Fail."
@@ -52,24 +85,40 @@
     },
     "source_verification": {
       "type": "object",
-      "required": ["sources_verified", "discrepancies"],
+      "required": [
+        "sources_verified",
+        "discrepancies"
+      ],
       "properties": {
         "sources_verified": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "discrepancies": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["source_url", "claim_in_assessment", "actual_source_says", "severity"],
+            "required": [
+              "source_url",
+              "claim_in_assessment",
+              "actual_source_says",
+              "severity"
+            ],
             "properties": {
-              "source_url": { "type": "string" },
-              "claim_in_assessment": { "type": "string" },
-              "actual_source_says": { "type": "string" },
+              "source_url": {
+                "type": "string"
+              },
+              "claim_in_assessment": {
+                "type": "string"
+              },
+              "actual_source_says": {
+                "type": "string"
+              },
               "severity": {
                 "type": "string",
-                "enum": ["minor", "major"]
+                "enum": [
+                  "minor",
+                  "major"
+                ]
               }
             },
             "additionalProperties": false
@@ -80,10 +129,17 @@
     },
     "reading_list_entry": {
       "type": "object",
-      "description": "Stands alone as a rich article reference — all metadata needed to cite and describe the source is denormalized onto the entry so downstream renderers do not need to join back against the source scorecards.",
-      "required": ["url", "title", "reason", "priority"],
+      "description": "Stands alone as a rich article reference \u2014 all metadata needed to cite and describe the source is denormalized onto the entry so downstream renderers do not need to join back against the source scorecards.",
+      "required": [
+        "url",
+        "title",
+        "reason",
+        "priority"
+      ],
       "properties": {
-        "url": { "type": "string" },
+        "url": {
+          "type": "string"
+        },
         "title": {
           "type": "string",
           "description": "Title of the source, copied from the matching scorecard."
@@ -102,20 +158,29 @@
         },
         "reason": {
           "type": "string",
-          "description": "Why this entry is on the reading list — how it advances the research question. Distinct from content_summary, which is neutral about the reader's purpose."
+          "description": "Why this entry is on the reading list \u2014 how it advances the research question. Distinct from content_summary, which is neutral about the reader's purpose."
         },
         "items": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "IDs of claims or queries this source speaks to."
         },
         "priority": {
           "type": "string",
-          "enum": ["must read", "should read", "reference"]
+          "enum": [
+            "must read",
+            "should read",
+            "reference"
+          ]
         },
         "origin": {
           "type": "string",
-          "enum": ["search-discovered", "researcher-provided"]
+          "enum": [
+            "search-discovered",
+            "researcher-provided"
+          ]
         }
       },
       "additionalProperties": false

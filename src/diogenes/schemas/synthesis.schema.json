@@ -4,32 +4,59 @@
   "title": "Evidence Synthesis, Assessment, and Gaps",
   "description": "Combined output of Steps 6 (synthesis), 7 (assessment), and 8 (gaps) for a single claim or query.",
   "type": "object",
-  "required": ["id", "synthesis", "assessment", "gaps"],
+  "required": [
+    "id",
+    "synthesis",
+    "assessment",
+    "gaps"
+  ],
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[CQ][0-9]+$"
     },
-    "synthesis": { "$ref": "#/$defs/synthesis" },
-    "assessment": { "$ref": "#/$defs/assessment" },
-    "gaps": { "$ref": "#/$defs/gaps" }
+    "synthesis": {
+      "$ref": "#/$defs/synthesis"
+    },
+    "assessment": {
+      "$ref": "#/$defs/assessment"
+    },
+    "gaps": {
+      "$ref": "#/$defs/gaps"
+    }
   },
   "additionalProperties": false,
   "$defs": {
     "synthesis": {
       "type": "object",
-      "required": ["evidence_quality", "source_agreement", "independence", "outliers"],
+      "required": [
+        "evidence_quality",
+        "source_agreement",
+        "independence",
+        "outliers"
+      ],
       "properties": {
-        "evidence_quality": { "$ref": "#/$defs/rated_field" },
-        "source_agreement": { "$ref": "#/$defs/rated_field" },
+        "evidence_quality": {
+          "$ref": "#/$defs/rated_field"
+        },
+        "source_agreement": {
+          "$ref": "#/$defs/rated_field"
+        },
         "independence": {
           "type": "object",
-          "required": ["assessment", "shared_origins"],
+          "required": [
+            "assessment",
+            "shared_origins"
+          ],
           "properties": {
-            "assessment": { "type": "string" },
+            "assessment": {
+              "type": "string"
+            },
             "shared_origins": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             }
           },
           "additionalProperties": false
@@ -38,11 +65,21 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["source_url", "divergence", "explanation"],
+            "required": [
+              "source_url",
+              "divergence",
+              "explanation"
+            ],
             "properties": {
-              "source_url": { "type": "string" },
-              "divergence": { "type": "string" },
-              "explanation": { "type": "string" }
+              "source_url": {
+                "type": "string"
+              },
+              "divergence": {
+                "type": "string"
+              },
+              "explanation": {
+                "type": "string"
+              }
             },
             "additionalProperties": false
           }
@@ -51,11 +88,24 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["theme", "sources", "finding"],
+            "required": [
+              "theme",
+              "sources",
+              "finding"
+            ],
             "properties": {
-              "theme": { "type": "string" },
-              "sources": { "type": "array", "items": { "type": "string" } },
-              "finding": { "type": "string" }
+              "theme": {
+                "type": "string"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "finding": {
+                "type": "string"
+              }
             },
             "additionalProperties": false
           },
@@ -74,22 +124,40 @@
     },
     "assessment": {
       "type": "object",
-      "required": ["approach"],
+      "required": [
+        "approach"
+      ],
       "properties": {
         "approach": {
           "type": "string",
-          "enum": ["probability", "confidence"]
+          "enum": [
+            "probability",
+            "confidence"
+          ]
         },
         "hypothesis_ratings": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["hypothesis_id", "probability_term", "probability_range", "reasoning"],
+            "required": [
+              "hypothesis_id",
+              "probability_term",
+              "probability_range",
+              "reasoning"
+            ],
             "properties": {
-              "hypothesis_id": { "type": "string" },
-              "probability_term": { "type": "string" },
-              "probability_range": { "type": "string" },
-              "reasoning": { "type": "string" }
+              "hypothesis_id": {
+                "type": "string"
+              },
+              "probability_term": {
+                "type": "string"
+              },
+              "probability_range": {
+                "type": "string"
+              },
+              "reasoning": {
+                "type": "string"
+              }
             },
             "additionalProperties": false
           },
@@ -105,7 +173,11 @@
         },
         "confidence": {
           "type": "string",
-          "enum": ["High", "Medium", "Low"],
+          "enum": [
+            "High",
+            "Medium",
+            "Low"
+          ],
           "description": "For open-ended queries: confidence level."
         },
         "reasoning_chain": {
@@ -114,7 +186,9 @@
         },
         "caveats": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Conditions, qualifications, or limitations."
         }
       },
@@ -122,21 +196,31 @@
     },
     "gaps": {
       "type": "object",
-      "required": ["expected_not_found", "unanswered_questions", "impact_on_confidence"],
+      "required": [
+        "expected_not_found",
+        "unanswered_questions",
+        "impact_on_confidence"
+      ],
       "properties": {
         "expected_not_found": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Evidence expected but not found."
         },
         "no_result_searches": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Searches that produced no relevant results."
         },
         "unanswered_questions": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Questions that remain unanswered."
         },
         "impact_on_confidence": {
@@ -148,13 +232,24 @@
     },
     "rated_field": {
       "type": "object",
-      "required": ["rating", "rationale"],
+      "required": [
+        "rating",
+        "rationale"
+      ],
       "properties": {
         "rating": {
           "type": "string",
-          "enum": ["Robust", "Medium", "Limited", "High", "Low"]
+          "enum": [
+            "Robust",
+            "Medium",
+            "Limited",
+            "High",
+            "Low"
+          ]
         },
-        "rationale": { "type": "string" }
+        "rationale": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     }

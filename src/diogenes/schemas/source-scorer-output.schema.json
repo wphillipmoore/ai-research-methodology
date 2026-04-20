@@ -2,14 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/source-scorer-output.schema.json",
   "title": "Source Scorer Output",
-  "description": "The exact JSON the source-scorer sub-agent is permitted to emit. Intentionally narrower than source-scorecards.schema.json (the persisted format): the scorer must not echo back url metadata (title, snippet, content_extract, authors, date) — the Python coordinator re-attaches these from its own copy of the input, saving output tokens and removing the temptation to transcribe long content incorrectly. Downstream sub-agents read the persisted scorecard (which includes the Python-attached fields), not this output schema.",
+  "description": "The exact JSON the source-scorer sub-agent is permitted to emit. Intentionally narrower than source-scorecards.schema.json (the persisted format): the scorer must not echo back url metadata (title, snippet, content_extract, authors, date) \u2014 the Python coordinator re-attaches these from its own copy of the input, saving output tokens and removing the temptation to transcribe long content incorrectly. Downstream sub-agents read the persisted scorecard (which includes the Python-attached fields), not this output schema.",
   "type": "object",
-  "required": ["scorecards"],
+  "required": [
+    "scorecards"
+  ],
   "properties": {
     "scorecards": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/scorer_emission" }
+      "items": {
+        "$ref": "#/$defs/scorer_emission"
+      }
     }
   },
   "additionalProperties": false,
@@ -17,7 +21,13 @@
     "scorer_emission": {
       "type": "object",
       "description": "Exactly what the source-scorer emits for one source: a URL (so the coordinator can match it back to the input) plus the three rating components. Everything else is re-attached by the coordinator from its own copy of the scorer input.",
-      "required": ["url", "reliability", "relevance", "bias_assessment", "overall_quality"],
+      "required": [
+        "url",
+        "reliability",
+        "relevance",
+        "bias_assessment",
+        "overall_quality"
+      ],
       "properties": {
         "url": {
           "type": "string",
@@ -25,65 +35,115 @@
         },
         "content_summary": {
           "type": "string",
-          "description": "One-to-three-sentence neutral description of what the source actually says. Not a judgment about reliability or relevance — just what the content communicates. Downstream sub-agents and human readers use this as the canonical short description."
+          "description": "One-to-three-sentence neutral description of what the source actually says. Not a judgment about reliability or relevance \u2014 just what the content communicates. Downstream sub-agents and human readers use this as the canonical short description."
         },
         "authors": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Author line (names, institutions, or publisher) discoverable from the content. Omit or null if not present."
         },
         "date": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Publication or last-updated date discoverable from the content. Omit or null if not present."
         },
-        "reliability": { "$ref": "#/$defs/rating_with_rationale" },
-        "relevance": { "$ref": "#/$defs/rating_with_rationale" },
-        "bias_assessment": { "$ref": "#/$defs/bias_assessment" },
+        "reliability": {
+          "$ref": "#/$defs/rating_with_rationale"
+        },
+        "relevance": {
+          "$ref": "#/$defs/rating_with_rationale"
+        },
+        "bias_assessment": {
+          "$ref": "#/$defs/bias_assessment"
+        },
         "overall_quality": {
           "type": "string",
-          "enum": ["strong", "moderate", "weak"]
+          "enum": [
+            "strong",
+            "moderate",
+            "weak"
+          ]
         }
       },
       "additionalProperties": false
     },
     "rating_with_rationale": {
       "type": "object",
-      "required": ["rating", "rationale"],
+      "required": [
+        "rating",
+        "rationale"
+      ],
       "properties": {
         "rating": {
           "type": "string",
-          "enum": ["High", "Medium", "Low"]
+          "enum": [
+            "High",
+            "Medium",
+            "Low"
+          ]
         },
         "rationale": {
           "type": "string",
-          "description": "Brief explanation of the rating — one sentence."
+          "description": "Brief explanation of the rating \u2014 one sentence."
         }
       },
       "additionalProperties": false
     },
     "bias_assessment": {
       "type": "object",
-      "required": ["missing_data", "measurement", "selective_reporting", "randomization", "protocol_deviation", "conflict_of_interest"],
+      "required": [
+        "missing_data",
+        "measurement",
+        "selective_reporting",
+        "randomization",
+        "protocol_deviation",
+        "conflict_of_interest"
+      ],
       "properties": {
-        "missing_data": { "$ref": "#/$defs/bias_domain" },
-        "measurement": { "$ref": "#/$defs/bias_domain" },
-        "selective_reporting": { "$ref": "#/$defs/bias_domain" },
-        "randomization": { "$ref": "#/$defs/bias_domain" },
-        "protocol_deviation": { "$ref": "#/$defs/bias_domain" },
-        "conflict_of_interest": { "$ref": "#/$defs/bias_domain" }
+        "missing_data": {
+          "$ref": "#/$defs/bias_domain"
+        },
+        "measurement": {
+          "$ref": "#/$defs/bias_domain"
+        },
+        "selective_reporting": {
+          "$ref": "#/$defs/bias_domain"
+        },
+        "randomization": {
+          "$ref": "#/$defs/bias_domain"
+        },
+        "protocol_deviation": {
+          "$ref": "#/$defs/bias_domain"
+        },
+        "conflict_of_interest": {
+          "$ref": "#/$defs/bias_domain"
+        }
       },
       "additionalProperties": false
     },
     "bias_domain": {
       "type": "object",
-      "required": ["rating", "rationale"],
+      "required": [
+        "rating",
+        "rationale"
+      ],
       "properties": {
         "rating": {
           "type": "string",
-          "enum": ["Low risk", "Some concerns", "High risk", "N/A"]
+          "enum": [
+            "Low risk",
+            "Some concerns",
+            "High risk",
+            "N/A"
+          ]
         },
         "rationale": {
           "type": "string",
-          "description": "Brief explanation — one sentence."
+          "description": "Brief explanation \u2014 one sentence."
         }
       },
       "additionalProperties": false

@@ -2,75 +2,54 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/search-plan.schema.json",
   "title": "Search Plan",
-  "description": "Output of the search-designer sub-agent for a single claim or query. Contains planned searches with terms, sources, and expected outcomes.",
+  "description": "Output of the search-designer sub-agent for a single claim or query. Contains planned searches with terms, sources, and expected outcomes. When approach=hypotheses, searches target specific hypotheses. When approach=open-ended, searches target themes.",
   "type": "object",
-  "required": ["id", "approach", "searches"],
-  "oneOf": [
-    { "$ref": "#/$defs/hypothesis_plan" },
-    { "$ref": "#/$defs/open_ended_plan" }
+  "required": [
+    "id",
+    "approach",
+    "searches",
+    "vocabulary_coverage"
   ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[CQ][0-9]+$",
+      "description": "The claim or query ID."
+    },
+    "approach": {
+      "type": "string",
+      "enum": [
+        "hypotheses",
+        "open-ended"
+      ]
+    },
+    "searches": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/search_entry"
+      }
+    },
+    "vocabulary_coverage": {
+      "$ref": "#/$defs/vocabulary_coverage"
+    },
+    "meaningful_absences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/meaningful_absence"
+      },
+      "description": "What absence of evidence would be significant."
+    }
+  },
+  "additionalProperties": false,
   "$defs": {
-    "hypothesis_plan": {
+    "search_entry": {
       "type": "object",
-      "required": ["id", "approach", "searches", "vocabulary_coverage"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[CQ][0-9]+$",
-          "description": "The claim or query ID."
-        },
-        "approach": {
-          "type": "string",
-          "const": "hypotheses"
-        },
-        "searches": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/hypothesis_search" }
-        },
-        "vocabulary_coverage": {
-          "$ref": "#/$defs/vocabulary_coverage"
-        },
-        "meaningful_absences": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/meaningful_absence" },
-          "description": "What absence of evidence would be significant."
-        }
-      },
-      "additionalProperties": false
-    },
-    "open_ended_plan": {
-      "type": "object",
-      "required": ["id", "approach", "searches", "vocabulary_coverage"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^Q[0-9]+$",
-          "description": "The query ID."
-        },
-        "approach": {
-          "type": "string",
-          "const": "open-ended"
-        },
-        "searches": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/theme_search" }
-        },
-        "vocabulary_coverage": {
-          "$ref": "#/$defs/vocabulary_coverage"
-        },
-        "meaningful_absences": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/meaningful_absence" },
-          "description": "What absence of evidence would be significant."
-        }
-      },
-      "additionalProperties": false
-    },
-    "hypothesis_search": {
-      "type": "object",
-      "required": ["id", "target_hypothesis", "intent", "terms", "sources", "useful_result", "absence_meaning"],
+      "required": [
+        "id",
+        "terms",
+        "sources"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -79,23 +58,39 @@
         },
         "target_hypothesis": {
           "type": "string",
-          "description": "Which hypothesis this search targets (e.g., H1, H2)."
+          "description": "Which hypothesis this search targets (e.g., H1, H2). Present when approach=hypotheses."
+        },
+        "target_theme": {
+          "type": "string",
+          "description": "Which search theme this addresses (e.g., T1, T2). Present when approach=open-ended."
         },
         "intent": {
           "type": "string",
-          "enum": ["support", "eliminate", "discriminate"],
-          "description": "Whether seeking supporting, eliminating, or discriminating evidence."
+          "enum": [
+            "support",
+            "eliminate",
+            "discriminate"
+          ],
+          "description": "Whether seeking supporting, eliminating, or discriminating evidence. Present when approach=hypotheses."
+        },
+        "perspective": {
+          "type": "string",
+          "description": "Which perspective this search surfaces. Present when approach=open-ended."
         },
         "terms": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Search terms to use, including vocabulary variants."
         },
         "sources": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Sources or databases to search."
         },
         "useful_result": {
@@ -109,55 +104,32 @@
       },
       "additionalProperties": false
     },
-    "theme_search": {
-      "type": "object",
-      "required": ["id", "target_theme", "perspective", "terms", "sources"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^S[0-9]+$",
-          "description": "Sequential search ID (S01, S02, ...)."
-        },
-        "target_theme": {
-          "type": "string",
-          "description": "Which search theme this addresses (e.g., T1, T2)."
-        },
-        "perspective": {
-          "type": "string",
-          "description": "Which perspective this search is intended to surface."
-        },
-        "terms": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" },
-          "description": "Search terms to use, including vocabulary variants."
-        },
-        "sources": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" },
-          "description": "Sources or databases to search."
-        }
-      },
-      "additionalProperties": false
-    },
     "vocabulary_coverage": {
       "type": "object",
-      "required": ["terms_used", "domains_covered"],
+      "required": [
+        "terms_used",
+        "domains_covered"
+      ],
       "properties": {
         "terms_used": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "All vocabulary terms used across searches."
         },
         "domains_covered": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Domains covered by vocabulary variant searches."
         },
         "gaps": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Vocabulary terms from Step 1 not used and why."
         }
       },
@@ -165,7 +137,10 @@
     },
     "meaningful_absence": {
       "type": "object",
-      "required": ["description", "implication"],
+      "required": [
+        "description",
+        "implication"
+      ],
       "properties": {
         "description": {
           "type": "string",

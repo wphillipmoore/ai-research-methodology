@@ -10,7 +10,7 @@ from typing import Any
 import anthropic
 import jsonschema
 
-from diogenes.config import ConfigError, DioConfig, load_config
+from diogenes.config import DEFAULT_MODEL, ConfigError, DioConfig, load_config
 
 
 @dataclass
@@ -32,6 +32,9 @@ class CallUsage:
 # These are estimates for cost tracking — actual billing may vary.
 _MODEL_COSTS: dict[str, tuple[float, float]] = {
     # Values are (input_cost_per_1M_tokens, output_cost_per_1M_tokens)
+    # Sonnet 4.6 (current default)
+    "claude-sonnet-4-6": (3.00, 15.00),
+    # Legacy models (for historical cost comparison)
     "claude-sonnet-4-20250514": (3.00, 15.00),
     "claude-haiku-4-5-20251001": (0.80, 4.00),
     "claude-opus-4-20250514": (15.00, 75.00),
@@ -265,7 +268,7 @@ class APIClient:
     which step they implement.
     """
 
-    DEFAULT_MODEL = "claude-sonnet-4-20250514"
+    DEFAULT_MODEL = DEFAULT_MODEL  # From config.py — single source of truth
     DEFAULT_MAX_TOKENS = 8192
     _PROMPTS_DIR = Path(__file__).parent / "prompts"
     _COMMON_GUIDELINES_PATH = _PROMPTS_DIR / "common-guidelines.md"
@@ -428,6 +431,22 @@ class APIClient:
             "system": system_blocks,
             "messages": [{"role": "user", "content": user_message}],
         }
+
+        # Constrained decoding: enforce JSON schema at token-generation level.
+        # The schema is compiled into a context-free grammar that makes it
+        # impossible for the model to produce non-schema tokens. Eliminates
+        # the entire class of "LLM invented a field" problems.
+        #
+        # All schemas in this project MUST be compatible with Anthropic's
+        # grammar compiler. If a schema uses unsupported features ($defs
+        # with anyOf, etc.), fix the schema — do not add fallback logic.
+        if schema_dict is not None:
+            api_kwargs["output_config"] = {
+                "format": {
+                    "type": "json_schema",
+                    "schema": schema_dict,
+                }
+            }
 
         if enable_web_search:
             api_kwargs["tools"] = [
