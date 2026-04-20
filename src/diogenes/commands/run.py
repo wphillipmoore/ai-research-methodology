@@ -236,7 +236,12 @@ def execute(input_file: str, output: str, runs: int) -> int:
         # find it when rendering a single run (not just via run-group).
         write_step_output(run_dir, "research-input.json", research_input)
 
-        event_logger = EventLogger(run_id=run_dir.name, output_dir=run_dir)
+        event_logger = EventLogger(
+            run_id=run_dir.name,
+            output_dir=run_dir,
+            model=client.model,
+            execution_path="cli",
+        )
 
         # Step 2: Generate competing hypotheses
         print("Step 2: Generating competing hypotheses...")
@@ -363,6 +368,11 @@ def execute(input_file: str, output: str, runs: int) -> int:
         # Step 11: Archive for temporal revisitation
         print("Step 11: Archiving...")
         all_outputs = {
+            "run_metadata": {
+                "model": client.model,
+                "execution_path": "cli",
+                "run_id": run_dir.name,
+            },
             "research_input": research_input,
             "hypotheses": hypotheses,
             "search_plans": search_plans,

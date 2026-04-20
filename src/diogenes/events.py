@@ -24,9 +24,17 @@ from typing import Any
 class EventLogger:
     """Append-only structured event log for a single research run."""
 
-    def __init__(self, run_id: str, output_dir: Path | None = None) -> None:  # noqa: D107
+    def __init__(  # noqa: D107
+        self,
+        run_id: str,
+        output_dir: Path | None = None,
+        model: str | None = None,
+        execution_path: str = "cli",
+    ) -> None:
         self.run_id = run_id
         self.output_dir = output_dir
+        self.model = model
+        self.execution_path = execution_path
         self._events: list[dict[str, Any]] = []
         self._coverage: dict[str, Any] = {}
 
@@ -86,11 +94,16 @@ class EventLogger:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the full event log for JSON persistence."""
-        return {
+        result: dict[str, Any] = {
             "run_id": self.run_id,
+            "run_metadata": {
+                "model": self.model,
+                "execution_path": self.execution_path,
+            },
             "events": self._events,
             "summary": self.summary(),
         }
+        return result
 
     def write(self, path: Path | None = None) -> Path:
         """Write the event log to disk.

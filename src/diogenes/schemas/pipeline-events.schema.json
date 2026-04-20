@@ -10,6 +10,22 @@
       "type": "string",
       "description": "Run identifier (e.g., 'run-1')."
     },
+    "run_metadata": {
+      "type": "object",
+      "description": "Identifies the model and execution path that produced this run. Critical for longitudinal comparisons across model versions.",
+      "properties": {
+        "model": {
+          "type": ["string", "null"],
+          "description": "Model ID used for sub-agent calls (e.g., 'claude-sonnet-4-20250514'). Null if unknown (e.g., skill path before #110 state machine)."
+        },
+        "execution_path": {
+          "type": "string",
+          "enum": ["cli", "skill"],
+          "description": "Whether this run was produced by the Python CLI or the Claude Code skill."
+        }
+      },
+      "additionalProperties": false
+    },
     "events": {
       "type": "array",
       "items": { "$ref": "#/$defs/pipeline_event" }
