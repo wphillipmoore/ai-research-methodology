@@ -382,6 +382,22 @@ supports / refutes / nuances / context relationship. Write
 scoring and synthesis — synthesis downstream should cite packets rather
 than paraphrase from memory.
 
+**Step 5f.1: Validate evidence packets** — If `dio_validate_packets` is
+in your available tools list, call it IMMEDIATELY after writing
+`evidence-packets.json`:
+
+```
+dio_validate_packets(run_dir="path/to/run-1")
+```
+
+This runs the Python deterministic verbatim verifier against every
+packet. It checks each claimed excerpt against the source's content
+(using the server-side fetch cache from `dio_fetch` — even if you
+dropped `content_extract` from the scorecards, the cache has it).
+Non-verbatim packets are removed and `verbatim_stats` is rewritten
+with real numbers. Do NOT populate `verbatim_stats` yourself — the
+validator overwrites whatever you wrote with deterministic results.
+
 **Step 5g: Synthesize, assess, gaps** — Read
 `skills/research/prompts/compiled/evidence-synthesizer.md`. For each item, pass the
 scorecards, hypotheses, and evidence packets from Step 5f. Synthesize the
