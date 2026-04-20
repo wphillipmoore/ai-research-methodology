@@ -171,6 +171,73 @@ def _parse_json_response(text_content: str, agent_name: str) -> dict[str, Any]:
     raise SubAgentError(agent_name, msg)
 
 
+def _strip_to_schema(
+    data: Any,
+    schema: dict[str, Any],
+    path: str = "",
+    defs: dict[str, Any] | None = None,
+) -> list[str]:
+    """Recursively remove fields not declared in the schema's properties.
+
+    Returns a list of human-readable descriptions of stripped fields.
+    Modifies ``data`` in place.
+    """
+    if defs is None:
+        defs = schema.get("$defs", {})
+
+    stripped: list[str] = []
+
+    # Resolve $ref
+    if "$ref" in schema:
+        ref_name = schema["$ref"].split("/")[-1]
+        schema = defs.get(ref_name, schema)
+
+    if not isinstance(data, dict):
+        return stripped
+
+    properties = schema.get("properties", {})
+    if not properties:
+        return stripped
+
+    extra_keys = [k for k in data if k not in properties]
+    for key in extra_keys:
+        location = f"{path}.{key}" if path else key
+        stripped.append(f"{location}={_preview(data[key])}")
+        del data[key]
+
+    # Recurse into declared properties
+    for key, prop_schema in properties.items():
+        if key not in data:
+            continue
+        resolved = prop_schema
+        if "$ref" in resolved:
+            ref_name = resolved["$ref"].split("/")[-1]
+            resolved = defs.get(ref_name, resolved)
+        child_path = f"{path}.{key}" if path else key
+
+        if isinstance(data[key], dict):
+            stripped.extend(_strip_to_schema(data[key], resolved, child_path, defs))
+        elif isinstance(data[key], list):
+            items_schema = resolved.get("items", {})
+            if "$ref" in items_schema:
+                ref_name = items_schema["$ref"].split("/")[-1]
+                items_schema = defs.get(ref_name, items_schema)
+            for i, item in enumerate(data[key]):
+                if isinstance(item, dict):
+                    stripped.extend(_strip_to_schema(item, items_schema, f"{child_path}[{i}]", defs))
+
+    return stripped
+
+
+_PREVIEW_MAX = 80
+
+
+def _preview(value: Any) -> str:
+    """Short preview of a stripped value for logging."""
+    s = str(value)
+    return s[:_PREVIEW_MAX] + "..." if len(s) > _PREVIEW_MAX else s
+
+
 def _validate_against_schema(
     result: dict[str, Any],
     schema_dict: dict[str, Any],
@@ -401,6 +468,15 @@ class APIClient:
         result = _parse_json_response(text_content, prompt_file.stem)
 
         if schema_dict is not None:
+            stripped = _strip_to_schema(result, schema_dict)
+            if stripped:
+                max_detail = 5
+                print(
+                    f"    schema-strip ({prompt_file.stem}): "
+                    f"removed {len(stripped)} non-schema field(s): "
+                    + "; ".join(stripped[:max_detail])
+                    + (" ..." if len(stripped) > max_detail else "")
+                )
             _validate_against_schema(result, schema_dict, prompt_file.stem)
 
         return result

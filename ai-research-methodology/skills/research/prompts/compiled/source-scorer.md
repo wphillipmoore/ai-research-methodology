@@ -436,12 +436,12 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
           "description": "One-to-three-sentence neutral description of what the source actually says. Not a judgment about reliability or relevance — just what the content communicates. Downstream sub-agents and human readers use this as the canonical short description."
         },
         "authors": {
-          "type": "string",
-          "description": "Author line (names, institutions, or publisher) discoverable from the content. Omit if not present."
+          "type": ["string", "null"],
+          "description": "Author line (names, institutions, or publisher) discoverable from the content. Omit or null if not present."
         },
         "date": {
-          "type": "string",
-          "description": "Publication or last-updated date discoverable from the content. Omit if not present."
+          "type": ["string", "null"],
+          "description": "Publication or last-updated date discoverable from the content. Omit or null if not present."
         },
         "reliability": { "$ref": "#/$defs/rating_with_rationale" },
         "relevance": { "$ref": "#/$defs/rating_with_rationale" },

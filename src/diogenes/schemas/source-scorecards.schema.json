@@ -40,11 +40,11 @@
           "description": "Neutral short description of what the source says. Denormalized onto the scorecard so downstream artifacts (reading list, evidence packets) can carry it forward without joining back."
         },
         "authors": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Author line (names, institutions, or publisher) — denormalized for downstream use."
         },
         "date": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Publication or last-updated date — denormalized for downstream use."
         },
         "items": {

@@ -326,6 +326,24 @@ larger n, the agent may batch runs to manage resources.
 ONLY if `dio_search` and `dio_fetch` are NOT in your available tools
 list (MCP server not configured), fall back to the built-in web search.
 
+**MANDATORY — Event logging**: If `dio_init_run` is in your available
+tools list, call it ONCE at the start of each run, passing the run
+directory path and run ID:
+
+```
+dio_init_run(output_dir="path/to/run-1", run_id="run-1")
+```
+
+This initializes the pipeline event log. All subsequent `dio_fetch` and
+`dio_search` calls will automatically record errors (fetch failures,
+search errors) to `pipeline-events.json` in the run directory. You do
+NOT need to log these errors yourself — the Python MCP layer captures
+them transparently.
+
+After the last research step (archive), call `dio_flush_events()` to
+write the accumulated event log to disk. This MUST happen before
+`dio_render` so the renderer can include the Pipeline Notes section.
+
 Each subagent executes these steps, writing JSON output files to its
 `run-{N}/` directory:
 

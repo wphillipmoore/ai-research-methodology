@@ -18,6 +18,7 @@ from diogenes.search import FetchError, SearchProvider, execute_search_plan, fet
 
 if TYPE_CHECKING:
     from diogenes.api_client import APIClient
+    from diogenes.events import EventLogger
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts" / "sub-agents"
 
@@ -170,6 +171,7 @@ def step4_execute_searches(
     search_plans: dict[str, Any],
     client: APIClient,
     search_provider: SearchProvider,
+    event_logger: EventLogger | None = None,
 ) -> dict[str, Any]:
     """Execute search plans and score results for each claim and query.
 
@@ -183,6 +185,7 @@ def step4_execute_searches(
         search_plans: The search plans keyed by item ID (output of step 3).
         client: Configured API client with common guidelines loaded.
         search_provider: Search provider for executing web searches.
+        event_logger: Pipeline event logger for recording threshold rejects.
 
     Returns:
         A dict mapping item IDs to their search results.
@@ -220,6 +223,19 @@ def step4_execute_searches(
         print(
             f"    {len(selected)} sources selected (score >= {_RELEVANCE_THRESHOLD}), {len(rejected)} below threshold"
         )
+
+        if event_logger and rejected:
+            for rej in rejected:
+                event_logger.log(
+                    step="step4_execute_searches",
+                    kind="below_threshold",
+                    detail=f"Relevance score {rej.get('relevance_score', '?')}/10 below threshold {_RELEVANCE_THRESHOLD}",
+                    url=rej.get("url", ""),
+                    item_id=item_id,
+                    score=rej.get("relevance_score"),
+                    threshold=float(_RELEVANCE_THRESHOLD),
+                    layer="pipeline",
+                )
 
         results[item_id] = {
             "id": item_id,
@@ -321,6 +337,7 @@ _MAX_SOURCES_TO_SCORE = 15
 def _fetch_sources_for_scoring(
     item_id: str,
     selected: list[dict[str, Any]],
+    event_logger: EventLogger | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch article bodies for a list of selected sources.
 
@@ -330,7 +347,6 @@ def _fetch_sources_for_scoring(
     fabricate quotes from training-data memory of the URL.
     """
     enriched_sources: list[dict[str, Any]] = []
-    fetch_failures: list[str] = []
     for source in selected:
         url = source.get("url", "")
         print(f"    Fetching {url[:60]}...")
@@ -338,7 +354,21 @@ def _fetch_sources_for_scoring(
             content = fetch_page_extract(url)
         except FetchError as exc:
             print(f"      FETCH FAILED — dropping source: {exc}")
-            fetch_failures.append(url)
+            if event_logger:
+                kind = "fetch_failed"
+                exc_str = str(exc)
+                if ".pdf" in url.lower():
+                    kind = "fetch_failed_pdf"
+                elif "trafilatura" in exc_str.lower():
+                    kind = "fetch_failed_html"
+                event_logger.log(
+                    step="step5_score_sources",
+                    kind=kind,
+                    detail=exc_str,
+                    url=url,
+                    item_id=item_id,
+                    layer="pipeline",
+                )
             continue
         enriched_sources.append(
             {
@@ -349,11 +379,9 @@ def _fetch_sources_for_scoring(
             }
         )
 
-    if fetch_failures:
-        print(
-            f"    {item_id}: {len(fetch_failures)} of {len(selected)} sources "
-            f"dropped due to fetch failures (see logs above)."
-        )
+    n_failed = len(selected) - len(enriched_sources)
+    if n_failed:
+        print(f"    {item_id}: {n_failed} of {len(selected)} sources dropped due to fetch failures (see logs above).")
 
     return enriched_sources
 
@@ -362,6 +390,7 @@ def step5_score_sources(
     research_input: dict[str, Any],
     search_results: dict[str, Any],
     client: APIClient,
+    event_logger: EventLogger | None = None,
 ) -> dict[str, Any]:
     """Score each selected source with reliability, relevance, and bias assessment.
 
@@ -372,6 +401,7 @@ def step5_score_sources(
         research_input: The clarified research input (output of step 1).
         search_results: The search results keyed by item ID (output of step 4).
         client: Configured API client with common guidelines loaded.
+        event_logger: Pipeline event logger for recording fetch failures.
 
     Returns:
         A dict mapping item IDs to their source scorecards.
@@ -397,7 +427,7 @@ def step5_score_sources(
             print(f"  Scoring {len(selected)} sources for {item_id}...")
 
         # Phase A: Python fetches page content.
-        enriched_sources = _fetch_sources_for_scoring(item_id, selected)
+        enriched_sources = _fetch_sources_for_scoring(item_id, selected, event_logger)
 
         # Phase B: LLM scores in batches
         all_scorecards: list[dict[str, Any]] = []
@@ -487,6 +517,7 @@ def _extract_evidence_for_item(
     substantive: list[dict[str, Any]],
     prompt_path: Path,
     client: APIClient,
+    event_logger: EventLogger | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, int]]:
     """Call the extractor once per source, aggregate packets, drop non-verbatim.
 
@@ -531,6 +562,15 @@ def _extract_evidence_for_item(
             err = f"source {idx}/{len(substantive)} ({url}): {exc}"
             errors.append(err)
             print(f"      extractor FAILED on {url[:60]}: {exc}")
+            if event_logger:
+                event_logger.log(
+                    step="step5b_extract_evidence",
+                    kind="subagent_failed",
+                    detail=f"Evidence-extractor JSON parse failure: {exc}",
+                    url=url,
+                    item_id=item["id"],
+                    layer="pipeline",
+                )
             continue
 
         claimed_packets = response.get("packets", []) or []
@@ -545,6 +585,17 @@ def _extract_evidence_for_item(
         stats["claimed"] += len(claimed_packets)
         stats["kept"] += len(verified_packets)
         stats["dropped"] += dropped
+
+        if dropped and event_logger:
+            event_logger.log(
+                step="step5b_extract_evidence",
+                kind="packet_dropped_non_verbatim",
+                detail=f"{dropped} of {len(claimed_packets)} claimed packets failed verbatim verification",
+                url=url,
+                item_id=item["id"],
+                count=dropped,
+                layer="pipeline",
+            )
 
         aggregated_packets.extend(verified_packets)
         if dropped:
@@ -578,6 +629,7 @@ def step5b_extract_evidence(
     hypotheses: dict[str, Any],
     scorecards: dict[str, Any],
     client: APIClient,
+    event_logger: EventLogger | None = None,
 ) -> dict[str, Any]:
     """Extract verbatim evidence packets tying source excerpts to hypotheses.
 
@@ -600,6 +652,8 @@ def step5b_extract_evidence(
         hypotheses: Hypothesis results keyed by item ID (output of step 2).
         scorecards: Source scorecards keyed by item ID (output of step 5).
         client: Configured API client with common guidelines loaded.
+        event_logger: Pipeline event logger for recording extractor failures
+            and verbatim validator drops.
 
     Returns:
         A dict mapping item IDs to their evidence packet results, shape:
@@ -656,6 +710,7 @@ def step5b_extract_evidence(
             substantive=substantive,
             prompt_path=prompt_path,
             client=client,
+            event_logger=event_logger,
         )
 
         response: dict[str, Any] = {
