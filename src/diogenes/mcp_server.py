@@ -25,6 +25,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from diogenes.config import ConfigError, load_config
+from diogenes.content_cache import get_content_cache, reset_content_cache
 from diogenes.events import get_mcp_logger, reconcile_run, reset_mcp_logger
 from diogenes.renderer import render_run, render_run_group
 from diogenes.search import FetchError, fetch_page_extract
@@ -80,6 +81,7 @@ def dio_init_run(output_dir: str, run_id: str = "run-1") -> str:
 
     """
     reset_mcp_logger()
+    reset_content_cache()
     logger = get_mcp_logger()
     logger.run_id = run_id
     logger.set_output_dir(Path(output_dir))
@@ -177,6 +179,12 @@ def dio_fetch(url: str) -> str:
             layer="mcp",
         )
         return json.dumps({"error": True, "message": str(exc)})
+
+    # Cache the fetched content server-side so dio_validate_packets can
+    # verify verbatim quotes even if the LLM drops content_extract from
+    # its scorecard output.
+    cache = get_content_cache()
+    cache.put(url, content)
 
     output: dict[str, Any] = {
         "url": url,
@@ -283,6 +291,139 @@ def dio_flush_events() -> str:
             "coverage": summary.get("coverage", {}),
         }
     )
+
+
+@server.tool(
+    name="dio_validate_packets",
+    description=(
+        "Validate evidence packets against source content using the "
+        "deterministic verbatim verifier. Reads evidence-packets.json "
+        "from the run directory, checks each packet's excerpt against "
+        "the source's content (from scorecards or the server-side fetch "
+        "cache), drops non-verbatim packets, and rewrites the file with "
+        "real verbatim_stats. Call this AFTER evidence extraction (Step 5b) "
+        "and BEFORE synthesis (Steps 6-8). MUST call dio_init_run first."
+    ),
+)
+def dio_validate_packets(run_dir: str) -> str:
+    """Validate and filter evidence packets for verbatim accuracy.
+
+    Args:
+        run_dir: Path to the run directory containing evidence-packets.json
+            and source-scorecards.json.
+
+    Returns:
+        JSON summary of validation results.
+
+    """
+    run_path = Path(run_dir)
+    packets_path = run_path / "evidence-packets.json"
+    scorecards_path = run_path / "source-scorecards.json"
+
+    if not packets_path.exists():
+        return json.dumps({"error": True, "message": f"evidence-packets.json not found in {run_dir}"})
+
+    packets_data = json.loads(packets_path.read_text())
+    scorecards_data = json.loads(scorecards_path.read_text()) if scorecards_path.exists() else {}
+
+    # Build URL → content map from scorecards + server-side cache
+    content_by_url: dict[str, str] = {}
+    cache = get_content_cache()
+
+    # First: try scorecards for content_extract
+    _extract_content_from_scorecards(scorecards_data, content_by_url)
+
+    # Second: fill gaps from server-side cache (covers the case where
+    # the LLM dropped content_extract from scorecards)
+    for url in cache.urls:
+        if url not in content_by_url or not content_by_url[url]:
+            cached = cache.get(url)
+            if cached:
+                content_by_url[url] = cached
+
+    # Validate packets — handle both CLI and skill output formats
+    from diogenes.pipeline import _verify_packet_verbatim
+
+    total_claimed = 0
+    total_kept = 0
+    total_dropped = 0
+
+    # Skill format: {"id": "Q001", "packets": [...]}
+    # CLI format: {"Q001": {"id": "Q001", "packets": [...]}}
+    items = [("", packets_data)] if "packets" in packets_data else list(packets_data.items())
+
+    for _key, item_data in items:
+        if not isinstance(item_data, dict):
+            continue
+        packets = item_data.get("packets", [])
+        verified: list[dict[str, Any]] = []
+        dropped = 0
+        for pkt in packets:
+            source_url = pkt.get("source_url", "")
+            content = content_by_url.get(source_url, "")
+            if content and _verify_packet_verbatim(pkt, content):
+                verified.append(pkt)
+            else:
+                dropped += 1
+
+        total_claimed += len(packets)
+        total_kept += len(verified)
+        total_dropped += dropped
+
+        item_data["packets"] = verified
+        item_data["verbatim_stats"] = {
+            "claimed": len(packets),
+            "kept": len(verified),
+            "dropped": dropped,
+        }
+        if dropped:
+            existing_notes = item_data.get("extraction_notes", "") or ""
+            adherence = 100.0 * len(verified) / max(len(packets), 1)
+            item_data["extraction_notes"] = (
+                existing_notes + f" [Python validator: dropped {dropped} of {len(packets)} "
+                f"packets (adherence: {adherence:.1f}%)]"
+            ).strip()
+
+    # Write validated packets back
+    packets_path.write_text(json.dumps(packets_data, indent=2) + "\n")
+
+    adherence_pct = 100.0 * total_kept / max(total_claimed, 1)
+    return json.dumps(
+        {
+            "validated": True,
+            "packets_claimed": total_claimed,
+            "packets_kept": total_kept,
+            "packets_dropped": total_dropped,
+            "verbatim_adherence_pct": round(adherence_pct, 1),
+            "content_sources": {
+                "from_scorecards": sum(1 for v in content_by_url.values() if v),
+                "from_cache": cache.size,
+            },
+        }
+    )
+
+
+def _extract_content_from_scorecards(
+    scorecards_data: dict[str, Any],
+    content_by_url: dict[str, str],
+) -> None:
+    """Extract content_extract from scorecards in either CLI or skill format."""
+    # CLI format: {"Q001": {"scorecards": [...]}}
+    # Skill format: {"scorecards": [...]}
+    if "scorecards" in scorecards_data and isinstance(scorecards_data["scorecards"], list):
+        for sc in scorecards_data["scorecards"]:
+            url = sc.get("url", "")
+            content = sc.get("content_extract", "")
+            if url and content:
+                content_by_url[url] = content
+    else:
+        for item_data in scorecards_data.values():
+            if isinstance(item_data, dict) and "scorecards" in item_data:
+                for sc in item_data["scorecards"]:
+                    url = sc.get("url", "")
+                    content = sc.get("content_extract", "")
+                    if url and content:
+                        content_by_url[url] = content
 
 
 @server.tool(

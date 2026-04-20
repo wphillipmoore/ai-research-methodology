@@ -129,6 +129,10 @@ docstring-quotes = "double"
     "ANN401",  # _strip_to_schema and _preview accept Any — JSON data is untyped.
     "T201",    # Schema-strip notifications printed for observability.
 ]
+"src/diogenes/mcp_server.py" = [
+    "C901",    # dio_validate_packets handles both CLI and skill output formats.
+    "PLC0415", # Deferred import avoids circular dependency with pipeline.py.
+]
 "src/diogenes/renderer.py" = [
     "C901",    # Renderer functions handle multiple JSON schema variants.
     "PERF401", # Conditional list-building is clearer with append loops.
