@@ -4,7 +4,17 @@
   "title": "Research Report",
   "description": "Final structured report for a single claim or query (Step 10).",
   "type": "object",
-  "required": ["id", "mode", "input_summary", "assessment_summary", "evidence_summary", "synthesis_summary", "gaps_summary", "audit_summary", "revisit_triggers"],
+  "required": [
+    "id",
+    "mode",
+    "input_summary",
+    "assessment_summary",
+    "evidence_summary",
+    "synthesis_summary",
+    "gaps_summary",
+    "audit_summary",
+    "revisit_triggers"
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -12,21 +22,35 @@
     },
     "mode": {
       "type": "string",
-      "enum": ["claim", "query"]
+      "enum": [
+        "claim",
+        "query"
+      ]
     },
     "input_summary": {
       "type": "object",
-      "required": ["original_text", "clarified_text"],
+      "required": [
+        "original_text",
+        "clarified_text"
+      ],
       "properties": {
-        "original_text": { "type": "string" },
-        "clarified_text": { "type": "string" },
+        "original_text": {
+          "type": "string"
+        },
+        "clarified_text": {
+          "type": "string"
+        },
         "axioms": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "sub_questions": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Query mode only."
         }
       },
@@ -37,17 +61,30 @@
       "properties": {
         "approach": {
           "type": "string",
-          "enum": ["hypotheses", "open-ended"]
+          "enum": [
+            "hypotheses",
+            "open-ended"
+          ]
         },
         "hypotheses": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "statement", "status"],
+            "required": [
+              "id",
+              "statement",
+              "status"
+            ],
             "properties": {
-              "id": { "type": "string" },
-              "statement": { "type": "string" },
-              "status": { "type": "string" }
+              "id": {
+                "type": "string"
+              },
+              "statement": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
             },
             "additionalProperties": false
           }
@@ -61,7 +98,10 @@
     },
     "assessment_summary": {
       "type": "object",
-      "required": ["conclusion", "reasoning"],
+      "required": [
+        "conclusion",
+        "reasoning"
+      ],
       "properties": {
         "verdict": {
           "type": "string",
@@ -71,7 +111,9 @@
           "type": "string",
           "description": "Query mode: the answer."
         },
-        "confidence": { "type": "string" },
+        "confidence": {
+          "type": "string"
+        },
         "conclusion": {
           "type": "string",
           "description": "One-paragraph conclusion."
@@ -85,20 +127,38 @@
     },
     "evidence_summary": {
       "type": "object",
-      "required": ["sources_count", "key_sources"],
+      "required": [
+        "sources_count",
+        "key_sources"
+      ],
       "properties": {
-        "sources_count": { "type": "integer" },
+        "sources_count": {
+          "type": "integer"
+        },
         "key_sources": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["url", "contribution"],
+            "required": [
+              "url",
+              "contribution"
+            ],
             "properties": {
-              "url": { "type": "string" },
-              "title": { "type": "string" },
-              "contribution": { "type": "string" },
-              "reliability": { "type": "string" },
-              "relevance": { "type": "string" }
+              "url": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "contribution": {
+                "type": "string"
+              },
+              "reliability": {
+                "type": "string"
+              },
+              "relevance": {
+                "type": "string"
+              }
             },
             "additionalProperties": false
           }
@@ -108,47 +168,84 @@
     },
     "synthesis_summary": {
       "type": "object",
-      "required": ["evidence_quality", "source_agreement"],
+      "required": [
+        "evidence_quality",
+        "source_agreement"
+      ],
       "properties": {
-        "evidence_quality": { "type": "string" },
-        "source_agreement": { "type": "string" },
-        "independence": { "type": "string" },
-        "notable_outliers": { "type": "string" }
+        "evidence_quality": {
+          "type": "string"
+        },
+        "source_agreement": {
+          "type": "string"
+        },
+        "independence": {
+          "type": "string"
+        },
+        "notable_outliers": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "gaps_summary": {
       "type": "object",
-      "required": ["key_gaps", "impact"],
+      "required": [
+        "key_gaps",
+        "impact"
+      ],
       "properties": {
         "key_gaps": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "impact": { "type": "string" }
+        "impact": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     },
     "audit_summary": {
       "type": "object",
-      "required": ["overall_rating", "domains"],
+      "required": [
+        "overall_rating",
+        "domains"
+      ],
       "properties": {
         "overall_rating": {
           "type": "string",
-          "enum": ["Pass", "Concern", "Fail"]
+          "enum": [
+            "Pass",
+            "Concern",
+            "Fail"
+          ]
         },
         "domains": {
           "type": "object",
           "properties": {
-            "eligibility_criteria": { "type": "string" },
-            "search_comprehensiveness": { "type": "string" },
-            "evaluation_consistency": { "type": "string" },
-            "synthesis_fairness": { "type": "string" },
-            "source_verification": { "type": "string" }
+            "eligibility_criteria": {
+              "type": "string"
+            },
+            "search_comprehensiveness": {
+              "type": "string"
+            },
+            "evaluation_consistency": {
+              "type": "string"
+            },
+            "synthesis_fairness": {
+              "type": "string"
+            },
+            "source_verification": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         },
-        "discrepancies_found": { "type": "integer" }
+        "discrepancies_found": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false
     },
@@ -157,7 +254,10 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["trigger", "type"],
+        "required": [
+          "trigger",
+          "type"
+        ],
         "properties": {
           "trigger": {
             "type": "string",
@@ -165,7 +265,14 @@
           },
           "type": {
             "type": "string",
-            "enum": ["study", "event", "time", "data_update", "policy", "organization"]
+            "enum": [
+              "study",
+              "event",
+              "time",
+              "data_update",
+              "policy",
+              "organization"
+            ]
           }
         },
         "additionalProperties": false

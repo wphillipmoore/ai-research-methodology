@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_BASE_URL = "https://api.anthropic.com"
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 class ConfigError(Exception):

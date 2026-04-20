@@ -8,30 +8,43 @@
     "claims": {
       "type": "array",
       "description": "Clarified claims ready for hypothesis generation.",
-      "items": { "$ref": "#/$defs/clarified_claim" }
+      "items": {
+        "$ref": "#/$defs/clarified_claim"
+      }
     },
     "queries": {
       "type": "array",
       "description": "Clarified queries ready for hypothesis generation.",
-      "items": { "$ref": "#/$defs/clarified_query" }
+      "items": {
+        "$ref": "#/$defs/clarified_query"
+      }
     },
     "axioms": {
       "type": "array",
       "description": "Axioms passed through with assigned IDs.",
-      "items": { "$ref": "#/$defs/clarified_axiom" }
+      "items": {
+        "$ref": "#/$defs/clarified_axiom"
+      }
     },
     "metadata": {
       "$ref": "#/$defs/metadata"
     }
   },
-  "anyOf": [
-    { "required": ["claims"] },
-    { "required": ["queries"] }
+  "required": [
+    "claims",
+    "queries"
   ],
   "$defs": {
     "clarified_claim": {
       "type": "object",
-      "required": ["id", "original_text", "clarified_text", "assumptions_surfaced", "scope", "vocabulary"],
+      "required": [
+        "id",
+        "original_text",
+        "clarified_text",
+        "assumptions_surfaced",
+        "scope",
+        "vocabulary"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -48,14 +61,22 @@
         },
         "assumptions_surfaced": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Embedded assumptions identified in the claim."
         },
-        "scope": { "$ref": "#/$defs/scope" },
-        "vocabulary": { "$ref": "#/$defs/vocabulary" },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "vocabulary": {
+          "$ref": "#/$defs/vocabulary"
+        },
         "candidate_evidence": {
           "type": "array",
-          "items": { "$ref": "#/$defs/candidate_evidence_item" },
+          "items": {
+            "$ref": "#/$defs/candidate_evidence_item"
+          },
           "description": "Researcher-provided candidate evidence, preserved from input."
         }
       },
@@ -63,7 +84,14 @@
     },
     "clarified_query": {
       "type": "object",
-      "required": ["id", "original_text", "clarified_text", "assumptions_surfaced", "scope", "vocabulary"],
+      "required": [
+        "id",
+        "original_text",
+        "clarified_text",
+        "assumptions_surfaced",
+        "scope",
+        "vocabulary"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -80,22 +108,33 @@
         },
         "sub_questions": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Decomposed sub-questions for compound queries."
         },
         "assumptions_surfaced": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Embedded assumptions identified in the query."
         },
-        "scope": { "$ref": "#/$defs/scope" },
-        "vocabulary": { "$ref": "#/$defs/vocabulary" }
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "vocabulary": {
+          "$ref": "#/$defs/vocabulary"
+        }
       },
       "additionalProperties": false
     },
     "clarified_axiom": {
       "type": "object",
-      "required": ["id", "text"],
+      "required": [
+        "id",
+        "text"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -111,7 +150,11 @@
     },
     "scope": {
       "type": "object",
-      "required": ["domain", "timeframe", "testability"],
+      "required": [
+        "domain",
+        "timeframe",
+        "testability"
+      ],
       "properties": {
         "domain": {
           "type": "string",
@@ -130,21 +173,31 @@
     },
     "vocabulary": {
       "type": "object",
-      "required": ["primary_terms", "domain_variants", "related_concepts"],
+      "required": [
+        "primary_terms",
+        "domain_variants",
+        "related_concepts"
+      ],
       "properties": {
         "primary_terms": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Key terms to search."
         },
         "domain_variants": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Alternative terms used in other fields."
         },
         "related_concepts": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Broader or narrower related terms."
         }
       },
@@ -152,7 +205,9 @@
     },
     "candidate_evidence_item": {
       "type": "object",
-      "required": ["url"],
+      "required": [
+        "url"
+      ],
       "properties": {
         "url": {
           "type": "string",
@@ -169,12 +224,21 @@
     "metadata": {
       "type": "object",
       "properties": {
-        "claims_count": { "type": "integer" },
-        "queries_count": { "type": "integer" },
-        "axioms_count": { "type": "integer" },
-        "candidate_evidence_count": { "type": "integer" }
+        "claims_count": {
+          "type": "integer"
+        },
+        "queries_count": {
+          "type": "integer"
+        },
+        "axioms_count": {
+          "type": "integer"
+        },
+        "candidate_evidence_count": {
+          "type": "integer"
+        }
       },
       "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }

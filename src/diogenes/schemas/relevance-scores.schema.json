@@ -4,19 +4,27 @@
   "title": "Relevance Scores",
   "description": "Output of the relevance-scorer sub-agent. Contains relevance scores for a batch of search results.",
   "type": "object",
-  "required": ["scores"],
+  "required": [
+    "scores"
+  ],
   "properties": {
     "scores": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/scored_result" }
+      "items": {
+        "$ref": "#/$defs/scored_result"
+      }
     }
   },
   "additionalProperties": false,
   "$defs": {
     "scored_result": {
       "type": "object",
-      "required": ["url", "relevance_score", "rationale"],
+      "required": [
+        "url",
+        "relevance_score",
+        "rationale"
+      ],
       "properties": {
         "url": {
           "type": "string",
@@ -32,8 +40,6 @@
         },
         "relevance_score": {
           "type": "integer",
-          "minimum": 0,
-          "maximum": 10,
           "description": "Relevance score from 0 (not relevant) to 10 (highly relevant)."
         },
         "rationale": {

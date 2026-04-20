@@ -34,10 +34,7 @@
       "$ref": "#/$defs/researcher_profile"
     }
   },
-  "anyOf": [
-    { "required": ["claims"] },
-    { "required": ["queries"] }
-  ],
+  "required": ["claims", "queries"],
   "$defs": {
     "claim": {
       "type": "object",
