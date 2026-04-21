@@ -73,13 +73,13 @@ class StepDefinition:
 # Order matters — each step's requires are checked against prior outputs.
 PIPELINE_STEPS: list[StepDefinition] = [
     StepDefinition(
-        name="step_01_clarify",
+        name="step_01_research_input_clarified",
         display_name="Step 1: Clarifying input",
-        output_file="research-input.json",
+        output_file="research-input-clarified.json",
         category="llm",
         requires=[],
-        schema="clarified-input.schema.json",
-        prompt="clarified-input.md",
+        schema="research-input-clarified.schema.json",
+        prompt="research-input-clarified.md",
         python_handler="step2_generate_hypotheses",  # Legacy name — will rename in #117
     ),
     StepDefinition(
@@ -87,49 +87,49 @@ PIPELINE_STEPS: list[StepDefinition] = [
         display_name="Step 2: Generating competing hypotheses",
         output_file="hypotheses.json",
         category="llm",
-        requires=["research-input.json"],
+        requires=["research-input-clarified.json"],
         schema="hypotheses.schema.json",
         prompt="hypotheses.md",
         python_handler="step2_generate_hypotheses",
     ),
     StepDefinition(
-        name="step_03_search_design",
+        name="step_03_search_plans",
         display_name="Step 3: Designing searches",
         output_file="search-plans.json",
         category="llm",
-        requires=["research-input.json", "hypotheses.json"],
+        requires=["research-input-clarified.json", "hypotheses.json"],
         schema="search-plans.schema.json",
         prompt="search-plans.md",
         python_handler="step3_design_searches",
     ),
     StepDefinition(
-        name="step_04_search_execute",
+        name="step_04_search_results",
         display_name="Step 4: Executing searches",
         output_file="search-results.json",
         category="hybrid",
-        requires=["research-input.json", "search-plans.json"],
+        requires=["research-input-clarified.json", "search-plans.json"],
         schema="search-results.schema.json",
         prompt="search-results.md",
         python_handler="step4_execute_searches",
         mcp_tools=["dio_search", "dio_search_batch"],
     ),
     StepDefinition(
-        name="step_05_score_sources",
+        name="step_05_scorecards",
         display_name="Step 5: Scoring sources",
         output_file="scorecards.json",
         category="hybrid",
-        requires=["research-input.json", "search-results.json"],
+        requires=["research-input-clarified.json", "search-results.json"],
         schema="scorecards.schema.json",
         prompt="scorecards.md",
         python_handler="step5_score_sources",
         mcp_tools=["dio_fetch"],
     ),
     StepDefinition(
-        name="step_06_extract_evidence",
+        name="step_06_evidence_packets",
         display_name="Step 6: Extracting evidence packets",
         output_file="evidence-packets.json",
         category="hybrid",
-        requires=["research-input.json", "hypotheses.json", "scorecards.json"],
+        requires=["research-input-clarified.json", "hypotheses.json", "scorecards.json"],
         schema="evidence-packets.schema.json",
         prompt="evidence-packets.md",
         python_handler="step5b_extract_evidence",
@@ -137,12 +137,12 @@ PIPELINE_STEPS: list[StepDefinition] = [
         per_source=True,
     ),
     StepDefinition(
-        name="step_07_synthesize",
+        name="step_07_synthesis",
         display_name="Step 7: Synthesizing evidence and assessing",
         output_file="synthesis.json",
         category="llm",
         requires=[
-            "research-input.json",
+            "research-input-clarified.json",
             "hypotheses.json",
             "scorecards.json",
             "evidence-packets.json",
@@ -152,12 +152,12 @@ PIPELINE_STEPS: list[StepDefinition] = [
         python_handler="steps678_synthesize_and_assess",
     ),
     StepDefinition(
-        name="step_08_audit",
+        name="step_08_self_audit",
         display_name="Step 8: Self-audit and verification",
         output_file="self-audit.json",
         category="llm",
         requires=[
-            "research-input.json",
+            "research-input-clarified.json",
             "hypotheses.json",
             "search-results.json",
             "scorecards.json",
@@ -169,12 +169,12 @@ PIPELINE_STEPS: list[StepDefinition] = [
         python_handler="step9_self_audit",
     ),
     StepDefinition(
-        name="step_09_report",
+        name="step_09_reports",
         display_name="Step 9: Assembling final reports",
         output_file="reports.json",
         category="llm",
         requires=[
-            "research-input.json",
+            "research-input-clarified.json",
             "hypotheses.json",
             "search-results.json",
             "scorecards.json",
@@ -191,7 +191,7 @@ PIPELINE_STEPS: list[StepDefinition] = [
         output_file="archive.json",
         category="python_only",
         requires=[
-            "research-input.json",
+            "research-input-clarified.json",
             "hypotheses.json",
             "search-plans.json",
             "search-results.json",
@@ -204,7 +204,7 @@ PIPELINE_STEPS: list[StepDefinition] = [
         python_handler="step11_archive",
     ),
     StepDefinition(
-        name="step_11_reconcile",
+        name="step_11_pipeline_events",
         display_name="Step 11: Reconciling events",
         output_file="pipeline-events.json",
         category="python_only",
@@ -251,8 +251,10 @@ class PipelineState:
         """Persist state to disk."""
         now = datetime.now(tz=UTC)
         now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Always compute elapsed from created_at — useful even for
+        # incomplete/crashed runs (shows how far we got before dying).
         elapsed: float | None = None
-        if self._created_at and self.all_complete():
+        if self._created_at:
             try:
                 created = datetime.strptime(self._created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
                 elapsed = round((now - created).total_seconds(), 1)

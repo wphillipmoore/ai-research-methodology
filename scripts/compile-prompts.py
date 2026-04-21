@@ -38,7 +38,7 @@ STANDALONE_PATH = REPO_ROOT / "ai-research-methodology" / "standalone" / "resear
 # Sub-agents that don't have an output schema (or don't need one compiled)
 # are omitted.
 PROMPT_SCHEMA_MAP: dict[str, str | None] = {
-    "clarified-input.md": "clarified-input.schema.json",
+    "research-input-clarified.md": "research-input-clarified.schema.json",
     "hypotheses.md": "hypotheses.schema.json",
     "search-plans.md": "search-plans.schema.json",
     "search-results.md": "relevance-scores.schema.json",
@@ -106,7 +106,7 @@ def compile_standalone() -> str:
 
     # All sub-agent prompts (in workflow order)
     workflow_order = [
-        "clarified-input.md",
+        "research-input-clarified.md",
         "hypotheses.md",
         "search-plans.md",
         "search-results.md",

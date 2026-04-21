@@ -78,7 +78,7 @@ def _write_research_input(output_dir: Path, data: dict[str, Any]) -> Path:
 
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / "research-input.json"
+    path = output_dir / "research-input-clarified.json"
     if path.exists():
         print(f"ERROR: {path} already exists. Use 'dio rerun' to re-execute.")
         print("To start new research, use a different output directory.")
@@ -109,25 +109,25 @@ def _dispatch_step(
     name = step_def.name
 
     try:
-        if name == "step_01_clarify":
+        if name == "step_01_research_input_clarified":
             return ri  # Already done before the loop
 
         if name == "step_02_hypotheses":
             return step2_generate_hypotheses(ri, client)
 
-        if name == "step_03_search_design":
+        if name == "step_03_search_plans":
             return step3_design_searches(ri, outputs["hypotheses"], client)
 
-        if name == "step_04_search_execute":
+        if name == "step_04_search_results":
             return step4_execute_searches(ri, outputs["search_plans"], client, search_provider, event_logger)
 
-        if name == "step_05_score_sources":
+        if name == "step_05_scorecards":
             return step5_score_sources(ri, outputs["search_results"], client, event_logger)
 
-        if name == "step_06_extract_evidence":
+        if name == "step_06_evidence_packets":
             return step5b_extract_evidence(ri, outputs["hypotheses"], outputs["scorecards"], client, event_logger)
 
-        if name == "step_07_synthesize":
+        if name == "step_07_synthesis":
             return steps678_synthesize_and_assess(
                 ri,
                 outputs["hypotheses"],
@@ -136,7 +136,7 @@ def _dispatch_step(
                 client,
             )
 
-        if name == "step_08_audit":
+        if name == "step_08_self_audit":
             return step9_self_audit(
                 ri,
                 outputs["hypotheses"],
@@ -147,7 +147,7 @@ def _dispatch_step(
                 client,
             )
 
-        if name == "step_09_report":
+        if name == "step_09_reports":
             return step10_report(
                 ri,
                 outputs["hypotheses"],
@@ -172,7 +172,7 @@ def _dispatch_step(
             # doesn't try to re-serialize it.
             return {"_self_written": True}
 
-        if name == "step_11_reconcile":
+        if name == "step_11_pipeline_events":
             coverage = reconcile_run(run_dir, event_logger)
             adherence = coverage.get("verbatim_adherence_pct")
             if adherence is not None:
@@ -225,13 +225,13 @@ def _parse_and_clarify(
 
     # Text input — call input-clarifier sub-agent
     print("Input format: text — calling input-clarifier sub-agent...")
-    clarifier_prompt = _PROMPTS_DIR / "clarified-input.md"
+    clarifier_prompt = _PROMPTS_DIR / "research-input-clarified.md"
 
     try:
         clarified = client.call_sub_agent(
             prompt_path=clarifier_prompt,
             user_input=raw_input,
-            output_schema="clarified-input.schema.json",
+            output_schema="research-input-clarified.schema.json",
         )
     except SubAgentError as e:
         print(f"ERROR: {e}")
@@ -342,7 +342,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
 
         # Copy research-input.json into the run dir so the renderer can
         # find it when rendering a single run (not just via run-group).
-        write_step_output(run_dir, "research-input.json", research_input)
+        write_step_output(run_dir, "research-input-clarified.json", research_input)
 
         event_logger = EventLogger(
             run_id=run_dir.name,
@@ -356,7 +356,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
         # Accumulated step outputs — keyed by output filename stem.
         # Step 1 (clarify) is done before the loop; seed the outputs.
         outputs: dict[str, Any] = {"research_input": research_input}
-        state.mark_complete("step_01_clarify", output_file="research-input.json")
+        state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
 
         # Iterate the canonical step sequence from the state machine.
         for step_def in PIPELINE_STEPS:

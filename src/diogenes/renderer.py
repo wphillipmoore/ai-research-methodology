@@ -353,7 +353,7 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load all pipeline outputs
-    research_input = _load_json(run_dir / "research-input.json")
+    research_input = _load_json(run_dir / "research-input-clarified.json")
     hypotheses = _load_json(run_dir / "hypotheses.json")
     search_plans = _load_json(run_dir / "search-plans.json")
     search_results = _load_json(run_dir / "search-results.json")

@@ -347,7 +347,7 @@ write the accumulated event log to disk. This MUST happen before
 Each subagent executes these steps, writing JSON output files to its
 `run-{N}/` directory:
 
-**Step 5a: Clarify input** — Read `skills/research/prompts/compiled/clarified-input.md`.
+**Step 5a: Clarify input** — Read `skills/research/prompts/compiled/research-input-clarified.md`.
 For each claim and query, clarify, surface assumptions, map vocabulary.
 Write `research-input.json` (clarified input with IDs assigned).
 
