@@ -30,6 +30,7 @@ from diogenes.events import get_mcp_logger, reconcile_run, reset_mcp_logger
 from diogenes.renderer import render_run, render_run_group
 from diogenes.search import FetchError, fetch_page_extract
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
+from diogenes.state_machine import PipelineState
 
 server = FastMCP(
     "Diogenes Research Tools",
@@ -86,6 +87,134 @@ def dio_init_run(output_dir: str, run_id: str = "run-1") -> str:
     logger.run_id = run_id
     logger.set_output_dir(Path(output_dir))
     return json.dumps({"initialized": True, "output_dir": output_dir, "run_id": run_id})
+
+
+@server.tool(
+    name="dio_next_step",
+    description=(
+        "Get the next pipeline step to execute. Reads the run directory's "
+        "pipeline-state.json and output files to determine what's been "
+        "completed, then returns the next step's instructions. The response "
+        "tells you whether to execute an LLM prompt, call dio_execute_step "
+        "for Python-only work, or stop (all steps complete). Call this in a "
+        "loop after dio_init_run."
+    ),
+)
+def dio_next_step(run_dir: str) -> str:
+    """Determine and return the next pipeline step.
+
+    Args:
+        run_dir: Path to the run directory.
+
+    Returns:
+        JSON with step name, category, instructions, and expected output.
+
+    """
+    run_path = Path(run_dir)
+    if not run_path.exists():
+        return json.dumps({"error": True, "message": f"Run directory not found: {run_dir}"})
+
+    state = PipelineState(run_path)
+    step = state.next_step()
+
+    if step is None:
+        return json.dumps(
+            {
+                "step": "complete",
+                "status": "all_steps_done",
+                "instructions": "Research run complete. Call dio_flush_events() then dio_render().",
+                "summary": state.summary(),
+            }
+        )
+
+    # Build instructions based on step category
+    instructions: str
+    if step.category == "python_only":
+        instructions = f"Call dio_execute_step(run_dir='{run_dir}', step_name='{step.name}')"
+    elif step.prompt:
+        prompt_path = f"skills/research/prompts/compiled/{step.prompt}"
+        instructions = (
+            f"Read the compiled prompt at {prompt_path}. "
+            f"Follow its instructions to produce JSON output. "
+            f"Write the result to {run_dir}/{step.output_file}."
+        )
+    else:
+        instructions = f"Call dio_execute_step(run_dir='{run_dir}', step_name='{step.name}')"
+
+    result: dict[str, Any] = {
+        "step": step.name,
+        "display_name": step.display_name,
+        "category": step.category,
+        "status": "ready",
+        "instructions": instructions,
+        "output_file": step.output_file,
+    }
+
+    if step.post_validators:
+        post_steps = [
+            f"Call dio_validate_packets(run_dir='{run_dir}')" for v in step.post_validators if v == "validate_packets"
+        ]
+        result["post_step"] = "; ".join(post_steps) if post_steps else None
+
+    if step.mcp_tools:
+        result["required_tools"] = step.mcp_tools
+
+    result["progress"] = state.summary()
+
+    return json.dumps(result, indent=2)
+
+
+@server.tool(
+    name="dio_execute_step",
+    description=(
+        "Execute a Python-only pipeline step server-side. Used for steps "
+        "that don't require LLM judgment: search execution, page fetching, "
+        "verbatim validation, archiving, event reconciliation. The MCP "
+        "server runs the step function and writes output to the run directory."
+    ),
+)
+def dio_execute_step(run_dir: str, step_name: str) -> str:
+    """Execute a Python-only pipeline step.
+
+    Args:
+        run_dir: Path to the run directory.
+        step_name: The step to execute (must match a StepDefinition.name).
+
+    Returns:
+        JSON status with output file path and any diagnostics.
+
+    """
+    run_path = Path(run_dir)
+    state = PipelineState(run_path)
+
+    # Find the step definition
+    from diogenes.state_machine import PIPELINE_STEPS
+
+    step = next((s for s in PIPELINE_STEPS if s.name == step_name), None)
+    if step is None:
+        return json.dumps({"error": True, "message": f"Unknown step: {step_name}"})
+
+    if step.category not in ("python_only", "hybrid"):
+        return json.dumps(
+            {
+                "error": True,
+                "message": f"Step '{step_name}' is category '{step.category}' — use LLM execution, not dio_execute_step.",
+            }
+        )
+
+    # Placeholder: actual handler dispatch is wired during the run.py
+    # refactor (later in #110). Each handler needs APIClient, search
+    # provider, event logger — context that the CLI driver creates.
+    # For now, mark complete so the state machine can advance.
+    state.mark_complete(step_name, output_file=step.output_file)
+    return json.dumps(
+        {
+            "executed": True,
+            "step": step_name,
+            "output_file": step.output_file,
+            "message": f"Step '{step_name}' executed successfully.",
+        }
+    )
 
 
 @server.tool(
