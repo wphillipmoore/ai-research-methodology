@@ -114,9 +114,12 @@ docstring-quotes = "double"
 "src/diogenes/commands/**/*.py" = [
     "T201",    # Command implementations use print for user-facing output.
     "PLR0911", # Command execute() has early-return error handling per step.
-    "PLR0912", # Command execute() has branches per pipeline step.
+    "PLR0912", # _dispatch_step branches per pipeline step.
+    "PLR0913", # _dispatch_step takes context args for all handler signatures.
     "PLR0915", # Command functions may exceed 50 statements.
-    "C901",    # Command execute() orchestrates multi-step pipeline.
+    "C901",    # _dispatch_step maps steps to handlers with per-step args.
+    "C416",    # Dict comprehension in archive assembly is clearer than dict().
+    "ANN401",  # _dispatch_step accepts Any — handlers have heterogeneous signatures.
 ]
 "src/diogenes/pipeline.py" = [
     "T201",    # Pipeline steps print progress for user-facing output.

@@ -25,6 +25,7 @@ from diogenes.pipeline import (
 )
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
+from diogenes.state_machine import PIPELINE_STEPS, PipelineState
 
 # Resolve prompts from the package (works for both repo checkout and pip install)
 _PACKAGE_DIR = Path(__file__).parent.parent
@@ -85,6 +86,115 @@ def _write_research_input(output_dir: Path, data: dict[str, Any]) -> Path:
 
     path.write_text(json.dumps(data, indent=2) + "\n")
     return path
+
+
+def _dispatch_step(
+    step_def: Any,
+    outputs: dict[str, Any],
+    client: APIClient,
+    search_provider: Any,
+    event_logger: EventLogger,
+    run_dir: Path,
+) -> Any:
+    """Dispatch a pipeline step to its handler function.
+
+    Maps each step definition to the existing handler function with
+    the correct arguments assembled from accumulated outputs. This is
+    the per-step wiring that makes the generic state-machine loop work
+    with the existing handler signatures.
+
+    Returns the step's output dict, or None on failure.
+    """
+    ri = outputs["research_input"]
+    name = step_def.name
+
+    try:
+        if name == "step_01_clarify":
+            return ri  # Already done before the loop
+
+        if name == "step_02_hypotheses":
+            return step2_generate_hypotheses(ri, client)
+
+        if name == "step_03_search_design":
+            return step3_design_searches(ri, outputs["hypotheses"], client)
+
+        if name == "step_04_search_execute":
+            return step4_execute_searches(ri, outputs["search_plans"], client, search_provider, event_logger)
+
+        if name == "step_05_score_sources":
+            return step5_score_sources(ri, outputs["search_results"], client, event_logger)
+
+        if name == "step_06_extract_evidence":
+            return step5b_extract_evidence(
+                ri, outputs["hypotheses"], outputs["source_scorecards"], client, event_logger
+            )
+
+        if name == "step_07_synthesize":
+            return steps678_synthesize_and_assess(
+                ri,
+                outputs["hypotheses"],
+                outputs["source_scorecards"],
+                outputs["evidence_packets"],
+                client,
+            )
+
+        if name == "step_08_audit":
+            return step9_self_audit(
+                ri,
+                outputs["hypotheses"],
+                outputs["search_results"],
+                outputs["source_scorecards"],
+                outputs["evidence_packets"],
+                outputs["synthesis"],
+                client,
+            )
+
+        if name == "step_09_report":
+            return step10_report(
+                ri,
+                outputs["hypotheses"],
+                outputs["search_results"],
+                outputs["source_scorecards"],
+                outputs["synthesis"],
+                outputs["self_audit"],
+                client,
+            )
+
+        if name == "step_10_archive":
+            all_outputs = {
+                "run_metadata": {
+                    "model": client.model,
+                    "execution_path": "cli",
+                    "run_id": run_dir.name,
+                },
+                **dict(outputs),
+            }
+            step11_archive(run_dir, all_outputs)
+            # Archive writes its own file — return empty dict so the loop
+            # doesn't try to re-serialize it.
+            return {"_self_written": True}
+
+        if name == "step_11_reconcile":
+            coverage = reconcile_run(run_dir, event_logger)
+            adherence = coverage.get("verbatim_adherence_pct")
+            if adherence is not None:
+                print(
+                    f"  Coverage: {coverage['sources_scored']}/{coverage['sources_attempted']} "
+                    f"sources, {adherence}% verbatim adherence"
+                )
+            event_logger.write()
+            n_events = len(event_logger.events)
+            if n_events:
+                print(f"  Events: {n_events}")
+            # Events file writes itself — return sentinel.
+            return {"_self_written": True}
+
+    except SubAgentError as e:
+        print(f"ERROR: {e}")
+        return None
+
+    print(f"ERROR: Unknown step '{name}'")
+    return None
 
 
 def _parse_and_clarify(
@@ -227,7 +337,7 @@ def execute(input_file: str, output: str, runs: int) -> int:
         snapshot_dest.write_text(guidelines_src.read_text())
         print("  Saved: prompt-snapshot.md")
 
-    # --- Pipeline execution ---
+    # --- Pipeline execution (state-machine-driven) ---
     for run_dir in run_dirs:
         print()
         print(f"=== {run_dir.name} ===")
@@ -243,161 +353,34 @@ def execute(input_file: str, output: str, runs: int) -> int:
             execution_path="cli",
         )
 
-        # Step 2: Generate competing hypotheses
-        print("Step 2: Generating competing hypotheses...")
-        try:
-            hypotheses = step2_generate_hypotheses(research_input, client)
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
+        state = PipelineState(run_dir)
 
-        hyp_path = write_step_output(run_dir, "hypotheses.json", hypotheses)
-        print(f"  Wrote: {hyp_path}")
+        # Accumulated step outputs — keyed by output filename stem.
+        # Step 1 (clarify) is done before the loop; seed the outputs.
+        outputs: dict[str, Any] = {"research_input": research_input}
+        state.mark_complete("step_01_clarify", output_file="research-input.json")
 
-        # Step 3: Design discriminating searches
-        print("Step 3: Designing search plans...")
-        try:
-            search_plans = step3_design_searches(research_input, hypotheses, client)
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
+        # Iterate the canonical step sequence from the state machine.
+        for step_def in PIPELINE_STEPS:
+            if state.is_complete(step_def.name):
+                continue
 
-        plan_path = write_step_output(run_dir, "search-plans.json", search_plans)
-        print(f"  Wrote: {plan_path}")
+            print(f"{step_def.display_name}...")
+            state.mark_started(step_def.name)
+            result = _dispatch_step(step_def, outputs, client, search_provider, event_logger, run_dir)
+            if result is None:
+                state.mark_failed(step_def.name, diagnostics="Handler returned None")
+                print(f"ERROR: {step_def.name} returned no result")
+                return 1
 
-        # Step 4: Execute searches and log
-        print("Step 4: Executing searches...")
-        try:
-            search_results = step4_execute_searches(
-                research_input,
-                search_plans,
-                client,
-                search_provider,
-                event_logger,
-            )
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
+            # Store the result and write to disk (unless the step wrote its own file)
+            if step_def.output_file and not result.get("_self_written"):
+                output_key = step_def.output_file.replace(".json", "").replace("-", "_")
+                outputs[output_key] = result
+                out_path = write_step_output(run_dir, step_def.output_file, result)
+                print(f"  Wrote: {out_path}")
 
-        results_path = write_step_output(run_dir, "search-results.json", search_results)
-        print(f"  Wrote: {results_path}")
-
-        # Step 5: Score each source
-        print("Step 5: Scoring sources...")
-        try:
-            scorecards = step5_score_sources(research_input, search_results, client, event_logger)
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
-
-        scorecards_path = write_step_output(run_dir, "source-scorecards.json", scorecards)
-        print(f"  Wrote: {scorecards_path}")
-
-        # Step 5b: Extract grounded evidence packets from scored sources
-        print("Step 5b: Extracting evidence packets...")
-        try:
-            evidence_packets = step5b_extract_evidence(
-                research_input,
-                hypotheses,
-                scorecards,
-                client,
-                event_logger,
-            )
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
-
-        evidence_path = write_step_output(run_dir, "evidence-packets.json", evidence_packets)
-        print(f"  Wrote: {evidence_path}")
-
-        # Steps 6+7+8: Synthesize, assess, identify gaps
-        print("Steps 6-8: Synthesizing evidence and assessing...")
-        try:
-            synthesis = steps678_synthesize_and_assess(
-                research_input,
-                hypotheses,
-                scorecards,
-                evidence_packets,
-                client,
-            )
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
-
-        synthesis_path = write_step_output(run_dir, "synthesis.json", synthesis)
-        print(f"  Wrote: {synthesis_path}")
-
-        # Step 9: Self-audit, source-back verification, reading list
-        print("Step 9: Self-audit and verification...")
-        try:
-            audit = step9_self_audit(
-                research_input,
-                hypotheses,
-                search_results,
-                scorecards,
-                evidence_packets,
-                synthesis,
-                client,
-            )
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
-
-        audit_path = write_step_output(run_dir, "self-audit.json", audit)
-        print(f"  Wrote: {audit_path}")
-
-        # Step 10: Final report
-        print("Step 10: Assembling final reports...")
-        try:
-            reports = step10_report(
-                research_input,
-                hypotheses,
-                search_results,
-                scorecards,
-                synthesis,
-                audit,
-                client,
-            )
-        except SubAgentError as e:
-            print(f"ERROR: {e}")
-            return 1
-
-        reports_path = write_step_output(run_dir, "reports.json", reports)
-        print(f"  Wrote: {reports_path}")
-
-        # Step 11: Archive for temporal revisitation
-        print("Step 11: Archiving...")
-        all_outputs = {
-            "run_metadata": {
-                "model": client.model,
-                "execution_path": "cli",
-                "run_id": run_dir.name,
-            },
-            "research_input": research_input,
-            "hypotheses": hypotheses,
-            "search_plans": search_plans,
-            "search_results": search_results,
-            "scorecards": scorecards,
-            "synthesis": synthesis,
-            "self_audit": audit,
-            "reports": reports,
-        }
-        archive_path = step11_archive(run_dir, all_outputs)
-        print(f"  Wrote: {archive_path}")
-
-        # Reconcile: detect structural gaps + compute coverage stats
-        coverage = reconcile_run(run_dir, event_logger)
-        adherence = coverage.get("verbatim_adherence_pct")
-        if adherence is not None:
-            print(
-                f"  Coverage: {coverage['sources_scored']}/{coverage['sources_attempted']} sources, {adherence}% verbatim adherence"
-            )
-
-        # Flush pipeline events log (includes reconciler events + coverage)
-        events_path = event_logger.write()
-        n_events = len(event_logger.events)
-        if n_events:
-            print(f"  Wrote: {events_path} ({n_events} events)")
+            state.mark_complete(step_def.name, output_file=step_def.output_file)
 
     # Write usage report
     usage_data = client.usage.to_dict()
