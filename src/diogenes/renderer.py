@@ -357,7 +357,7 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
     hypotheses = _load_json(run_dir / "hypotheses.json")
     search_plans = _load_json(run_dir / "search-plans.json")
     search_results = _load_json(run_dir / "search-results.json")
-    scorecards = _load_json(run_dir / "source-scorecards.json")
+    scorecards = _load_json(run_dir / "scorecards.json")
     synthesis = _load_json(run_dir / "synthesis.json")
     audit = _load_json(run_dir / "self-audit.json")
     reports = _load_json(run_dir / "reports.json")

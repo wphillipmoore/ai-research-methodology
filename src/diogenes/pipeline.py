@@ -49,7 +49,7 @@ def step2_generate_hypotheses(
         SubAgentError: If a sub-agent call fails.
 
     """
-    prompt_path = _PROMPTS_DIR / "hypothesis-generator.md"
+    prompt_path = _PROMPTS_DIR / "hypotheses.md"
     axioms = research_input.get("axioms", [])
     results: dict[str, Any] = {}
 
@@ -133,7 +133,7 @@ def step3_design_searches(
         SubAgentError: If a sub-agent call fails.
 
     """
-    prompt_path = _PROMPTS_DIR / "search-designer.md"
+    prompt_path = _PROMPTS_DIR / "search-plans.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -151,7 +151,7 @@ def step3_design_searches(
         response = client.call_sub_agent(
             prompt_path=prompt_path,
             user_input=agent_input,
-            output_schema="search-plan.schema.json",
+            output_schema="search-plans.schema.json",
         )
 
         results[item_id] = response
@@ -194,7 +194,7 @@ def step4_execute_searches(
         SubAgentError: If a sub-agent call fails.
 
     """
-    scorer_prompt = _PROMPTS_DIR / "relevance-scorer.md"
+    scorer_prompt = _PROMPTS_DIR / "search-results.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -410,7 +410,7 @@ def step5_score_sources(
         SubAgentError: If a sub-agent call fails.
 
     """
-    scorer_prompt = _PROMPTS_DIR / "source-scorer.md"
+    scorer_prompt = _PROMPTS_DIR / "scorecards.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -442,7 +442,7 @@ def step5_score_sources(
             response = client.call_sub_agent(
                 prompt_path=scorer_prompt,
                 user_input=batch_input,
-                output_schema="source-scorer-output.schema.json",
+                output_schema="scorecards.schema.json",
                 max_tokens=8192,
                 model=_SCORING_MODEL,
             )
@@ -451,7 +451,7 @@ def step5_score_sources(
 
         # Attach title/snippet/content_extract/items from the Python-side
         # copy of the input. The scorer's output schema explicitly forbids
-        # these fields (see source-scorer-output.schema.json and the
+        # these fields (see scorecards.schema.json and the
         # source-scorer prompt) — they are Python-coordinator metadata,
         # joined here to produce the persisted source-scorecards format
         # that downstream steps read. Requiring the scorer to transcribe a
@@ -618,7 +618,7 @@ def _scorecards_without_content(scorecards: list[dict[str, Any]]) -> list[dict[s
     is what keeps downstream calls from blowing past the 200 K context
     limit when many sources have substantive bodies.
 
-    The persisted scorecards in source-scorecards.json still carry
+    The persisted scorecards in scorecards.json still carry
     content_extract — this only affects what is passed to the LLM.
     """
     return [{k: v for k, v in sc.items() if k != "content_extract"} for sc in scorecards]
@@ -660,7 +660,7 @@ def step5b_extract_evidence(
         ``{"id": "<ItemID>", "packets": [...], "extraction_notes": "..."}``.
 
     """
-    prompt_path = _PROMPTS_DIR / "evidence-extractor.md"
+    prompt_path = _PROMPTS_DIR / "evidence-packets.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -771,7 +771,7 @@ def steps678_synthesize_and_assess(
         A dict mapping item IDs to their synthesis/assessment/gaps results.
 
     """
-    prompt_path = _PROMPTS_DIR / "evidence-synthesizer.md"
+    prompt_path = _PROMPTS_DIR / "synthesis.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -834,7 +834,7 @@ def step9_self_audit(
         A dict mapping item IDs to their audit results.
 
     """
-    prompt_path = _PROMPTS_DIR / "self-auditor.md"
+    prompt_path = _PROMPTS_DIR / "self-audit.md"
     results: dict[str, Any] = {}
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
@@ -903,7 +903,7 @@ def step10_report(
         A dict mapping item IDs to their final reports.
 
     """
-    prompt_path = _PROMPTS_DIR / "report-assembler.md"
+    prompt_path = _PROMPTS_DIR / "reports.md"
     results: dict[str, Any] = {}
 
     claims = research_input.get("claims", [])
@@ -933,7 +933,7 @@ def step10_report(
         response = client.call_sub_agent(
             prompt_path=prompt_path,
             user_input=agent_input,
-            output_schema="report.schema.json",
+            output_schema="reports.schema.json",
             max_tokens=16384,
         )
 

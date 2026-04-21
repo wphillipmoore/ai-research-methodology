@@ -75,7 +75,7 @@ use "N/A" when the source is not based on a randomized controlled trial.
 ## Output
 
 Always return JSON matching the output schema appended to this prompt
-(`source-scorer-output.schema.json`). Never return markdown, prose, or
+(`scorecards.schema.json`). Never return markdown, prose, or
 formatted text.
 
 Your output is narrower than the persisted scorecard that downstream

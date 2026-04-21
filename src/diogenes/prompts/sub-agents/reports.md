@@ -81,5 +81,5 @@ whether it has occurred without needing the original research context.
 Always return JSON matching the output schema appended to this prompt.
 Never return markdown, prose, or formatted text.
 
-The canonical output schema (report.schema.json) is provided below
+The canonical output schema (reports.schema.json) is provided below
 this prompt by the coordinator.

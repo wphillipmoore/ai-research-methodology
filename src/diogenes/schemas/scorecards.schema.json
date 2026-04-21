@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/source-scorer-output.schema.json",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/scorecards.schema.json",
   "title": "Source Scorer Output",
   "description": "The exact JSON the source-scorer sub-agent is permitted to emit. Intentionally narrower than source-scorecards.schema.json (the persisted format): the scorer must not echo back url metadata (title, snippet, content_extract, authors, date) \u2014 the Python coordinator re-attaches these from its own copy of the input, saving output tokens and removing the temptation to transcribe long content incorrectly. Downstream sub-agents read the persisted scorecard (which includes the Python-attached fields), not this output schema.",
   "type": "object",

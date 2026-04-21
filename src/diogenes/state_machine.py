@@ -51,7 +51,7 @@ class StepDefinition:
     constrained decoding (CLI) and post-hoc validation (skill)."""
 
     prompt: str | None = None
-    """Compiled sub-agent prompt filename (e.g., 'evidence-extractor.md'). None for
+    """Compiled sub-agent prompt filename (e.g., 'evidence-packets.md'). None for
     Python-only steps."""
 
     python_handler: str | None = None
@@ -79,7 +79,7 @@ PIPELINE_STEPS: list[StepDefinition] = [
         category="llm",
         requires=[],
         schema="clarified-input.schema.json",
-        prompt="input-clarifier.md",
+        prompt="clarified-input.md",
         python_handler="step2_generate_hypotheses",  # Legacy name — will rename in #117
     ),
     StepDefinition(
@@ -89,7 +89,7 @@ PIPELINE_STEPS: list[StepDefinition] = [
         category="llm",
         requires=["research-input.json"],
         schema="hypotheses.schema.json",
-        prompt="hypothesis-generator.md",
+        prompt="hypotheses.md",
         python_handler="step2_generate_hypotheses",
     ),
     StepDefinition(
@@ -98,8 +98,8 @@ PIPELINE_STEPS: list[StepDefinition] = [
         output_file="search-plans.json",
         category="llm",
         requires=["research-input.json", "hypotheses.json"],
-        schema="search-plan.schema.json",
-        prompt="search-designer.md",
+        schema="search-plans.schema.json",
+        prompt="search-plans.md",
         python_handler="step3_design_searches",
     ),
     StepDefinition(
@@ -109,18 +109,18 @@ PIPELINE_STEPS: list[StepDefinition] = [
         category="hybrid",
         requires=["research-input.json", "search-plans.json"],
         schema="search-results.schema.json",
-        prompt="relevance-scorer.md",
+        prompt="search-results.md",
         python_handler="step4_execute_searches",
         mcp_tools=["dio_search", "dio_search_batch"],
     ),
     StepDefinition(
         name="step_05_score_sources",
         display_name="Step 5: Scoring sources",
-        output_file="source-scorecards.json",
+        output_file="scorecards.json",
         category="hybrid",
         requires=["research-input.json", "search-results.json"],
-        schema="source-scorer-output.schema.json",
-        prompt="source-scorer.md",
+        schema="scorecards.schema.json",
+        prompt="scorecards.md",
         python_handler="step5_score_sources",
         mcp_tools=["dio_fetch"],
     ),
@@ -129,9 +129,9 @@ PIPELINE_STEPS: list[StepDefinition] = [
         display_name="Step 6: Extracting evidence packets",
         output_file="evidence-packets.json",
         category="hybrid",
-        requires=["research-input.json", "hypotheses.json", "source-scorecards.json"],
+        requires=["research-input.json", "hypotheses.json", "scorecards.json"],
         schema="evidence-packets.schema.json",
-        prompt="evidence-extractor.md",
+        prompt="evidence-packets.md",
         python_handler="step5b_extract_evidence",
         post_validators=["validate_packets"],
         per_source=True,
@@ -144,11 +144,11 @@ PIPELINE_STEPS: list[StepDefinition] = [
         requires=[
             "research-input.json",
             "hypotheses.json",
-            "source-scorecards.json",
+            "scorecards.json",
             "evidence-packets.json",
         ],
         schema="synthesis.schema.json",
-        prompt="evidence-synthesizer.md",
+        prompt="synthesis.md",
         python_handler="steps678_synthesize_and_assess",
     ),
     StepDefinition(
@@ -160,12 +160,12 @@ PIPELINE_STEPS: list[StepDefinition] = [
             "research-input.json",
             "hypotheses.json",
             "search-results.json",
-            "source-scorecards.json",
+            "scorecards.json",
             "evidence-packets.json",
             "synthesis.json",
         ],
         schema="self-audit.schema.json",
-        prompt="self-auditor.md",
+        prompt="self-audit.md",
         python_handler="step9_self_audit",
     ),
     StepDefinition(
@@ -177,12 +177,12 @@ PIPELINE_STEPS: list[StepDefinition] = [
             "research-input.json",
             "hypotheses.json",
             "search-results.json",
-            "source-scorecards.json",
+            "scorecards.json",
             "synthesis.json",
             "self-audit.json",
         ],
-        schema="report.schema.json",
-        prompt="report-assembler.md",
+        schema="reports.schema.json",
+        prompt="reports.md",
         python_handler="step10_report",
     ),
     StepDefinition(
@@ -195,7 +195,7 @@ PIPELINE_STEPS: list[StepDefinition] = [
             "hypotheses.json",
             "search-plans.json",
             "search-results.json",
-            "source-scorecards.json",
+            "scorecards.json",
             "evidence-packets.json",
             "synthesis.json",
             "self-audit.json",
@@ -234,19 +234,35 @@ class PipelineState:
         self.run_dir = run_dir
         self._state_file = run_dir / "pipeline-state.json"
         self._completed: dict[str, StepStatus] = {}
+        self._created_at: str | None = None
         if self._state_file.exists():
             self._load()
+        else:
+            self._created_at = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def _load(self) -> None:
         """Load state from disk."""
         data = json.loads(self._state_file.read_text())
+        self._created_at = data.get("created_at")
         for entry in data.get("steps", []):
             self._completed[entry["name"]] = StepStatus(**entry)
 
     def _save(self) -> None:
         """Persist state to disk."""
+        now = datetime.now(tz=UTC)
+        now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        elapsed: float | None = None
+        if self._created_at and self.all_complete():
+            try:
+                created = datetime.strptime(self._created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+                elapsed = round((now - created).total_seconds(), 1)
+            except ValueError:
+                pass
         data = {
-            "updated_at": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "created_at": self._created_at,
+            "updated_at": now_str,
+            "completed_at": now_str if self.all_complete() else None,
+            "elapsed_seconds": elapsed,
             "steps": [
                 {
                     "name": s.name,

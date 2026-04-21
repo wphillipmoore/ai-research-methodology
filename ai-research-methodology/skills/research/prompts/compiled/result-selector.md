@@ -380,7 +380,12 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
   "title": "Search Results",
   "description": "Output of the search-executor sub-agent. Contains the PRISMA-compliant search log with selected and rejected results.",
   "type": "object",
-  "required": ["id", "searches_executed", "selected_sources", "summary"],
+  "required": [
+    "id",
+    "searches_executed",
+    "selected_sources",
+    "summary"
+  ],
   "properties": {
     "id": {
       "type": "string",
@@ -390,22 +395,30 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
     "searches_executed": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/executed_search" },
+      "items": {
+        "$ref": "#/$defs/executed_search"
+      },
       "description": "Log of every search performed."
     },
     "selected_sources": {
       "type": "array",
-      "items": { "$ref": "#/$defs/selected_source" },
+      "items": {
+        "$ref": "#/$defs/selected_source"
+      },
       "description": "Sources selected for the evidence base."
     },
     "rejected_sources": {
       "type": "array",
-      "items": { "$ref": "#/$defs/rejected_source" },
+      "items": {
+        "$ref": "#/$defs/rejected_source"
+      },
       "description": "Sources reviewed but not selected."
     },
     "candidate_evidence_results": {
       "type": "array",
-      "items": { "$ref": "#/$defs/candidate_evidence_result" },
+      "items": {
+        "$ref": "#/$defs/candidate_evidence_result"
+      },
       "description": "Disposition of researcher-provided candidate evidence."
     },
     "summary": {
@@ -416,7 +429,14 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
   "$defs": {
     "executed_search": {
       "type": "object",
-      "required": ["search_id", "terms_used", "sources_searched", "results_found", "results_selected", "results_rejected"],
+      "required": [
+        "search_id",
+        "terms_used",
+        "sources_searched",
+        "results_found",
+        "results_selected",
+        "results_rejected"
+      ],
       "properties": {
         "search_id": {
           "type": "string",
@@ -424,12 +444,16 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
         },
         "terms_used": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Actual search terms used (may include variations)."
         },
         "sources_searched": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Sources or databases searched."
         },
         "date": {
@@ -438,17 +462,14 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
         },
         "results_found": {
           "type": "integer",
-          "minimum": 0,
           "description": "Total number of results returned."
         },
         "results_selected": {
           "type": "integer",
-          "minimum": 0,
           "description": "Number of results selected for review."
         },
         "results_rejected": {
           "type": "integer",
-          "minimum": 0,
           "description": "Number of results reviewed and rejected."
         },
         "no_relevant_results": {
@@ -464,7 +485,13 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
     },
     "selected_source": {
       "type": "object",
-      "required": ["id", "url", "title", "selection_rationale", "origin"],
+      "required": [
+        "id",
+        "url",
+        "title",
+        "selection_rationale",
+        "origin"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -489,7 +516,10 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
         },
         "origin": {
           "type": "string",
-          "enum": ["search-discovered", "researcher-provided"],
+          "enum": [
+            "search-discovered",
+            "researcher-provided"
+          ],
           "description": "How this source was found."
         },
         "discovered_by_search": {
@@ -497,7 +527,10 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
           "description": "Which search ID found this source (S01, S02, etc.)."
         },
         "page_age": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Age or date of the page if available."
         }
       },
@@ -505,7 +538,11 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
     },
     "rejected_source": {
       "type": "object",
-      "required": ["url", "title", "rejection_rationale"],
+      "required": [
+        "url",
+        "title",
+        "rejection_rationale"
+      ],
       "properties": {
         "url": {
           "type": "string",
@@ -532,7 +569,11 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
     },
     "candidate_evidence_result": {
       "type": "object",
-      "required": ["url", "status", "rationale"],
+      "required": [
+        "url",
+        "status",
+        "rationale"
+      ],
       "properties": {
         "url": {
           "type": "string",
@@ -540,7 +581,10 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
         },
         "status": {
           "type": "string",
-          "enum": ["selected", "rejected"],
+          "enum": [
+            "selected",
+            "rejected"
+          ],
           "description": "Whether the candidate evidence was selected."
         },
         "rationale": {
@@ -552,27 +596,27 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
     },
     "search_summary": {
       "type": "object",
-      "required": ["total_searches", "total_results_found", "total_selected", "total_rejected"],
+      "required": [
+        "total_searches",
+        "total_results_found",
+        "total_selected",
+        "total_rejected"
+      ],
       "properties": {
         "total_searches": {
-          "type": "integer",
-          "minimum": 1
+          "type": "integer"
         },
         "total_results_found": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "total_selected": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "total_rejected": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "searches_with_no_results": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "coverage_assessment": {
           "type": "string",

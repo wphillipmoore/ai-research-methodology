@@ -125,15 +125,13 @@ def _dispatch_step(
             return step5_score_sources(ri, outputs["search_results"], client, event_logger)
 
         if name == "step_06_extract_evidence":
-            return step5b_extract_evidence(
-                ri, outputs["hypotheses"], outputs["source_scorecards"], client, event_logger
-            )
+            return step5b_extract_evidence(ri, outputs["hypotheses"], outputs["scorecards"], client, event_logger)
 
         if name == "step_07_synthesize":
             return steps678_synthesize_and_assess(
                 ri,
                 outputs["hypotheses"],
-                outputs["source_scorecards"],
+                outputs["scorecards"],
                 outputs["evidence_packets"],
                 client,
             )
@@ -143,7 +141,7 @@ def _dispatch_step(
                 ri,
                 outputs["hypotheses"],
                 outputs["search_results"],
-                outputs["source_scorecards"],
+                outputs["scorecards"],
                 outputs["evidence_packets"],
                 outputs["synthesis"],
                 client,
@@ -154,7 +152,7 @@ def _dispatch_step(
                 ri,
                 outputs["hypotheses"],
                 outputs["search_results"],
-                outputs["source_scorecards"],
+                outputs["scorecards"],
                 outputs["synthesis"],
                 outputs["self_audit"],
                 client,
@@ -227,7 +225,7 @@ def _parse_and_clarify(
 
     # Text input — call input-clarifier sub-agent
     print("Input format: text — calling input-clarifier sub-agent...")
-    clarifier_prompt = _PROMPTS_DIR / "input-clarifier.md"
+    clarifier_prompt = _PROMPTS_DIR / "clarified-input.md"
 
     try:
         clarified = client.call_sub_agent(
