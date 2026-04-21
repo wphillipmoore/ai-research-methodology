@@ -6,7 +6,7 @@ on:
     inputs:
       python-versions:
         type: string
-        default: '["3.12", "3.13", "3.14"]'
+        default: '["3.14"]'
       run-security:
         type: string
         default: 'true'
@@ -47,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ${{ fromJSON(inputs.python-versions || '["3.12", "3.13", "3.14"]') }}
+        python-version: ${{ fromJSON(inputs.python-versions || '["3.14"]') }}
     container:
       image: ghcr.io/wphillipmoore/dev-python:${{ matrix.python-version }}
     steps:

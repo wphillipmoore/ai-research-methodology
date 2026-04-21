@@ -224,14 +224,10 @@ types-requests==2.33.0.20260408
 typing-extensions==4.15.0
     # via
     #   anthropic
-    #   anyio
-    #   cyclonedx-python-lib
     #   mcp
     #   mypy
     #   pydantic
     #   pydantic-core
-    #   referencing
-    #   starlette
     #   typing-inspection
 typing-inspection==0.4.2
     # via
