@@ -13,8 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from diogenes.api_client import SubAgentError
-from diogenes.search import FetchError, SearchProvider, execute_search_plan, fetch_page_extract
+from diogenes.parallelize import parallelize_thread
+from diogenes.search import SearchProvider, execute_search_plan, fetch_page_extract
 
 if TYPE_CHECKING:
     from diogenes.api_client import APIClient
@@ -334,55 +334,80 @@ _SCORING_BATCH_SIZE = 1
 _MAX_SOURCES_TO_SCORE = 15
 
 
+# Serialized (1 worker) due to lxml/trafilatura thread-safety crash (SIGABRT).
+# See issue tracking thread-safe HTML parser alternatives.
+_FETCH_WORKERS = 1
+
+
+def _fetch_single_source(url: str) -> dict[str, Any]:
+    """Fetch a single source's article body. Thread-safe.
+
+    Returns a dict with url + content, or raises FetchError.
+    """
+    return {"url": url, "content": fetch_page_extract(url)}
+
+
 def _fetch_sources_for_scoring(
     item_id: str,
     selected: list[dict[str, Any]],
     event_logger: EventLogger | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch article bodies for a list of selected sources.
+    """Fetch article bodies for selected sources in parallel.
 
-    Sources whose bodies cannot be retrieved or parsed are dropped with a
-    loud log entry rather than passed forward with an empty content_extract
-    — an empty extract is an invitation for the evidence-extractor to
-    fabricate quotes from training-data memory of the URL.
+    Uses parallelize_thread with _FETCH_WORKERS concurrent threads.
+    Sources whose bodies cannot be retrieved or parsed are dropped with
+    event logging rather than passed forward with empty content_extract.
     """
+    print(f"    Fetching {len(selected)} sources ({_FETCH_WORKERS} threads)...")
+    kwargs_list = [{"url": s.get("url", "")} for s in selected]
+    results = parallelize_thread(
+        func=_fetch_single_source,
+        kwargs_list=kwargs_list,
+        max_workers=_FETCH_WORKERS,
+    )
+
+    # Log fetch failures as events
+    if results.exceptions and event_logger:
+        for exc in results.exceptions:
+            exc_str = str(exc)
+            # Try to extract URL from the FetchError message
+            url = ""
+            if "for " in exc_str:
+                url = exc_str.split("for ", 1)[1].split(":", maxsplit=1)[0].strip()
+            kind = "fetch_failed"
+            if ".pdf" in url.lower():
+                kind = "fetch_failed_pdf"
+            elif "trafilatura" in exc_str.lower():
+                kind = "fetch_failed_html"
+            event_logger.log(
+                step="step5_score_sources",
+                kind=kind,
+                detail=exc_str,
+                url=url,
+                item_id=item_id,
+                layer="pipeline",
+            )
+
+    if results.error_count:
+        print(f"    {item_id}: {results.error_count} of {len(selected)} sources dropped due to fetch failures.")
+
+    # Build enriched sources from successful fetches, matching back to
+    # original source metadata (title, snippet)
+    source_by_url = {s.get("url", ""): s for s in selected}
     enriched_sources: list[dict[str, Any]] = []
-    for source in selected:
-        url = source.get("url", "")
-        print(f"    Fetching {url[:60]}...")
-        try:
-            content = fetch_page_extract(url)
-        except FetchError as exc:
-            print(f"      FETCH FAILED — dropping source: {exc}")
-            if event_logger:
-                kind = "fetch_failed"
-                exc_str = str(exc)
-                if ".pdf" in url.lower():
-                    kind = "fetch_failed_pdf"
-                elif "trafilatura" in exc_str.lower():
-                    kind = "fetch_failed_html"
-                event_logger.log(
-                    step="step5_score_sources",
-                    kind=kind,
-                    detail=exc_str,
-                    url=url,
-                    item_id=item_id,
-                    layer="pipeline",
-                )
-            continue
+    for fetch_result in results.results:
+        url = fetch_result["url"]
+        source = source_by_url.get(url, {})
         enriched_sources.append(
             {
                 "url": url,
                 "title": source.get("title", ""),
                 "snippet": source.get("snippet", ""),
-                "content_extract": content,
+                "content_extract": fetch_result["content"],
             }
         )
 
-    n_failed = len(selected) - len(enriched_sources)
-    if n_failed:
-        print(f"    {item_id}: {n_failed} of {len(selected)} sources dropped due to fetch failures (see logs above).")
-
+    print(f"    {len(enriched_sources)} sources fetched successfully.")
     return enriched_sources
 
 
@@ -511,6 +536,55 @@ def _verify_packet_verbatim(
     return bool(segments) and all(seg in norm_source for seg in segments)
 
 
+_EXTRACT_WORKERS = 4
+
+
+def _extract_single_source(
+    item_id: str,
+    item: dict[str, Any],
+    hypotheses: dict[str, Any],
+    scorecard: dict[str, Any],
+    prompt_path_str: str,
+    client: APIClient,
+) -> dict[str, Any]:
+    """Extract evidence packets from a single source. Thread-safe.
+
+    Returns a dict with url, verified_packets, claimed_count, dropped_count.
+    Raises SubAgentError on API failure.
+    """
+    url = scorecard.get("url", "<unknown URL>")
+    source_extract = scorecard.get("content_extract") or ""
+
+    response = client.call_sub_agent(
+        prompt_path=Path(prompt_path_str),
+        user_input={
+            "id": item_id,
+            "item": item,
+            "hypotheses": hypotheses,
+            "scorecards": [scorecard],
+        },
+        output_schema="evidence-packets.schema.json",
+        max_tokens=8192,
+    )
+
+    claimed_packets = response.get("packets", []) or []
+    verified: list[dict[str, Any]] = []
+    dropped = 0
+    for pk in claimed_packets:
+        if _verify_packet_verbatim(pk, source_extract):
+            verified.append(pk)
+        else:
+            dropped += 1
+
+    return {
+        "url": url,
+        "verified_packets": verified,
+        "claimed": len(claimed_packets),
+        "kept": len(verified),
+        "dropped": dropped,
+    }
+
+
 def _extract_evidence_for_item(
     item: dict[str, Any],
     item_hypotheses: dict[str, Any],
@@ -519,89 +593,76 @@ def _extract_evidence_for_item(
     client: APIClient,
     event_logger: EventLogger | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, int]]:
-    """Call the extractor once per source, aggregate packets, drop non-verbatim.
+    """Extract evidence packets from all sources in parallel threads.
 
-    Calling once per source — instead of once for all sources together —
-    keeps the input per call bounded (~1 scorecard's worth of article body,
-    typically 10-100 KB) so the model does not drop instructions or the
-    output schema under long-context pressure, and keeps the task framing
-    crisp.
-
-    After each call, every returned packet is verified against the
-    source's content_extract as a deterministic backstop. Packets whose
-    excerpt is not actually a substring of the source are DROPPED — this
-    is the "do not trust the AI" layer: the model may claim verbatim
-    extraction, but we accept only what string-matches.
+    Uses parallelize_thread with _EXTRACT_WORKERS concurrent API calls.
+    Each call handles one source — keeping input bounded and the task
+    framing crisp. After each call, verbatim verification drops
+    non-substring packets.
 
     Returns (aggregated verified packets, list of per-source error
     messages, verbatim stats dict with keys 'claimed', 'kept', 'dropped').
     """
+    kwargs_list = [
+        {
+            "item_id": item["id"],
+            "item": item,
+            "hypotheses": item_hypotheses,
+            "scorecard": sc,
+            "prompt_path_str": str(prompt_path),
+            "client": client,
+        }
+        for sc in substantive
+    ]
+
+    print(f"    Extracting from {len(substantive)} sources ({_EXTRACT_WORKERS} threads)...")
+    results = parallelize_thread(
+        func=_extract_single_source,
+        kwargs_list=kwargs_list,
+        max_workers=_EXTRACT_WORKERS,
+    )
+
+    # Aggregate results
     aggregated_packets: list[dict[str, Any]] = []
     errors: list[str] = []
     stats = {"claimed": 0, "kept": 0, "dropped": 0}
 
-    for idx, sc in enumerate(substantive, start=1):
-        url = sc.get("url", "<unknown URL>")
-        source_extract = sc.get("content_extract") or ""
-        agent_input = {
-            "id": item["id"],
-            "item": item,
-            "hypotheses": item_hypotheses,
-            # Intentionally one-element scorecards list — same shape the
-            # extractor prompt documents, so no prompt changes are needed.
-            "scorecards": [sc],
-        }
-        try:
-            response = client.call_sub_agent(
-                prompt_path=prompt_path,
-                user_input=agent_input,
-                output_schema="evidence-packets.schema.json",
-                max_tokens=8192,
-            )
-        except SubAgentError as exc:
-            err = f"source {idx}/{len(substantive)} ({url}): {exc}"
-            errors.append(err)
-            print(f"      extractor FAILED on {url[:60]}: {exc}")
-            if event_logger:
-                event_logger.log(
-                    step="step5b_extract_evidence",
-                    kind="subagent_failed",
-                    detail=f"Evidence-extractor JSON parse failure: {exc}",
-                    url=url,
-                    item_id=item["id"],
-                    layer="pipeline",
-                )
-            continue
+    for res in results.results:
+        url = res["url"]
+        aggregated_packets.extend(res["verified_packets"])
+        stats["claimed"] += res["claimed"]
+        stats["kept"] += res["kept"]
+        stats["dropped"] += res["dropped"]
 
-        claimed_packets = response.get("packets", []) or []
-        verified_packets: list[dict[str, Any]] = []
-        dropped = 0
-        for pk in claimed_packets:
-            if _verify_packet_verbatim(pk, source_extract):
-                verified_packets.append(pk)
-            else:
-                dropped += 1
-
-        stats["claimed"] += len(claimed_packets)
-        stats["kept"] += len(verified_packets)
-        stats["dropped"] += dropped
-
-        if dropped and event_logger:
+        if res["dropped"] and event_logger:
             event_logger.log(
                 step="step5b_extract_evidence",
                 kind="packet_dropped_non_verbatim",
-                detail=f"{dropped} of {len(claimed_packets)} claimed packets failed verbatim verification",
+                detail=f"{res['dropped']} of {res['claimed']} claimed packets failed verbatim verification",
                 url=url,
                 item_id=item["id"],
-                count=dropped,
+                count=res["dropped"],
                 layer="pipeline",
             )
 
-        aggregated_packets.extend(verified_packets)
-        if dropped:
-            print(f"      {url[:60]}: {len(verified_packets)} verified / {dropped} dropped (non-verbatim)")
+        if res["dropped"]:
+            print(f"      {res['url'][:60]}: {res['kept']} verified / {res['dropped']} dropped")
         else:
-            print(f"      {url[:60]}: {len(verified_packets)} packet(s) verified")
+            print(f"      {res['url'][:60]}: {res['kept']} packet(s) verified")
+
+    # Log API failures from the parallel run
+    for exc in results.exceptions:
+        err = f"extractor error: {exc}"
+        errors.append(err)
+        print(f"      extractor FAILED: {exc}")
+        if event_logger:
+            event_logger.log(
+                step="step5b_extract_evidence",
+                kind="subagent_failed",
+                detail=f"Evidence-extractor failure: {exc}",
+                item_id=item["id"],
+                layer="pipeline",
+            )
 
     return aggregated_packets, errors, stats
 
