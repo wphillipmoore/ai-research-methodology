@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from diogenes.parallelize import parallelize_thread
+from diogenes.parallelize import parallelize_process, parallelize_thread
 from diogenes.search import SearchProvider, execute_search_plan, fetch_page_extract
 
 if TYPE_CHECKING:
@@ -334,13 +334,14 @@ _SCORING_BATCH_SIZE = 1
 _MAX_SOURCES_TO_SCORE = 15
 
 
-# Serialized (1 worker) due to lxml/trafilatura thread-safety crash (SIGABRT).
-# See issue tracking thread-safe HTML parser alternatives.
-_FETCH_WORKERS = 1
+# Uses ProcessPoolExecutor (not threads) because lxml/trafilatura
+# crashes with SIGABRT under thread contention. Separate processes
+# each get their own lxml instance — thread-safety is irrelevant.
+_FETCH_WORKERS = 4
 
 
 def _fetch_single_source(url: str) -> dict[str, Any]:
-    """Fetch a single source's article body. Thread-safe.
+    """Fetch a single source's article body. Process-safe (picklable args/return).
 
     Returns a dict with url + content, or raises FetchError.
     """
@@ -352,15 +353,15 @@ def _fetch_sources_for_scoring(
     selected: list[dict[str, Any]],
     event_logger: EventLogger | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch article bodies for selected sources in parallel.
+    """Fetch article bodies for selected sources in parallel processes.
 
-    Uses parallelize_thread with _FETCH_WORKERS concurrent threads.
-    Sources whose bodies cannot be retrieved or parsed are dropped with
-    event logging rather than passed forward with empty content_extract.
+    Uses parallelize_process (not threads) because lxml/trafilatura
+    crashes with SIGABRT under thread contention. Each process gets
+    its own lxml instance in separate memory — thread-safety irrelevant.
     """
-    print(f"    Fetching {len(selected)} sources ({_FETCH_WORKERS} threads)...")
+    print(f"    Fetching {len(selected)} sources ({_FETCH_WORKERS} processes)...")
     kwargs_list = [{"url": s.get("url", "")} for s in selected]
-    results = parallelize_thread(
+    results = parallelize_process(
         func=_fetch_single_source,
         kwargs_list=kwargs_list,
         max_workers=_FETCH_WORKERS,
