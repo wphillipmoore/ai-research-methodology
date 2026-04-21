@@ -439,7 +439,7 @@ def dio_validate_packets(run_dir: str) -> str:
 
     Args:
         run_dir: Path to the run directory containing evidence-packets.json
-            and source-scorecards.json.
+            and scorecards.json.
 
     Returns:
         JSON summary of validation results.
@@ -447,7 +447,7 @@ def dio_validate_packets(run_dir: str) -> str:
     """
     run_path = Path(run_dir)
     packets_path = run_path / "evidence-packets.json"
-    scorecards_path = run_path / "source-scorecards.json"
+    scorecards_path = run_path / "scorecards.json"
 
     if not packets_path.exists():
         return json.dumps({"error": True, "message": f"evidence-packets.json not found in {run_dir}"})

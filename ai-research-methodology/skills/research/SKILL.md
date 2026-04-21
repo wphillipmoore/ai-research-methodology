@@ -347,33 +347,33 @@ write the accumulated event log to disk. This MUST happen before
 Each subagent executes these steps, writing JSON output files to its
 `run-{N}/` directory:
 
-**Step 5a: Clarify input** — Read `skills/research/prompts/compiled/input-clarifier.md`.
+**Step 5a: Clarify input** — Read `skills/research/prompts/compiled/clarified-input.md`.
 For each claim and query, clarify, surface assumptions, map vocabulary.
 Write `research-input.json` (clarified input with IDs assigned).
 
 **Step 5b: Generate hypotheses** — Read
-`skills/research/prompts/compiled/hypothesis-generator.md`. For each claim/query, pass
+`skills/research/prompts/compiled/hypotheses.md`. For each claim/query, pass
 the clarified item and axioms. Write `hypotheses.json`.
 
 **Step 5c: Design searches** — Read
-`skills/research/prompts/compiled/search-designer.md`. For each item, pass the
+`skills/research/prompts/compiled/search-plans.md`. For each item, pass the
 clarified item and its hypotheses. Write `search-plans.json`.
 
 **Step 5d: Execute searches** — For each search in the plan:
 - If `dio_search` MCP tool is available: call it with the search terms.
 - If not available: use built-in web search.
 For each batch of results, score relevance (0-10) using the criteria
-in `skills/research/prompts/compiled/relevance-scorer.md`. Filter by score >= 5,
+in `skills/research/prompts/compiled/search-results.md`. Filter by score >= 5,
 deduplicate by URL. Write `search-results.json`.
 
 **Step 5e: Score sources** — For each selected source:
 - If `dio_fetch` MCP tool is available: call it to get page content.
 - If not available: the subagent reads the source directly.
 Score reliability, relevance, and six bias domains per
-`skills/research/prompts/compiled/source-scorer.md`. Write `source-scorecards.json`.
+`skills/research/prompts/compiled/scorecards.md`. Write `scorecards.json`.
 
 **Step 5f: Extract evidence packets** — Read
-`skills/research/prompts/compiled/evidence-extractor.md`. For each item, pass
+`skills/research/prompts/compiled/evidence-packets.md`. For each item, pass
 the clarified item, its hypotheses, and the scorecards (including
 `content_extract`). The extractor emits verbatim excerpts tied to specific
 hypotheses (or search themes, in open-ended mode) with an explicit
@@ -399,18 +399,18 @@ with real numbers. Do NOT populate `verbatim_stats` yourself — the
 validator overwrites whatever you wrote with deterministic results.
 
 **Step 5g: Synthesize, assess, gaps** — Read
-`skills/research/prompts/compiled/evidence-synthesizer.md`. For each item, pass the
+`skills/research/prompts/compiled/synthesis.md`. For each item, pass the
 scorecards, hypotheses, and evidence packets from Step 5f. Synthesize the
 evidence collection, produce probability assessment, identify gaps. The
 packets are the primary grounded input; the scorecards weight them.
 Write `synthesis.json`.
 
-**Step 5h: Self-audit** — Read `skills/research/prompts/compiled/self-auditor.md`. For
+**Step 5h: Self-audit** — Read `skills/research/prompts/compiled/self-audit.md`. For
 each item, pass the full chain including `evidence_packets`. Audit the
 process, verify source interpretations (Step 9b traces assessment claims
 back to packet excerpts), produce reading list. Write `self-audit.json`.
 
-**Step 5i: Report** — Read `skills/research/prompts/compiled/report-assembler.md`. For
+**Step 5i: Report** — Read `skills/research/prompts/compiled/reports.md`. For
 each item, assemble the final report from all prior steps. Write
 `reports.json`.
 
@@ -428,7 +428,7 @@ run-{N}/
 ├── hypotheses.json
 ├── search-plans.json
 ├── search-results.json
-├── source-scorecards.json
+├── scorecards.json
 ├── evidence-packets.json
 ├── synthesis.json
 ├── self-audit.json

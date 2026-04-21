@@ -38,21 +38,21 @@ STANDALONE_PATH = REPO_ROOT / "ai-research-methodology" / "standalone" / "resear
 # Sub-agents that don't have an output schema (or don't need one compiled)
 # are omitted.
 PROMPT_SCHEMA_MAP: dict[str, str | None] = {
-    "input-clarifier.md": "clarified-input.schema.json",
-    "hypothesis-generator.md": "hypotheses.schema.json",
-    "search-designer.md": "search-plan.schema.json",
-    "relevance-scorer.md": "relevance-scores.schema.json",
+    "clarified-input.md": "clarified-input.schema.json",
+    "hypotheses.md": "hypotheses.schema.json",
+    "search-plans.md": "search-plans.schema.json",
+    "search-results.md": "relevance-scores.schema.json",
     "result-selector.md": "search-results.schema.json",
     "search-executor.md": "search-results.schema.json",
     # source-scorer emits only scoring fields (see source-scorer-output schema).
     # The Python coordinator rehydrates content_extract/title/snippet/items
     # from its own copy of the input into the persisted source-scorecards
     # format that downstream sub-agents read.
-    "source-scorer.md": "source-scorer-output.schema.json",
-    "evidence-extractor.md": "evidence-packets.schema.json",
-    "evidence-synthesizer.md": "synthesis.schema.json",
-    "self-auditor.md": "self-audit.schema.json",
-    "report-assembler.md": "report.schema.json",
+    "scorecards.md": "scorecards.schema.json",
+    "evidence-packets.md": "evidence-packets.schema.json",
+    "synthesis.md": "synthesis.schema.json",
+    "self-audit.md": "self-audit.schema.json",
+    "reports.md": "reports.schema.json",
 }
 
 
@@ -106,15 +106,15 @@ def compile_standalone() -> str:
 
     # All sub-agent prompts (in workflow order)
     workflow_order = [
-        "input-clarifier.md",
-        "hypothesis-generator.md",
-        "search-designer.md",
-        "relevance-scorer.md",
-        "source-scorer.md",
-        "evidence-extractor.md",
-        "evidence-synthesizer.md",
-        "self-auditor.md",
-        "report-assembler.md",
+        "clarified-input.md",
+        "hypotheses.md",
+        "search-plans.md",
+        "search-results.md",
+        "scorecards.md",
+        "evidence-packets.md",
+        "synthesis.md",
+        "self-audit.md",
+        "reports.md",
     ]
 
     for prompt_name in workflow_order:

@@ -154,7 +154,7 @@ def reconcile_run(run_dir: Path, logger: EventLogger) -> dict[str, Any]:
     coverage: dict[str, Any] = {}
 
     search_results = _load_run_json(run_dir / "search-results.json")
-    scorecards = _load_run_json(run_dir / "source-scorecards.json")
+    scorecards = _load_run_json(run_dir / "scorecards.json")
     evidence_packets = _load_run_json(run_dir / "evidence-packets.json")
 
     # --- Sources: selected → capped → fetched → scored ---
@@ -223,7 +223,7 @@ def reconcile_run(run_dir: Path, logger: EventLogger) -> dict[str, Any]:
         "hypotheses.json",
         "search-plans.json",
         "search-results.json",
-        "source-scorecards.json",
+        "scorecards.json",
         "evidence-packets.json",
         "synthesis.json",
         "self-audit.json",

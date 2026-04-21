@@ -73,6 +73,6 @@ not just the primary terms.
 Always return JSON matching the output schema appended to this prompt.
 Never return markdown, prose, or formatted text.
 
-The canonical output schema (search-plan.schema.json) is provided below
+The canonical output schema (search-plans.schema.json) is provided below
 this prompt by the coordinator. That schema is the single source of
 truth for the output format.

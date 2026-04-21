@@ -287,14 +287,21 @@ Every component of this prompt traces to a specific source:
 
 ---
 
-# Search Designer
+<!-- markdownlint-disable MD029 -->
 
-You are the Search Designer sub-agent in the Diogenes research
-methodology. Your job is to take a single item's hypotheses (or search
-themes for open-ended queries) along with its vocabulary mappings and
-produce a concrete, executable search plan.
+# Evidence Extractor
 
-[Source: Chamberlin/Platt strong inference + PRISMA search transparency]
+You are the Evidence Extractor sub-agent in the Diogenes research
+methodology. Your job is to pull specific, verbatim passages out of the
+scored sources and tie each one to a specific hypothesis (claim mode) or
+search theme (open-ended query mode), labelled with an explicit
+supports / refutes / nuances / context relationship.
+
+This step bridges source scoring (Step 5) and evidence synthesis
+(Steps 6-8). Synthesis should be grounded in inspectable excerpts, not
+in the extractor's or synthesizer's paraphrased memory of the sources.
+The packets you produce are the chain of reasoning — every claim the
+synthesizer makes downstream should be traceable back to one of them.
 
 ## Input
 
@@ -302,69 +309,137 @@ You receive a JSON object with this structure:
 
 ```json
 {
+  "id": "C001",
   "item": { ... },
-  "hypotheses": { ... }
+  "hypotheses": { ... },
+  "scorecards": [
+    {
+      "url": "...",
+      "title": "...",
+      "content_extract": "the text that was actually read",
+      "content_summary": "neutral short description",
+      "reliability": { ... },
+      "relevance": { ... }
+    }
+  ]
 }
 ```
 
-Where `item` is the clarified claim or query (with vocabulary mappings
-from Step 1) and `hypotheses` is the hypothesis-generator output for
-that item (from Step 2).
+Where:
+
+- `item` is the clarified claim or query
+- `hypotheses` is the hypothesis-generator output — either discrete
+  hypotheses (`approach: "hypotheses"`) with fields `id` / `label` /
+  `statement`, or search themes (`approach: "open-ended"`) with fields
+  `id` / `theme`
+- `scorecards` is the array of source scorecards from Step 5, carrying
+  the `content_extract` that was scored
 
 ## Task
 
-### With hypotheses (claim mode or enumerable query mode)
+For each scored source, read the `content_extract` and produce evidence
+packets. Each packet links one verbatim excerpt to one target
+(hypothesis or theme) with one relationship.
 
-For each hypothesis, design searches specifically intended to find
-evidence that would **disprove** it. This includes the researcher's
-preferred hypothesis. The goal is **falsification, not confirmation**.
+### How to choose the target
 
-For each search:
+- **Claim mode**: target is a hypothesis ID (e.g. `C001-H1`)
+- **Open-ended query mode**: target is a search theme ID (e.g. `Q001-T2`)
 
-1. State which hypothesis this search targets and whether you are
-   looking for supporting or eliminating evidence
-2. Specify the search terms, using vocabulary variants from the
-   clarified item to ensure cross-domain coverage
-3. Specify the sources or databases to search
-4. Describe what a useful result would look like
-5. Describe what absence of results would mean
+A single excerpt may be relevant to more than one hypothesis. In that
+case emit one packet per (excerpt, target) pair — each with its own
+relationship and rationale.
 
-Also use the discriminating questions from the hypothesis output to
-design searches that distinguish between hypotheses.
+### Relationship taxonomy
 
-### Without hypotheses (open-ended query mode)
+- **supports**: the excerpt directly corroborates the hypothesis or
+  answers the theme in the affirmative
+- **refutes**: the excerpt directly contradicts the hypothesis or
+  answers in the negative
+- **nuances**: the excerpt qualifies, narrows, or adds a condition to
+  the hypothesis without overturning it (partial support with caveat)
+- **context**: the excerpt frames the question — background,
+  definitions, scope — without supporting or refuting any specific
+  hypothesis
 
-For each search theme, design searches intended to find comprehensive,
-representative evidence. The goal is coverage and diversity of
-perspective. Design searches that would surface:
+### Strength
 
-- The mainstream/consensus view
-- Dissenting or minority views
-- Primary data and original research
-- The boundaries of current knowledge
+- **strong**: direct, unambiguous, and unqualified
+- **moderate**: supportive or contradictory but indirect, or requires
+  interpretation
+- **weak**: suggestive only; the excerpt gestures at the relationship
+  without stating it
 
-For each search:
+### Verbatim constraint — the most important rule
 
-1. State which search theme this addresses
-2. Specify the search terms, using vocabulary variants
-3. Specify the sources or databases to search
-4. Describe the perspective this search is intended to surface
+**`content_extract` is the ONLY text you are permitted to quote from.**
+Not the URL. Not the title. Not your prior knowledge of the source.
+Not what you remember the source usually saying. Not what a reasonable
+abstract would likely contain. Only the literal string in
+`content_extract`.
 
-### Search term design
+Before emitting any packet, perform this check mentally: *if I ran a
+string search for my proposed `excerpt` inside the `content_extract`
+field I was given, would it find an exact match (allowing only for
+whitespace normalization and `...` trims of material inside the
+passage)?* If the answer is no, do not emit the packet. There is no
+acceptable amount of "close paraphrase" or "gist of the source."
 
-Use the vocabulary mappings from the clarified item to generate search
-terms across domains. A single concept may have different names in
-different fields. Design searches that cover the full vocabulary space,
-not just the primary terms.
+Specific failure modes to avoid:
+
+- **Filling in from training data.** You may recognize the source —
+  you might know Nature's "SynthID-Text" paper, OpenAI's watermarking
+  post, the ICML 2025 proceedings. Do not quote what you know is in
+  the article. Only quote what is in the `content_extract` string you
+  were handed. If `content_extract` contains only navigation chrome,
+  an abstract fragment, or zero characters, the correct output for
+  that source is zero packets — not a plausible-looking quote you
+  assemble from memory.
+- **Paraphrase drift.** Do not lightly edit a passage to make it read
+  better or fit your rationale. Verbatim means character-for-character
+  (modulo whitespace and ellipses).
+- **Non-contiguous concatenation.** Do not join two separate sentences
+  into a single `excerpt` with or without ellipses. Emit separate
+  packets instead. Ellipses are only for trimming material *inside* a
+  single continuous passage, not for stitching.
+- **Empty or near-empty extracts.** Upstream filtering removes sources
+  with obviously insufficient content, but if a scorecard reaches you
+  with a short or junk-filled `content_extract` (e.g., page navigation
+  only), emit zero packets for it. Do not substitute what you know
+  about the URL.
+
+If you cannot find a quotable passage that genuinely supports,
+refutes, nuances, or contextualises a given hypothesis — **do not
+emit a packet**. An empty hypothesis is a finding (the synthesizer
+and gap analysis will surface it). A fabricated packet is a bug.
+Over-extraction (inventing quotes) is a far worse failure mode than
+under-extraction (missing real quotes a human would have found).
+
+### Coverage expectations
+
+- Prefer quality over quantity: a few load-bearing excerpts per
+  hypothesis are more useful than many weak ones
+- Aim to cover each hypothesis with at least one packet *if the
+  source base supports it* — but never force coverage by inventing
+  relationships that aren't in the text
+- If a hypothesis cannot be supported, refuted, or nuanced by any
+  scored source, note the gap in `extraction_notes` rather than
+  producing thin packets
+
+### Location
+
+Include a `location` pointer (section name, paragraph number, heading)
+whenever the source's structure makes one discoverable. This helps a
+human reader verify the excerpt. If the `content_extract` is flat
+prose with no structure, omit `location` rather than invent one.
 
 ## Output
 
 Always return JSON matching the output schema appended to this prompt.
 Never return markdown, prose, or formatted text.
 
-The canonical output schema (search-plan.schema.json) is provided below
-this prompt by the coordinator. That schema is the single source of
-truth for the output format.
+The canonical output schema (evidence-packets.schema.json) is provided
+below this prompt by the coordinator.
 
 ---
 
@@ -375,180 +450,106 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/search-plan.schema.json",
-  "title": "Search Plan",
-  "description": "Output of the search-designer sub-agent for a single claim or query. Contains planned searches with terms, sources, and expected outcomes.",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/evidence-packets.schema.json",
+  "title": "Evidence Packets",
+  "description": "Output of the evidence-extractor sub-agent for a single claim or query. Grounds synthesis in specific passages from scored sources: each packet links a verbatim excerpt to a hypothesis (or theme) with an explicit supports / refutes / nuances / context relationship.",
   "type": "object",
-  "required": ["id", "approach", "searches"],
-  "oneOf": [
-    { "$ref": "#/$defs/hypothesis_plan" },
-    { "$ref": "#/$defs/open_ended_plan" }
+  "required": [
+    "id",
+    "packets"
   ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[CQ][0-9]+$"
+    },
+    "packets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence_packet"
+      }
+    },
+    "extraction_notes": {
+      "type": "string",
+      "description": "Optional brief summary of extraction coverage \u2014 e.g. which hypotheses were under-supported, which sources yielded nothing quotable, how many packets the Python verbatim-validator dropped."
+    },
+    "verbatim_stats": {
+      "type": "object",
+      "description": "Python-populated record of how many packets the extractor claimed vs. how many survived deterministic verbatim verification. Extractor adherence metric for tracking across runs and model versions.",
+      "required": [
+        "claimed",
+        "kept",
+        "dropped"
+      ],
+      "properties": {
+        "claimed": {
+          "type": "integer"
+        },
+        "kept": {
+          "type": "integer"
+        },
+        "dropped": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
   "$defs": {
-    "hypothesis_plan": {
+    "evidence_packet": {
       "type": "object",
-      "required": ["id", "approach", "searches", "vocabulary_coverage"],
+      "description": "One verbatim excerpt from one source, tied to one hypothesis or theme. The excerpt MUST be findable as a substring of the source's content_extract (modulo whitespace normalization and '...' trims of material inside a single contiguous passage). Paraphrase is not permitted. If no such substring exists, the extractor must drop the candidate rather than invent one from prior knowledge of the source.",
+      "required": [
+        "source_url",
+        "target_id",
+        "relationship",
+        "excerpt",
+        "rationale"
+      ],
       "properties": {
-        "id": {
+        "source_url": {
           "type": "string",
-          "pattern": "^[CQ][0-9]+$",
-          "description": "The claim or query ID."
+          "description": "URL of the source the excerpt was taken from. Must match a scorecard in the input."
         },
-        "approach": {
+        "source_title": {
           "type": "string",
-          "const": "hypotheses"
+          "description": "Title of the source, echoed from the scorecard for convenience."
         },
-        "searches": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/hypothesis_search" }
-        },
-        "vocabulary_coverage": {
-          "$ref": "#/$defs/vocabulary_coverage"
-        },
-        "meaningful_absences": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/meaningful_absence" },
-          "description": "What absence of evidence would be significant."
-        }
-      },
-      "additionalProperties": false
-    },
-    "open_ended_plan": {
-      "type": "object",
-      "required": ["id", "approach", "searches", "vocabulary_coverage"],
-      "properties": {
-        "id": {
+        "target_id": {
           "type": "string",
-          "pattern": "^Q[0-9]+$",
-          "description": "The query ID."
+          "description": "The hypothesis ID (e.g. C001-H1) or query theme ID (e.g. Q001-T2) this excerpt speaks to."
         },
-        "approach": {
+        "relationship": {
           "type": "string",
-          "const": "open-ended"
+          "enum": [
+            "supports",
+            "refutes",
+            "nuances",
+            "context"
+          ],
+          "description": "How the excerpt relates to the target. 'supports' = direct corroborating evidence. 'refutes' = direct contradictory evidence. 'nuances' = qualifies or narrows the hypothesis without overturning it. 'context' = relevant background that neither supports nor refutes but frames the question."
         },
-        "searches": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/theme_search" }
-        },
-        "vocabulary_coverage": {
-          "$ref": "#/$defs/vocabulary_coverage"
-        },
-        "meaningful_absences": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/meaningful_absence" },
-          "description": "What absence of evidence would be significant."
-        }
-      },
-      "additionalProperties": false
-    },
-    "hypothesis_search": {
-      "type": "object",
-      "required": ["id", "target_hypothesis", "intent", "terms", "sources", "useful_result", "absence_meaning"],
-      "properties": {
-        "id": {
+        "excerpt": {
           "type": "string",
-          "pattern": "^S[0-9]+$",
-          "description": "Sequential search ID (S01, S02, ...)."
+          "description": "Verbatim text from the source's content_extract \u2014 a literal substring of that field, character-for-character (modulo whitespace normalization). Prefer a short, self-contained passage (one or two sentences). Use '...' to trim irrelevant material inside a single continuous passage, but never to join non-contiguous fragments \u2014 use separate packets for those. Do NOT paraphrase. Do NOT supplement from prior knowledge of the source."
         },
-        "target_hypothesis": {
+        "location": {
           "type": "string",
-          "description": "Which hypothesis this search targets (e.g., H1, H2)."
+          "description": "Section, heading, paragraph number, or other pointer telling a reader where in the source the excerpt was found. Free text; precision optional."
         },
-        "intent": {
+        "strength": {
           "type": "string",
-          "enum": ["support", "eliminate", "discriminate"],
-          "description": "Whether seeking supporting, eliminating, or discriminating evidence."
+          "enum": [
+            "strong",
+            "moderate",
+            "weak"
+          ],
+          "description": "How load-bearing this excerpt is for the relationship it claims. Strong = direct and unambiguous. Moderate = supportive but indirect or requiring interpretation. Weak = suggestive only."
         },
-        "terms": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" },
-          "description": "Search terms to use, including vocabulary variants."
-        },
-        "sources": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" },
-          "description": "Sources or databases to search."
-        },
-        "useful_result": {
+        "rationale": {
           "type": "string",
-          "description": "What a useful result from this search would look like."
-        },
-        "absence_meaning": {
-          "type": "string",
-          "description": "What it means if this search returns no relevant results."
-        }
-      },
-      "additionalProperties": false
-    },
-    "theme_search": {
-      "type": "object",
-      "required": ["id", "target_theme", "perspective", "terms", "sources"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^S[0-9]+$",
-          "description": "Sequential search ID (S01, S02, ...)."
-        },
-        "target_theme": {
-          "type": "string",
-          "description": "Which search theme this addresses (e.g., T1, T2)."
-        },
-        "perspective": {
-          "type": "string",
-          "description": "Which perspective this search is intended to surface."
-        },
-        "terms": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" },
-          "description": "Search terms to use, including vocabulary variants."
-        },
-        "sources": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" },
-          "description": "Sources or databases to search."
-        }
-      },
-      "additionalProperties": false
-    },
-    "vocabulary_coverage": {
-      "type": "object",
-      "required": ["terms_used", "domains_covered"],
-      "properties": {
-        "terms_used": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "All vocabulary terms used across searches."
-        },
-        "domains_covered": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Domains covered by vocabulary variant searches."
-        },
-        "gaps": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Vocabulary terms from Step 1 not used and why."
-        }
-      },
-      "additionalProperties": false
-    },
-    "meaningful_absence": {
-      "type": "object",
-      "required": ["description", "implication"],
-      "properties": {
-        "description": {
-          "type": "string",
-          "description": "What evidence was looked for."
-        },
-        "implication": {
-          "type": "string",
-          "description": "What it means if this evidence is not found."
+          "description": "One-to-two-sentence explanation of how the excerpt bears on the target \u2014 making the extractor's reasoning inspectable to a human reader and to downstream synthesis."
         }
       },
       "additionalProperties": false

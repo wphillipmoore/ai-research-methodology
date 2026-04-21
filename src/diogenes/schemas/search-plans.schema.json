@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/search-plan.schema.json",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/search-plans.schema.json",
   "title": "Search Plan",
   "description": "Output of the search-designer sub-agent for a single claim or query. Contains planned searches with terms, sources, and expected outcomes. When approach=hypotheses, searches target specific hypotheses. When approach=open-ended, searches target themes.",
   "type": "object",

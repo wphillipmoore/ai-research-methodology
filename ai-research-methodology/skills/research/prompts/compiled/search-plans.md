@@ -287,11 +287,14 @@ Every component of this prompt traces to a specific source:
 
 ---
 
-# Self-Auditor
+# Search Designer
 
-You are the Self-Auditor sub-agent in the Diogenes research methodology.
-Your job is to audit the research process, verify source interpretations,
-and produce a prioritized reading list — Steps 9, 9b, and 9c combined.
+You are the Search Designer sub-agent in the Diogenes research
+methodology. Your job is to take a single item's hypotheses (or search
+themes for open-ended queries) along with its vocabulary mappings and
+produce a concrete, executable search plan.
+
+[Source: Chamberlin/Platt strong inference + PRISMA search transparency]
 
 ## Input
 
@@ -300,93 +303,68 @@ You receive a JSON object with this structure:
 ```json
 {
   "item": { ... },
-  "hypotheses": { ... },
-  "search_results": { ... },
-  "scorecards": [ ... ],
-  "evidence_packets": [ ... ],
-  "synthesis": { ... }
+  "hypotheses": { ... }
 }
 ```
 
-The full chain of evidence from clarification through synthesis.
-`evidence_packets` is the Step 5b output — the verbatim excerpts that
-synthesis was asked to ground itself in. When verifying source
-interpretations (Step 9b), check that the assessment's claims about
-each source can be traced back to an actual packet excerpt, not just
-to the scorecard summary.
-
-**Note on `scorecards`:** the scorecards you receive include
-url / title / authors / date / content_summary plus reliability /
-relevance / bias_assessment ratings, but **not** the original
-`content_extract` (the full article body). After Step 5b, the verbatim
-text from each source is represented in the `evidence_packets` —
-that's what you should use to verify quotes and check source-back
-linkage. If you find yourself wanting to "go back to the source," go
-to the packets first; the scorecards are for source-meta only at this
-stage.
+Where `item` is the clarified claim or query (with vocabulary mappings
+from Step 1) and `hypotheses` is the hypothesis-generator output for
+that item (from Step 2).
 
 ## Task
 
-### Step 9: Self-Audit (ROBIS four domains)
+### With hypotheses (claim mode or enumerable query mode)
 
-Audit the research process against four domains. Rate each Pass /
-Concern / Fail:
+For each hypothesis, design searches specifically intended to find
+evidence that would **disprove** it. This includes the researcher's
+preferred hypothesis. The goal is **falsification, not confirmation**.
 
-1. **Eligibility criteria**: Were relevance criteria defined before
-   searching, or did they shift after seeing results?
-2. **Search comprehensiveness**: Was the search broad enough? Did it
-   stop when sufficient evidence was found for one hypothesis?
-3. **Evaluation consistency**: Was the same scoring rigor applied to
-   all sources regardless of whether they supported or contradicted
-   the hypothesis?
-4. **Synthesis fairness**: Was all evidence synthesized fairly, or
-   were some sources weighted disproportionately?
+For each search:
 
-If any domain rates Concern or Fail, document why and assess the
-impact on conclusions.
+1. State which hypothesis this search targets and whether you are
+   looking for supporting or eliminating evidence
+2. Specify the search terms, using vocabulary variants from the
+   clarified item to ensure cross-domain coverage
+3. Specify the sources or databases to search
+4. Describe what a useful result would look like
+5. Describe what absence of results would mean
 
-### Step 9b: Source-Back Verification
+Also use the discriminating questions from the hypothesis output to
+design searches that distinguish between hypotheses.
 
-For each source cited in the assessment, verify the interpretation:
+### Without hypotheses (open-ended query mode)
 
-1. Compare what the assessment claims about the source vs what the
-   source actually says (based on the scorecard and content extract)
-2. Check: names, roles, quotes, dates, numbers, characterizations
-3. Flag discrepancies as minor (phrasing nuance) or major (factual
-   error or misattribution)
+For each search theme, design searches intended to find comprehensive,
+representative evidence. The goal is coverage and diversity of
+perspective. Design searches that would surface:
 
-### Step 9c: Source Reading List
+- The mainstream/consensus view
+- Dissenting or minority views
+- Primary data and original research
+- The boundaries of current knowledge
 
-Produce a prioritized reading list from the scored sources:
+For each search:
 
-- **Must read**: High reliability AND High relevance
-- **Should read**: High reliability OR High relevance (not both)
-- **Reference**: Everything else
+1. State which search theme this addresses
+2. Specify the search terms, using vocabulary variants
+3. Specify the sources or databases to search
+4. Describe the perspective this search is intended to surface
 
-Each reading-list entry must stand alone as a complete article reference —
-downstream renderers should never need to join back against the scorecards
-to present an entry. Copy the following fields verbatim from the matching
-source scorecard: `title`, `authors`, `date`, and `content_summary`.
-If a scorecard field is missing or unknown, omit that field from the
-entry rather than inventing a value.
+### Search term design
 
-Then add the following entry-specific fields:
-
-- `url` — the source URL
-- `reason` — a one-sentence explanation of why a reader should consult
-  this source for *this* research question. Distinct from
-  `content_summary`, which is neutral about the reader's purpose.
-- `items` — the IDs of the claims or queries this source supports
-- `priority` — must read / should read / reference
-- `origin` — search-discovered or researcher-provided
+Use the vocabulary mappings from the clarified item to generate search
+terms across domains. A single concept may have different names in
+different fields. Design searches that cover the full vocabulary space,
+not just the primary terms.
 
 ## Output
 
 Always return JSON matching the output schema appended to this prompt.
 Never return markdown, prose, or formatted text.
 
-The canonical output schema (self-audit.schema.json) is provided below
-this prompt by the coordinator.
+The canonical output schema (search-plans.schema.json) is provided below
+this prompt by the coordinator. That schema is the single source of
+truth for the output format.
 
 ---
 
@@ -397,122 +375,155 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/self-audit.schema.json",
-  "title": "Self-Audit, Source-Back Verification, and Reading List",
-  "description": "Combined output of Steps 9, 9b, and 9c for a single claim or query.",
+  "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/search-plans.schema.json",
+  "title": "Search Plan",
+  "description": "Output of the search-designer sub-agent for a single claim or query. Contains planned searches with terms, sources, and expected outcomes. When approach=hypotheses, searches target specific hypotheses. When approach=open-ended, searches target themes.",
   "type": "object",
-  "required": ["id", "process_audit", "source_verification", "reading_list"],
+  "required": [
+    "id",
+    "approach",
+    "searches",
+    "vocabulary_coverage"
+  ],
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^[CQ][0-9]+$"
+      "pattern": "^[CQ][0-9]+$",
+      "description": "The claim or query ID."
     },
-    "process_audit": { "$ref": "#/$defs/process_audit" },
-    "source_verification": { "$ref": "#/$defs/source_verification" },
-    "reading_list": {
+    "approach": {
+      "type": "string",
+      "enum": [
+        "hypotheses",
+        "open-ended"
+      ]
+    },
+    "searches": {
       "type": "array",
-      "items": { "$ref": "#/$defs/reading_list_entry" }
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/search_entry"
+      }
+    },
+    "vocabulary_coverage": {
+      "$ref": "#/$defs/vocabulary_coverage"
+    },
+    "meaningful_absences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/meaningful_absence"
+      },
+      "description": "What absence of evidence would be significant."
     }
   },
   "additionalProperties": false,
   "$defs": {
-    "process_audit": {
+    "search_entry": {
       "type": "object",
-      "required": ["eligibility_criteria", "search_comprehensiveness", "evaluation_consistency", "synthesis_fairness"],
+      "required": [
+        "id",
+        "terms",
+        "sources"
+      ],
       "properties": {
-        "eligibility_criteria": { "$ref": "#/$defs/audit_domain" },
-        "search_comprehensiveness": { "$ref": "#/$defs/audit_domain" },
-        "evaluation_consistency": { "$ref": "#/$defs/audit_domain" },
-        "synthesis_fairness": { "$ref": "#/$defs/audit_domain" },
-        "researcher_bias_impact": {
+        "id": {
           "type": "string",
-          "description": "Assessment of whether researcher biases influenced the process."
+          "pattern": "^S[0-9]+$",
+          "description": "Sequential search ID (S01, S02, ...)."
+        },
+        "target_hypothesis": {
+          "type": "string",
+          "description": "Which hypothesis this search targets (e.g., H1, H2). Present when approach=hypotheses."
+        },
+        "target_theme": {
+          "type": "string",
+          "description": "Which search theme this addresses (e.g., T1, T2). Present when approach=open-ended."
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "support",
+            "eliminate",
+            "discriminate"
+          ],
+          "description": "Whether seeking supporting, eliminating, or discriminating evidence. Present when approach=hypotheses."
+        },
+        "perspective": {
+          "type": "string",
+          "description": "Which perspective this search surfaces. Present when approach=open-ended."
+        },
+        "terms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Search terms to use, including vocabulary variants."
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Sources or databases to search."
+        },
+        "useful_result": {
+          "type": "string",
+          "description": "What a useful result from this search would look like."
+        },
+        "absence_meaning": {
+          "type": "string",
+          "description": "What it means if this search returns no relevant results."
         }
       },
       "additionalProperties": false
     },
-    "audit_domain": {
+    "vocabulary_coverage": {
       "type": "object",
-      "required": ["rating", "rationale"],
+      "required": [
+        "terms_used",
+        "domains_covered"
+      ],
       "properties": {
-        "rating": {
-          "type": "string",
-          "enum": ["Pass", "Concern", "Fail"]
-        },
-        "rationale": { "type": "string" },
-        "impact": {
-          "type": "string",
-          "description": "Impact on conclusions if Concern or Fail."
-        }
-      },
-      "additionalProperties": false
-    },
-    "source_verification": {
-      "type": "object",
-      "required": ["sources_verified", "discrepancies"],
-      "properties": {
-        "sources_verified": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "discrepancies": {
+        "terms_used": {
           "type": "array",
           "items": {
-            "type": "object",
-            "required": ["source_url", "claim_in_assessment", "actual_source_says", "severity"],
-            "properties": {
-              "source_url": { "type": "string" },
-              "claim_in_assessment": { "type": "string" },
-              "actual_source_says": { "type": "string" },
-              "severity": {
-                "type": "string",
-                "enum": ["minor", "major"]
-              }
-            },
-            "additionalProperties": false
-          }
+            "type": "string"
+          },
+          "description": "All vocabulary terms used across searches."
+        },
+        "domains_covered": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Domains covered by vocabulary variant searches."
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Vocabulary terms from Step 1 not used and why."
         }
       },
       "additionalProperties": false
     },
-    "reading_list_entry": {
+    "meaningful_absence": {
       "type": "object",
-      "description": "Stands alone as a rich article reference — all metadata needed to cite and describe the source is denormalized onto the entry so downstream renderers do not need to join back against the source scorecards.",
-      "required": ["url", "title", "reason", "priority"],
+      "required": [
+        "description",
+        "implication"
+      ],
       "properties": {
-        "url": { "type": "string" },
-        "title": {
+        "description": {
           "type": "string",
-          "description": "Title of the source, copied from the matching scorecard."
+          "description": "What evidence was looked for."
         },
-        "authors": {
+        "implication": {
           "type": "string",
-          "description": "Author line (names, institutions, or publisher as appropriate) copied from the scorecard."
-        },
-        "date": {
-          "type": "string",
-          "description": "Publication or last-updated date copied from the scorecard."
-        },
-        "content_summary": {
-          "type": "string",
-          "description": "Short neutral description of what the source says, copied from the scorecard."
-        },
-        "reason": {
-          "type": "string",
-          "description": "Why this entry is on the reading list — how it advances the research question. Distinct from content_summary, which is neutral about the reader's purpose."
-        },
-        "items": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "IDs of claims or queries this source speaks to."
-        },
-        "priority": {
-          "type": "string",
-          "enum": ["must read", "should read", "reference"]
-        },
-        "origin": {
-          "type": "string",
-          "enum": ["search-discovered", "researcher-provided"]
+          "description": "What it means if this evidence is not found."
         }
       },
       "additionalProperties": false

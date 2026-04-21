@@ -550,7 +550,7 @@ not just the primary terms.
 Always return JSON matching the output schema appended to this prompt.
 Never return markdown, prose, or formatted text.
 
-The canonical output schema (search-plan.schema.json) is provided below
+The canonical output schema (search-plans.schema.json) is provided below
 this prompt by the coordinator. That schema is the single source of
 truth for the output format.
 
@@ -699,7 +699,7 @@ use "N/A" when the source is not based on a randomized controlled trial.
 ## Output
 
 Always return JSON matching the output schema appended to this prompt
-(`source-scorer-output.schema.json`). Never return markdown, prose, or
+(`scorecards.schema.json`). Never return markdown, prose, or
 formatted text.
 
 Your output is narrower than the persisted scorecard that downstream
@@ -1200,5 +1200,5 @@ whether it has occurred without needing the original research context.
 Always return JSON matching the output schema appended to this prompt.
 Never return markdown, prose, or formatted text.
 
-The canonical output schema (report.schema.json) is provided below
+The canonical output schema (reports.schema.json) is provided below
 this prompt by the coordinator.
