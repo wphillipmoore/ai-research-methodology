@@ -20,6 +20,7 @@ provides explicit step-completion tracking with timestamps and diagnostics.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path  # noqa: TC003 — needed at runtime for file operations
@@ -260,11 +261,17 @@ class PipelineState:
                 elapsed = round((now - created).total_seconds(), 1)
             except ValueError:
                 pass
+        # Capture the PID of the process that wrote this state snapshot.
+        # If the process crashes, the macOS crash report's PID can be
+        # matched against this field to identify exactly which run died.
+        # Captured on every save (not just init) so the value always
+        # reflects the process currently driving the pipeline.
         data = {
             "created_at": self._created_at,
             "updated_at": now_str,
             "completed_at": now_str if self.all_complete() else None,
             "elapsed_seconds": elapsed,
+            "pid": os.getpid(),
             "steps": [
                 {
                     "name": s.name,
