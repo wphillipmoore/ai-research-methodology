@@ -255,3 +255,48 @@ class TestPipelineState:
         step = data["steps"][0]
         assert step["status"] == "failed"
         assert step["elapsed_seconds"] is None
+
+    def test_save_with_no_created_at(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers 257->263: _save when _created_at is None (falsy)."""
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        # Pre-populate a state file with no created_at key
+        (run_dir / "pipeline-state.json").write_text(json.dumps({"steps": []}))
+        state = PipelineState(run_dir)
+        state.mark_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        # elapsed_seconds should be None because created_at is None
+        assert data["elapsed_seconds"] is None
+
+    def test_mark_complete_with_none_started_at(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers 310->316: mark_complete when existing.started_at is None (falsy)."""
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        # Inject a step with started_at=None
+        state._completed["step_01_research_input_clarified"] = StepStatus(
+            name="step_01_research_input_clarified",
+            status="running",
+            started_at=None,
+        )
+        state.mark_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        step = data["steps"][0]
+        assert step["status"] == "complete"
+        assert step["elapsed_seconds"] is None
+
+    def test_mark_failed_with_none_started_at(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers 334->340: mark_failed when existing.started_at is None (falsy)."""
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state._completed["step_01_research_input_clarified"] = StepStatus(
+            name="step_01_research_input_clarified",
+            status="running",
+            started_at=None,
+        )
+        state.mark_failed("step_01_research_input_clarified", diagnostics="err")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        step = data["steps"][0]
+        assert step["status"] == "failed"
+        assert step["elapsed_seconds"] is None

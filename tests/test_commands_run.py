@@ -482,3 +482,55 @@ class TestExecute:
         output_dir = str(tmp_path / "output")  # type: ignore[operator]
         result = execute("input.json", output_dir, 1)
         assert result == 0
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._parse_and_clarify")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_pipeline_no_guidelines_file(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_parse: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Covers 333->339: guidelines file missing, skips snapshot write."""
+        mock_client = MagicMock()
+        mock_client.model = "test-model"
+        mock_client.usage.to_dict.return_value = {
+            "totals": {
+                "api_calls": 1,
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+                "estimated_cost_usd": 0.0,
+                "web_search_requests": 0,
+                "web_fetch_requests": 0,
+            },
+            "per_call": [],
+        }
+        mock_api_cls.return_value = mock_client
+        mock_sp.return_value = MagicMock()
+        mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
+
+        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+            if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
+                return {"_self_written": True}
+            return {"result": "ok"}
+
+        mock_dispatch.side_effect = dispatch_side_effect
+
+        # Point _PACKAGE_DIR to an empty dir so common-guidelines.md doesn't exist
+        empty_pkg_dir = tmp_path / "empty_pkg"
+        empty_pkg_dir.mkdir()
+        monkeypatch.setattr("diogenes.commands.run._PACKAGE_DIR", empty_pkg_dir)
+
+        output_dir = str(tmp_path / "output")
+        result = execute("input.json", output_dir, 1)
+        assert result == 0
+        # Guidelines snapshot should NOT have been written
+        group_dirs = list((tmp_path / "output").iterdir())
+        snapshot = group_dirs[0] / "prompt-snapshot.md"
+        assert not snapshot.exists()

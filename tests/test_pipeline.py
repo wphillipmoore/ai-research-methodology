@@ -614,6 +614,118 @@ class TestStep9SelfAudit:
         assert "Q001" in result
 
 
+class TestPipelineBranchCoverage:
+    """Targeted tests for branch partials."""
+
+    def test_score_results_batched_url_mismatch(self) -> None:
+        """Covers 295->301, 296->295: scorer returns URL not in batch (no match)."""
+        mock_client = MagicMock()
+        # Scorer returns a URL that doesn't match any in the batch
+        mock_client.call_sub_agent.return_value = {"scores": [{"url": "https://unmatched.com", "relevance_score": 7}]}
+
+        from diogenes.search import SearchExecution, SearchResult
+
+        execution = SearchExecution(
+            search_id="S01",
+            terms=["test"],
+            provider="mock",
+            date="2026-01-01",
+            results=[SearchResult(title="T", url="https://a.com", snippet="S")],
+            total_results_available=1,
+        )
+        item = {"id": "Q001", "clarified_text": "Test"}
+        results = _score_results_batched(item, [execution], mock_client, Path("/tmp/fake.md"))
+        # Score entry should be present but without title/snippet enrichment
+        assert len(results) == 1
+        assert "title" not in results[0]
+
+    @patch("diogenes.pipeline._fetch_sources_for_scoring")
+    def test_step5_source_without_content_extract(self, mock_fetch: MagicMock) -> None:
+        """Covers 491->489: source field is empty/missing, if value: is False."""
+        mock_fetch.return_value = [
+            {"url": "https://a.com", "title": "", "snippet": "", "content_extract": ""},
+        ]
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "scorecards": [{"url": "https://a.com", "score": 8}],
+        }
+
+        research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
+        search_results = {
+            "C001": {"selected_sources": [{"url": "https://a.com"}]},
+        }
+        result = step5_score_sources(research_input, search_results, mock_client)
+        # Empty fields should not be joined
+        sc = result["C001"]["scorecards"][0]
+        assert "content_extract" not in sc or not sc.get("content_extract")
+
+    @patch("diogenes.pipeline._fetch_sources_for_scoring")
+    def test_step5_scorecard_already_has_items(self, mock_fetch: MagicMock) -> None:
+        """Covers 493->487: scorecard already has 'items', skip adding."""
+        mock_fetch.return_value = [
+            {"url": "https://a.com", "title": "T", "snippet": "S", "content_extract": "body"},
+        ]
+        mock_client = MagicMock()
+        # Scorer returns scorecards with items already populated
+        mock_client.call_sub_agent.return_value = {
+            "scorecards": [{"url": "https://a.com", "score": 8, "items": ["pre-existing"]}],
+        }
+
+        research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
+        search_results = {
+            "C001": {"selected_sources": [{"url": "https://a.com"}]},
+        }
+        result = step5_score_sources(research_input, search_results, mock_client)
+        # Pre-existing items should not be overwritten
+        assert result["C001"]["scorecards"][0]["items"] == ["pre-existing"]
+
+    @patch("diogenes.pipeline._fetch_sources_for_scoring")
+    def test_step5_sources_exceed_cap(self, mock_fetch: MagicMock) -> None:
+        """Covers line 451: len(all_selected) > _MAX_SOURCES_TO_SCORE triggers cap message."""
+        mock_fetch.return_value = []
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {"scorecards": []}
+
+        research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
+        # 20 selected sources > _MAX_SOURCES_TO_SCORE=15
+        search_results = {
+            "C001": {"selected_sources": [{"url": f"https://s{i}.com"} for i in range(20)]},
+        }
+        step5_score_sources(research_input, search_results, mock_client)
+        # Fetch should have been called with capped list (15 sources)
+        call_args = mock_fetch.call_args
+        assert len(call_args.args[1]) == 15
+
+    @patch("diogenes.pipeline.parallelize_thread")
+    def test_extract_evidence_no_dropped_prints_verified(self, mock_par: MagicMock) -> None:
+        """Covers line 652: else branch when no packets were dropped."""
+        from diogenes.parallelize import ExecutorResults
+
+        mock_par.return_value = ExecutorResults(
+            results=[
+                {
+                    "url": "https://a.com",
+                    "verified_packets": [{"excerpt": "ok"}],
+                    "claimed": 1,
+                    "kept": 1,
+                    "dropped": 0,
+                },
+            ],
+            exceptions=[],
+        )
+
+        item = {"id": "Q001", "clarified_text": "test"}
+        packets, _errors, stats = _extract_evidence_for_item(
+            item=item,
+            item_hypotheses={},
+            substantive=[{"url": "https://a.com", "content_extract": "text"}],
+            prompt_path=Path("/tmp/fake.md"),
+            client=MagicMock(),
+        )
+        assert stats["dropped"] == 0
+        assert len(packets) == 1
+
+
 class TestStep10Report:
     """Tests for step10_report."""
 
