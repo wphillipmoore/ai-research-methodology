@@ -2778,3 +2778,100 @@ class TestSelfAuditVariants:
         audit = (c001_dirs[0] / "self-audit.md").read_text()
         # Should include discrepancies section and sensitivity
         assert "discrepancies" in audit.lower() or "Source Verification" in audit
+
+
+def _create_run_no_synthesis_or_audit(run_dir: Path) -> None:
+    """Fixture where synthesis and audit are absent per-item, so assessment.md/self-audit.md don't get written."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(json.dumps({}))  # Empty hypotheses
+    (run_dir / "search-plans.json").write_text(json.dumps({}))
+    (run_dir / "search-results.json").write_text(json.dumps({}))
+    (run_dir / "scorecards.json").write_text(json.dumps({}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({}))
+    (run_dir / "synthesis.json").write_text(json.dumps({}))  # No per-item synthesis
+    (run_dir / "self-audit.json").write_text(json.dumps({}))  # No per-item audit
+    (run_dir / "reports.json").write_text(json.dumps({}))
+
+
+class TestItemWithoutSynthesisOrAudit:
+    """Cover branches where assessment.md/self-audit.md don't exist."""
+
+    def test_no_synthesis_or_audit(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_no_synthesis_or_audit(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        # Should still render the index
+        assert (output_dir / "index.md").exists()
+
+
+def _create_run_minimal_item(run_dir: Path) -> None:
+    """Item with no clarified/original text at all, to flip has_summary False."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim"}],  # No text fields at all
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(json.dumps({}))
+    (run_dir / "search-plans.json").write_text(json.dumps({}))
+    (run_dir / "search-results.json").write_text(json.dumps({}))
+    (run_dir / "scorecards.json").write_text(json.dumps({}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({}))
+    (run_dir / "synthesis.json").write_text(json.dumps({}))
+    (run_dir / "self-audit.json").write_text(json.dumps({}))
+    (run_dir / "reports.json").write_text(json.dumps({}))
+
+
+class TestItemWithoutAnyText:
+    """Cover has_summary=False branch."""
+
+    def test_item_without_text(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_minimal_item(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        assert (output_dir / "index.md").exists()
+
+
+def _create_group_with_sparse_files(group_dir: Path) -> None:
+    """Group-level data with some fields missing to flip group-writer branches."""
+    run1 = group_dir / "run-1"
+    run1.mkdir()
+    _create_minimal_run(run1)
+
+    (group_dir / "research-input-clarified.json").write_text((run1 / "research-input-clarified.json").read_text())
+
+    # Group synthesis with minimal fields (no items list)
+    group_syn = {"cross_run_summary": "Summary"}
+    (group_dir / "group-synthesis.json").write_text(json.dumps(group_syn))
+
+    # Group consistency with no metrics
+    group_con = {"consistency_score": 0.5}
+    (group_dir / "group-consistency.json").write_text(json.dumps(group_con))
+
+    # Group reading list with empty sources
+    group_rl = {"sources": []}
+    (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
+
+
+class TestGroupSparseFiles:
+    """Cover branches in group writers when fields are absent."""
+
+    def test_group_sparse(self, tmp_path: pytest.TempPathFactory) -> None:
+        group_dir = tmp_path / "group"
+        group_dir.mkdir()
+        _create_group_with_sparse_files(group_dir)
+        output_dir = tmp_path / "md"
+        render_run_group(group_dir, output_dir)
+        assert (output_dir / "index.md").exists()
+        assert (output_dir / "synthesis.md").exists()
+        assert (output_dir / "consistency.md").exists()
+        assert (output_dir / "reading-list.md").exists()
