@@ -193,7 +193,8 @@ class TestDioSearch:
         assert len(result["results"]) == 1
 
     @patch("diogenes.mcp_server._create_search_provider")
-    def test_search_error(self, mock_create: MagicMock) -> None:
+    def test_search_error_generic(self, mock_create: MagicMock) -> None:
+        """An unclassified exception surfaces with error_kind='other'."""
         from diogenes.mcp_server import dio_search
 
         mock_provider = MagicMock()
@@ -202,9 +203,155 @@ class TestDioSearch:
         mock_create.return_value = mock_provider
 
         reset_mcp_logger()
-        result = json.loads(dio_search("test query"))
-        assert result["error"] is True
+        try:
+            result = json.loads(dio_search("test query"))
+            assert result["error"] is True
+            assert result["error_kind"] == "other"
+            assert result["fallback_available"] is True
+            assert result["query"] == "test query"
+        finally:
+            reset_mcp_logger()
+
+    @patch("diogenes.mcp_server._create_search_provider")
+    def test_search_quota_exhausted(self, mock_create: MagicMock) -> None:
+        """HTTP 402 maps to quota_exhausted with fallback available."""
+        import requests as req
+
+        from diogenes.mcp_server import dio_search
+
+        resp = MagicMock()
+        resp.status_code = 402
+        http_err = req.HTTPError()
+        http_err.response = resp
+
+        mock_provider = MagicMock()
+        mock_provider.name = "serper"
+        mock_provider.search.side_effect = http_err
+        mock_create.return_value = mock_provider
+
         reset_mcp_logger()
+        try:
+            result = json.loads(dio_search("test query"))
+            assert result["error_kind"] == "quota_exhausted"
+            assert result["fallback_available"] is True
+            assert "quota" in result["message"].lower()
+        finally:
+            reset_mcp_logger()
+
+    @patch("diogenes.mcp_server._create_search_provider")
+    def test_search_rate_limited(self, mock_create: MagicMock) -> None:
+        import requests as req
+
+        from diogenes.mcp_server import dio_search
+
+        resp = MagicMock()
+        resp.status_code = 429
+        http_err = req.HTTPError()
+        http_err.response = resp
+
+        mock_provider = MagicMock()
+        mock_provider.name = "brave"
+        mock_provider.search.side_effect = http_err
+        mock_create.return_value = mock_provider
+
+        reset_mcp_logger()
+        try:
+            result = json.loads(dio_search("q"))
+            assert result["error_kind"] == "rate_limited"
+            assert result["fallback_available"] is True
+        finally:
+            reset_mcp_logger()
+
+    @patch("diogenes.mcp_server._create_search_provider")
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_search_auth_failed(self, mock_create: MagicMock, status: int) -> None:
+        """401/403 is auth; web_search can't substitute, so fallback=False."""
+        import requests as req
+
+        from diogenes.mcp_server import dio_search
+
+        resp = MagicMock()
+        resp.status_code = status
+        http_err = req.HTTPError()
+        http_err.response = resp
+
+        mock_provider = MagicMock()
+        mock_provider.name = "serper"
+        mock_provider.search.side_effect = http_err
+        mock_create.return_value = mock_provider
+
+        reset_mcp_logger()
+        try:
+            result = json.loads(dio_search("q"))
+            assert result["error_kind"] == "auth_failed"
+            assert result["fallback_available"] is False
+        finally:
+            reset_mcp_logger()
+
+    @patch("diogenes.mcp_server._create_search_provider")
+    def test_search_network_error(self, mock_create: MagicMock) -> None:
+        import requests as req
+
+        from diogenes.mcp_server import dio_search
+
+        mock_provider = MagicMock()
+        mock_provider.name = "serper"
+        mock_provider.search.side_effect = req.ConnectionError("down")
+        mock_create.return_value = mock_provider
+
+        reset_mcp_logger()
+        try:
+            result = json.loads(dio_search("q"))
+            assert result["error_kind"] == "network_error"
+            assert result["fallback_available"] is True
+        finally:
+            reset_mcp_logger()
+
+    @patch("diogenes.mcp_server._create_search_provider")
+    def test_search_http_error_without_response(self, mock_create: MagicMock) -> None:
+        """HTTPError without a response object falls through to 'other'."""
+        import requests as req
+
+        from diogenes.mcp_server import dio_search
+
+        http_err = req.HTTPError()
+        http_err.response = None
+
+        mock_provider = MagicMock()
+        mock_provider.name = "serper"
+        mock_provider.search.side_effect = http_err
+        mock_create.return_value = mock_provider
+
+        reset_mcp_logger()
+        try:
+            result = json.loads(dio_search("q"))
+            assert result["error_kind"] == "other"
+        finally:
+            reset_mcp_logger()
+
+    @patch("diogenes.mcp_server._create_search_provider")
+    def test_search_http_error_unknown_status(self, mock_create: MagicMock) -> None:
+        """A status code that doesn't map to any specific kind → 'other'."""
+        import requests as req
+
+        from diogenes.mcp_server import dio_search
+
+        resp = MagicMock()
+        resp.status_code = 418  # I'm a teapot — not a classified kind
+        http_err = req.HTTPError()
+        http_err.response = resp
+
+        mock_provider = MagicMock()
+        mock_provider.name = "serper"
+        mock_provider.search.side_effect = http_err
+        mock_create.return_value = mock_provider
+
+        reset_mcp_logger()
+        try:
+            result = json.loads(dio_search("q"))
+            assert result["error_kind"] == "other"
+        finally:
+            reset_mcp_logger()
 
 
 class TestDioFetch:
@@ -289,18 +436,33 @@ class TestDioSearchBatch:
 
     @patch("diogenes.mcp_server._create_search_provider")
     def test_batch_partial_error(self, mock_create: MagicMock) -> None:
+        """Per-query errors carry their own classification in the batch result."""
+        import requests as req
+
         from diogenes.mcp_server import dio_search_batch
+
+        resp = MagicMock()
+        resp.status_code = 429
+        http_err = req.HTTPError()
+        http_err.response = resp
 
         mock_provider = MagicMock()
         mock_provider.name = "serper"
-        mock_provider.search.side_effect = [RuntimeError("fail"), ([], 0)]
+        mock_provider.search.side_effect = [http_err, ([], 0)]
         mock_create.return_value = mock_provider
 
         reset_mcp_logger()
-        result = json.loads(dio_search_batch(["q1", "q2"]))
-        assert len(result["results"]) == 2
-        assert "error" in result["results"][0]
-        reset_mcp_logger()
+        try:
+            result = json.loads(dio_search_batch(["q1", "q2"]))
+            assert len(result["results"]) == 2
+            # First query errored with rate_limited classification
+            assert result["results"][0]["error"] is True
+            assert result["results"][0]["error_kind"] == "rate_limited"
+            assert result["results"][0]["fallback_available"] is True
+            # Second query succeeded
+            assert "error" not in result["results"][1]
+        finally:
+            reset_mcp_logger()
 
 
 class TestDioFlushEvents:

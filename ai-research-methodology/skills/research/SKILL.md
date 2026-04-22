@@ -499,6 +499,25 @@ When synthesis finishes, report to the user:
 | {ID} | {description of issue needing correction} |
 ```
 
+## Search-tool preference
+
+- **Prefer `dio_search` / `dio_search_batch`** for every web search inside
+  `/research`. They use a configured provider (Serper, Brave, etc.) with a
+  quota-based free tier and are cheaper per call than `web_search`.
+- **Never use `web_search` silently.** It is reserved for fallback after
+  `dio_search` reports a failure and the user has confirmed they want to
+  continue.
+- **Structured error handling.** When `dio_search` or `dio_search_batch`
+  returns `{"error": true, ...}`, inspect `error_kind`:
+  - `quota_exhausted` / `rate_limited` / `network_error` — tell the user,
+    and if `fallback_available` is true, offer to continue the remaining
+    searches with `web_search`. Make the token-cost change explicit in the
+    offer so the user can decide.
+  - `auth_failed` — the search provider's API key is missing/invalid.
+    Report and stop; `web_search` cannot substitute for a misconfigured
+    provider.
+  - `other` — surface the message and ask the user how to proceed.
+
 ## Constraints
 
 - Do not proceed without user confirmation (Step 2)
