@@ -1,0 +1,211 @@
+"""Tests for state_machine module."""
+
+import json
+
+import pytest
+
+from diogenes.state_machine import PIPELINE_STEPS, PipelineState, StepDefinition, StepStatus
+
+
+class TestStepDefinition:
+    """Tests for StepDefinition dataclass."""
+
+    def test_basic_creation(self) -> None:
+        step = StepDefinition(
+            name="test_step",
+            display_name="Test Step",
+            output_file="test.json",
+            category="llm",
+        )
+        assert step.name == "test_step"
+        assert step.display_name == "Test Step"
+        assert step.output_file == "test.json"
+        assert step.category == "llm"
+        assert step.requires == []
+        assert step.schema is None
+        assert step.prompt is None
+        assert step.python_handler is None
+        assert step.post_validators == []
+        assert step.mcp_tools == []
+        assert step.per_source is False
+
+    def test_full_creation(self) -> None:
+        step = StepDefinition(
+            name="step_05",
+            display_name="Step 5",
+            output_file="scorecards.json",
+            category="hybrid",
+            requires=["research-input.json"],
+            schema="scorecards.schema.json",
+            prompt="scorecards.md",
+            python_handler="step5_score_sources",
+            post_validators=["validate_packets"],
+            mcp_tools=["dio_fetch"],
+            per_source=True,
+        )
+        assert step.requires == ["research-input.json"]
+        assert step.per_source is True
+
+
+class TestPipelineSteps:
+    """Tests for the canonical PIPELINE_STEPS list."""
+
+    def test_has_11_steps(self) -> None:
+        assert len(PIPELINE_STEPS) == 11
+
+    def test_all_have_unique_names(self) -> None:
+        names = [s.name for s in PIPELINE_STEPS]
+        assert len(names) == len(set(names))
+
+    def test_step_names_are_numbered(self) -> None:
+        for i, step in enumerate(PIPELINE_STEPS, 1):
+            assert step.name.startswith(f"step_{i:02d}_"), f"Step {i} name mismatch: {step.name}"
+
+    def test_all_have_display_names(self) -> None:
+        for step in PIPELINE_STEPS:
+            assert step.display_name, f"{step.name} missing display_name"
+
+    def test_all_have_categories(self) -> None:
+        valid_categories = {"llm", "python_only", "hybrid"}
+        for step in PIPELINE_STEPS:
+            assert step.category in valid_categories, f"{step.name} has invalid category: {step.category}"
+
+
+class TestStepStatus:
+    """Tests for StepStatus dataclass."""
+
+    def test_creation(self) -> None:
+        status = StepStatus(name="step_01", status="complete")
+        assert status.name == "step_01"
+        assert status.status == "complete"
+        assert status.started_at is None
+        assert status.completed_at is None
+        assert status.elapsed_seconds is None
+
+
+class TestPipelineState:
+    """Tests for PipelineState."""
+
+    def test_fresh_state(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        assert not state.all_complete()
+        assert state.next_step() is not None
+        assert state.next_step().name == "step_01_research_input_clarified"
+
+    def test_mark_complete(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
+        assert state.is_complete("step_01_research_input_clarified")
+        # State file should exist
+        assert (run_dir / "pipeline-state.json").exists()
+
+    def test_mark_started(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_started("step_01_research_input_clarified")
+        assert not state.is_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert data["steps"][0]["status"] == "running"
+
+    def test_mark_failed(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_started("step_01_research_input_clarified")
+        state.mark_failed("step_01_research_input_clarified", diagnostics="API error")
+        assert not state.is_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert data["steps"][0]["status"] == "failed"
+        assert data["steps"][0]["diagnostics"] == "API error"
+
+    def test_persistence_and_reload(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state1 = PipelineState(run_dir)
+        state1.mark_complete("step_01_research_input_clarified")
+        # Reload from disk
+        state2 = PipelineState(run_dir)
+        assert state2.is_complete("step_01_research_input_clarified")
+
+    def test_next_step_checks_prerequisites(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        # Complete step 1
+        state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
+        # Step 2 requires research-input-clarified.json
+        # File doesn't exist yet, so next_step should still be step 2
+        # but prerequisites check against files on disk
+        (run_dir / "research-input-clarified.json").write_text("{}")
+        next_step = state.next_step()
+        assert next_step is not None
+        assert next_step.name == "step_02_hypotheses"
+
+    def test_all_complete(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        for step in PIPELINE_STEPS:
+            state.mark_complete(step.name)
+        assert state.all_complete()
+        assert state.next_step() is None
+
+    def test_summary(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_complete("step_01_research_input_clarified")
+        s = state.summary()
+        assert s["total_steps"] == 11
+        assert s["completed"] == 1
+        assert s["failed"] == 0
+        assert s["remaining"] == 10
+
+    def test_summary_with_failure(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_failed("step_01_research_input_clarified", diagnostics="err")
+        s = state.summary()
+        assert s["failed"] == 1
+        assert s["remaining"] == 10
+
+    def test_elapsed_seconds_computed(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_started("step_01_research_input_clarified")
+        state.mark_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert data["elapsed_seconds"] is not None
+        assert data["elapsed_seconds"] >= 0
+
+    def test_completed_at_set_when_all_done(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        for step in PIPELINE_STEPS:
+            state.mark_complete(step.name)
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert data["completed_at"] is not None
+
+    def test_mark_complete_without_prior_start(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        # Complete without calling mark_started first
+        state.mark_complete("step_01_research_input_clarified")
+        assert state.is_complete("step_01_research_input_clarified")
+
+    def test_mark_failed_without_prior_start(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_failed("step_01_research_input_clarified", diagnostics="immediate fail")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert data["steps"][0]["status"] == "failed"

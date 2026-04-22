@@ -97,8 +97,20 @@ docstring-quotes = "double"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-    "D1",   # Tests do not require docstrings.
-    "S101", # Pytest assert style is expected.
+    "D1",      # Tests do not require docstrings.
+    "S101",    # Pytest assert style is expected.
+    "S105",    # Hardcoded passwords in test fixtures are intentional.
+    "S106",    # Hardcoded passwords in test fixtures are intentional.
+    "S108",    # Temporary file paths in tests are fine.
+    "PLR2004", # Magic values in test assertions are readable as-is.
+    "PLC0415", # Deferred imports in tests are intentional (avoid circular imports).
+    "SLF001",  # Tests may access private members for verification.
+    "ARG002",  # Unused method args from fixtures (monkeypatch, tmp_path).
+    "PT019",   # Fixture without value is fine (setup/teardown patterns).
+    "PT017",   # Asserting on exception attributes is clearer than nested raises.
+    "F841",    # Unused local assigned for side-effect verification.
+    "RUF059",  # Unused unpacked variables from tuple returns (e.g., _, rejected).
+    "RUF043",  # Regex metacharacters in match= are intentional.
 ]
 "scripts/**/*.py" = [
     "D1",    # Scripts do not require docstrings.
