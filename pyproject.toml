@@ -34,6 +34,10 @@ dependencies = [
     # content_extracts dominated by page chrome, which the evidence-extractor
     # then "quoted" by filling in from training-data memory of the source.
     "trafilatura",
+    # Pin lxml >= 6.1.0 to get the CVE-2026-41066 fix. trafilatura pulls lxml
+    # in transitively; without this constraint it resolves to the vulnerable
+    # 6.0.4. Safe to remove once trafilatura bumps its own floor above 6.1.0.
+    "lxml>=6.1.0",
     # pypdf extracts text from PDF fetches. Academic sources (aclanthology,
     # usenix, openreview, many journal PDF alternates) serve full papers as
     # PDFs; trafilatura only handles HTML. Without pypdf we drop PDF sources

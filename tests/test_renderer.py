@@ -190,7 +190,9 @@ class TestPipelineNotesSection:
         text = "\n".join(lines)
         assert "## Pipeline Notes" in text
         assert "Fetch failures" in text
-        assert "https://a.com" in text
+        # Renderer wraps URLs in backticks — assert the full rendered pattern
+        # to avoid CodeQL's incomplete-URL-substring false positive.
+        assert "`https://a.com`" in text
 
 
 def _create_realistic_run(run_dir: Path) -> None:
