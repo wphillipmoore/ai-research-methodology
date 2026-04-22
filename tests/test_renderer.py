@@ -18,7 +18,6 @@ from diogenes.renderer import (
     _slugify,
     _unwrap_items,
     render_run,
-    render_run_group,
 )
 
 
@@ -547,95 +546,6 @@ class TestRenderRun:
         # Should not crash with empty dir
         render_run(run_dir, output_dir)
         assert (output_dir / "index.md").exists()
-
-
-class TestRenderRunGroup:
-    """Tests for render_run_group."""
-
-    def test_renders_group(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir = tmp_path / "group"  # type: ignore[operator]
-        group_dir.mkdir()
-
-        run1 = group_dir / "run-1"
-        run1.mkdir()
-        _create_realistic_run(run1)
-
-        # Copy research input to group level (renderer expects this)
-        ri_path = run1 / "research-input-clarified.json"
-        (group_dir / "research-input-clarified.json").write_text(ri_path.read_text())
-
-        output_dir = tmp_path / "md"  # type: ignore[operator]
-        render_run_group(group_dir, output_dir)
-
-        assert (output_dir / "index.md").exists()
-        md_files = list(output_dir.rglob("*.md"))
-        assert len(md_files) >= 2
-
-    def test_renders_group_with_group_level_files(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir = tmp_path / "group"  # type: ignore[operator]
-        group_dir.mkdir()
-
-        run1 = group_dir / "run-1"
-        run1.mkdir()
-        _create_realistic_run(run1)
-
-        # Group-level research input
-        ri_path = run1 / "research-input-clarified.json"
-        (group_dir / "research-input-clarified.json").write_text(ri_path.read_text())
-
-        # Group-level synthesis
-        group_syn = {
-            "cross_run_summary": "Findings consistent across runs.",
-            "items": [
-                {
-                    "id": "Q001",
-                    "consensus": "Strong consensus on statistical watermarking",
-                    "divergence": "Minor disagreements on robustness claims",
-                },
-            ],
-        }
-        (group_dir / "group-synthesis.json").write_text(json.dumps(group_syn))
-
-        # Group-level consistency
-        group_con = {
-            "consistency_score": 0.85,
-            "metrics": {
-                "verdict_agreement": 1.0,
-                "source_overlap": 0.8,
-                "confidence_variance": 0.1,
-            },
-            "items": [
-                {"id": "Q001", "agreement_rate": 0.9},
-            ],
-        }
-        (group_dir / "group-consistency.json").write_text(json.dumps(group_con))
-
-        # Group-level reading list
-        group_rl = {
-            "sources": [
-                {
-                    "title": "Consolidated Paper",
-                    "url": "https://example.com/paper",
-                    "authors": "Smith et al.",
-                    "runs_appearing_in": 1,
-                    "relevance": "Key source across runs",
-                },
-            ],
-        }
-        (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
-
-        output_dir = tmp_path / "md"  # type: ignore[operator]
-        render_run_group(group_dir, output_dir)
-
-        assert (output_dir / "index.md").exists()
-        assert (output_dir / "synthesis.md").exists()
-        assert (output_dir / "consistency.md").exists()
-        assert (output_dir / "reading-list.md").exists()
-
-
-# ---------------------------------------------------------------------------
-# Helper function tests
-# ---------------------------------------------------------------------------
 
 
 class TestCardHeadingFor:
@@ -1403,134 +1313,6 @@ class TestRenderRunPluginFormat:
         assert "Derived from" in t1_content
         assert "Look for" in t1_content
         assert "Perspectives" in t1_content
-
-
-class TestRenderRunGroupDetailed:
-    """Tests for render_run_group with all optional group-level fields."""
-
-    def test_group_synthesis_all_fields(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir = tmp_path / "group"  # type: ignore[operator]
-        group_dir.mkdir()
-
-        run1 = group_dir / "run-1"
-        run1.mkdir()
-        _create_plugin_format_run(run1)
-
-        # Copy research input to group level
-        ri_path = run1 / "research-input-clarified.json"
-        (group_dir / "research-input-clarified.json").write_text(ri_path.read_text())
-
-        # Group synthesis with all optional fields
-        group_syn = {
-            "total_runs": 3,
-            "note": "This is a multi-run analysis note.",
-            "cross_run_summary": "Findings consistent across runs.",
-            "items": [
-                {
-                    "id": "C001",
-                    "consensus_verdict": "Supported",
-                    "summary": "All three runs support the claim.",
-                    "divergences": ["Run 2 had lower confidence", "Run 3 used different methodology"],
-                    "sources_union_count": 15,
-                },
-                {
-                    "id": "Q001",
-                    "consensus_verdict": "Well-documented",
-                    "summary": "Consistent answers across runs.",
-                },
-            ],
-        }
-        (group_dir / "group-synthesis.json").write_text(json.dumps(group_syn))
-
-        # Group consistency with all optional fields
-        group_con = {
-            "total_runs": 3,
-            "note": "Consistency is high across all runs.",
-            "consistency_score": 0.85,
-            "metrics": {
-                "verdict_agreement": 1.0,
-                "source_overlap": 0.8,
-                "confidence_variance": 0.1,
-            },
-            "diagnostic": "All runs produced convergent results with minor variance in confidence levels.",
-            "items": [
-                {"id": "Q001", "agreement_rate": 0.9},
-            ],
-        }
-        (group_dir / "group-consistency.json").write_text(json.dumps(group_con))
-
-        # Group reading list with all optional fields
-        group_rl = {
-            "reading_list": [
-                {
-                    "title": "Must Read Paper",
-                    "url": "https://example.com/must",
-                    "summary": "Key finding across all runs",
-                    "items": ["C001", "Q001"],
-                    "found_in_runs": ["run-1", "run-2", "run-3"],
-                    "priority": "must read",
-                },
-                {
-                    "title": "Reference Paper",
-                    "url": "https://example.com/ref",
-                    "summary": "Background reference",
-                    "priority": "reference",
-                },
-            ],
-        }
-        (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
-
-        output_dir = tmp_path / "md"  # type: ignore[operator]
-        render_run_group(group_dir, output_dir)
-
-        # Check synthesis
-        syn_content = (output_dir / "synthesis.md").read_text()
-        assert "Total runs" in syn_content
-        assert "multi-run analysis note" in syn_content
-        assert "Consensus Per Item" in syn_content
-        assert "C001 — Supported" in syn_content
-        assert "All three runs" in syn_content
-        assert "Divergences" in syn_content
-        assert "Run 2 had lower confidence" in syn_content
-        assert "Sources (union across runs): 15" in syn_content
-
-        # Check consistency
-        con_content = (output_dir / "consistency.md").read_text()
-        assert "Total runs" in con_content
-        assert "Consistency is high" in con_content
-        assert "Metrics" in con_content
-        assert "Verdict Agreement" in con_content
-        assert "Diagnostic" in con_content
-        assert "convergent results" in con_content
-
-        # Check reading list
-        rl_content = (output_dir / "reading-list.md").read_text()
-        assert "Must Read" in rl_content
-        assert "Reference" in rl_content
-        assert "Must Read Paper" in rl_content
-        assert "Referenced by: C001, Q001" in rl_content
-        assert "Found in runs: run-1, run-2, run-3" in rl_content
-
-    def test_group_empty_reading_list(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir = tmp_path / "group"  # type: ignore[operator]
-        group_dir.mkdir()
-
-        run1 = group_dir / "run-1"
-        run1.mkdir()
-        _create_plugin_format_run(run1)
-
-        ri_path = run1 / "research-input-clarified.json"
-        (group_dir / "research-input-clarified.json").write_text(ri_path.read_text())
-
-        # Empty reading list
-        group_rl = {"reading_list": []}
-        (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
-
-        output_dir = tmp_path / "md"  # type: ignore[operator]
-        render_run_group(group_dir, output_dir)
-
-        rl_content = (output_dir / "reading-list.md").read_text()
-        assert "No sources recorded" in rl_content
 
 
 class TestRenderRunWithoutSourceVerificationDiscrepancies:
@@ -2514,21 +2296,6 @@ class TestAssessmentRenderingVariants:
         # Should render without crashing
 
 
-class TestGroupRenderingBranches:
-    """Cover branches in group-level rendering."""
-
-    def test_group_without_synthesis(self, tmp_path: pytest.TempPathFactory) -> None:
-        """Cover branches when group has no group-synthesis.json."""
-        group_dir = tmp_path / "group"
-        group_dir.mkdir()
-        run1 = group_dir / "run-1"
-        run1.mkdir()
-        _create_minimal_run(run1)
-        output_dir = tmp_path / "md"
-        render_run_group(group_dir, output_dir)
-        assert (output_dir / "index.md").exists()
-
-
 def _create_run_with_search_variants(run_dir: Path) -> None:
     """Build a fixture with search variants to flip _write_searches branches."""
     ri = {
@@ -2843,42 +2610,6 @@ class TestItemWithoutAnyText:
         assert (output_dir / "index.md").exists()
 
 
-def _create_group_with_sparse_files(group_dir: Path) -> None:
-    """Group-level data with some fields missing to flip group-writer branches."""
-    run1 = group_dir / "run-1"
-    run1.mkdir()
-    _create_minimal_run(run1)
-
-    (group_dir / "research-input-clarified.json").write_text((run1 / "research-input-clarified.json").read_text())
-
-    # Group synthesis with minimal fields (no items list)
-    group_syn = {"cross_run_summary": "Summary"}
-    (group_dir / "group-synthesis.json").write_text(json.dumps(group_syn))
-
-    # Group consistency with no metrics
-    group_con = {"consistency_score": 0.5}
-    (group_dir / "group-consistency.json").write_text(json.dumps(group_con))
-
-    # Group reading list with empty sources
-    group_rl = {"sources": []}
-    (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
-
-
-class TestGroupSparseFiles:
-    """Cover branches in group writers when fields are absent."""
-
-    def test_group_sparse(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir = tmp_path / "group"
-        group_dir.mkdir()
-        _create_group_with_sparse_files(group_dir)
-        output_dir = tmp_path / "md"
-        render_run_group(group_dir, output_dir)
-        assert (output_dir / "index.md").exists()
-        assert (output_dir / "synthesis.md").exists()
-        assert (output_dir / "consistency.md").exists()
-        assert (output_dir / "reading-list.md").exists()
-
-
 class TestRenderRunEmptyItems:
     """Cover branches when the run has no items at all."""
 
@@ -2942,49 +2673,6 @@ class TestRenderRunItemWithoutIdInCards:
         assert "C001" in index
 
 
-def _create_group_with_full_reading_list(group_dir: Path) -> None:
-    """Group reading list with various priority values and optional fields."""
-    run1 = group_dir / "run-1"
-    run1.mkdir()
-    _create_minimal_run(run1)
-    (group_dir / "research-input-clarified.json").write_text((run1 / "research-input-clarified.json").read_text())
-
-    # Group reading list with reading_list key (not sources) and multiple priority values
-    group_rl = {
-        "reading_list": [
-            {
-                "title": "Must Read Paper",
-                "url": "https://a.com",
-                "priority": "must read",
-                "summary": "Key finding",
-                "items": ["C001"],
-                "found_in_runs": ["run-1"],
-            },
-            {"title": "Should Read", "url": "https://b.com", "priority": "should read"},  # No summary, items, runs
-            {"title": "Reference", "url": "https://c.com", "priority": "reference"},
-            {"title": "Unknown Priority", "url": "https://d.com", "priority": "tertiary"},  # Not in by_priority
-        ],
-    }
-    (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
-
-
-class TestGroupReadingListVariants:
-    """Cover _write_group_reading_list branches (1763, 1778)."""
-
-    def test_full_reading_list(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir = tmp_path / "group"
-        group_dir.mkdir()
-        _create_group_with_full_reading_list(group_dir)
-        output_dir = tmp_path / "md"
-        render_run_group(group_dir, output_dir)
-        rl = (output_dir / "reading-list.md").read_text()
-        assert "Must Read" in rl
-        assert "Should Read" in rl
-        assert "Reference" in rl
-        # Unknown priority should NOT appear (branch 1763->1761 False: not in by_priority)
-        assert "Unknown Priority" not in rl
-
-
 def _create_run_with_robis_no_overall(run_dir: Path) -> None:
     """Self-audit with robis_audit missing overall_risk_of_bias to hit 699->703 False."""
     ri = {
@@ -3046,21 +2734,6 @@ class TestRobisAuditBranches:
         # Should render the domain_1 rating but not the overall risk line
         assert "Domain 1 Eligibility" in index
         assert "Overall risk of bias" not in index
-
-
-class TestRenderRunGroupNoRuns:
-    """Cover 1657->1663: group_dir has no run-N subdirs."""
-
-    def test_no_runs(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir = tmp_path / "group"
-        group_dir.mkdir()
-        # No run subdirs
-        output_dir = tmp_path / "md"
-        render_run_group(group_dir, output_dir)
-        index = (output_dir / "index.md").read_text()
-        # Should not have a Runs section
-        assert "Runs: 0" in index
-        assert "## Runs" not in index
 
 
 def _create_run_report_no_bluf_no_verdict(run_dir: Path) -> None:

@@ -1,9 +1,9 @@
-"""Implementation of the 'dio run' command."""
+"""Implementations of the 'dio run' and 'dio rerun' commands."""
 
 from __future__ import annotations
 
-import json
-import sys
+import shutil
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -31,61 +31,58 @@ from diogenes.state_machine import PIPELINE_STEPS, PipelineState
 _PACKAGE_DIR = Path(__file__).parent.parent
 _PROMPTS_DIR = _PACKAGE_DIR / "prompts" / "sub-agents"
 
+_INSTANCE_TIMESTAMP_FMT = "%Y-%m-%d-%H%M%S"
+_INSTANCE_COLLISION_RETRIES = 3
+_INSTANCE_COLLISION_SLEEP_SECONDS = 1.0
+
 
 def _timestamp() -> str:
-    """Generate a YYYY-MM-DD-HHMMSS timestamp."""
-    now = datetime.now(tz=UTC)
-    return now.strftime("%Y-%m-%d-%H%M%S")
+    """Generate a YYYY-MM-DD-HHMMSS timestamp (UTC)."""
+    return datetime.now(tz=UTC).strftime(_INSTANCE_TIMESTAMP_FMT)
 
 
-def _create_run_group_dir(output_dir: Path, runs: int) -> tuple[Path, list[Path]]:
-    """Create the run group directory structure.
+def _create_instance_dir(parent_dir: Path) -> Path:
+    """Create a fresh timestamped instance subdirectory under parent_dir.
 
-    Args:
-        output_dir: Base output directory for the research instance.
-        runs: Number of independent runs.
+    Each invocation of ``dio run`` or ``dio rerun`` produces a new instance
+    dir. The parent holds the immutable source input and one instance
+    subdirectory per research execution.
 
-    Returns:
-        Tuple of (group_dir, list of run_dirs).
-
+    Collision handling: if two invocations land in the same second (rare
+    but possible in scripted/back-to-back runs), sleep for 1s and retry
+    up to a few times. We do not fall back to microsecond or suffix
+    schemes — a plain timestamp is easier to eyeball when skimming the
+    parent directory.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    group_name = _timestamp()
-    group_dir = output_dir / group_name
-    group_dir.mkdir()
-
-    run_dirs = []
-    # Zero-pad based on total runs
-    width = len(str(runs))
-    for i in range(1, runs + 1):
-        run_dir = group_dir / f"run-{str(i).zfill(width)}"
-        run_dir.mkdir()
-        run_dirs.append(run_dir)
-
-    return group_dir, run_dirs
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    last_err: FileExistsError | None = None
+    for _ in range(_INSTANCE_COLLISION_RETRIES):
+        instance_dir = parent_dir / _timestamp()
+        try:
+            instance_dir.mkdir(parents=False, exist_ok=False)
+        except FileExistsError as e:
+            last_err = e
+            time.sleep(_INSTANCE_COLLISION_SLEEP_SECONDS)
+            continue
+        return instance_dir
+    msg = f"Could not create a unique instance dir under {parent_dir} after retries"
+    raise RuntimeError(msg) from last_err
 
 
-def _write_research_input(output_dir: Path, data: dict[str, Any]) -> Path:
-    """Write the research-input.json file.
+def _find_saved_input(parent_dir: Path) -> Path | None:
+    """Locate the single source input file saved in parent_dir.
 
-    Args:
-        output_dir: The research instance directory.
-        data: The validated research input data.
+    ``dio run`` copies exactly one source input file into the parent. We
+    identify it as the only regular (non-hidden) file there — instance
+    subdirectories are directories, so they don't conflict.
 
-    Returns:
-        Path to the written file.
-
+    Returns None if zero or multiple candidates are present, letting the
+    caller produce a clear error message.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / "research-input-clarified.json"
-    if path.exists():
-        print(f"ERROR: {path} already exists. Use 'dio rerun' to re-execute.")
-        print("To start new research, use a different output directory.")
-        sys.exit(1)
-
-    path.write_text(json.dumps(data, indent=2) + "\n")
-    return path
+    candidates = [p for p in parent_dir.iterdir() if p.is_file() and not p.name.startswith(".")]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def _dispatch_step(
@@ -284,108 +281,96 @@ def _create_search_provider() -> SerperSearchProvider | BraveSearchProvider | Go
     return None
 
 
-def execute(input_file: str, output: str, runs: int) -> int:
-    """Execute the 'dio run' command.
+def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
+    """Execute the research pipeline for one instance.
 
-    Args:
-        input_file: Path to the input file (JSON or text).
-        output: Output directory path.
-        runs: Number of independent runs.
+    Shared by ``dio run`` (first-time invocation) and ``dio rerun``
+    (subsequent instances). Creates a fresh timestamped instance
+    subdirectory under parent_dir, runs Step 1 (clarify) to produce
+    research-input-clarified.json *inside the instance dir*, then runs
+    the remaining state-machine-driven steps.
 
-    Returns:
-        Exit code (0 for success, non-zero for failure).
-
+    Clarification happens per-instance because the clarifier is an LLM
+    step whose output may evolve over time as models improve. The source
+    input (at parent_dir) is immutable; what we derive from it is
+    deliberately re-derived for each instance.
     """
-    output_dir = Path(output)
-    input_path = Path(input_file)
-
-    # Initialize API client (reused for all sub-agent calls)
     try:
         client = APIClient()
     except SubAgentError as e:
         print(f"ERROR: {e}")
         return 1
 
-    # Initialize search provider
     search_provider = _create_search_provider()
     if search_provider is None:
         return 1
 
-    # Step 1: Parse input and clarify via sub-agent if needed
+    # Create a fresh timestamped instance subdirectory
+    instance_dir = _create_instance_dir(parent_dir)
+    print(f"Instance: {instance_dir}")
+
+    # Step 1: parse & clarify the source input into this instance dir.
+    # Intentionally run per-instance — clarifier output can drift as
+    # models evolve, and each instance should capture its current form.
     research_input = _parse_and_clarify(input_path, client)
     if research_input is None:
         return 1
+    clarified_path = write_step_output(instance_dir, "research-input-clarified.json", research_input)
+    print(f"  Wrote: {clarified_path}")
 
-    # Step 3: Write research-input.json
-    print(f"Output directory: {output_dir}")
-    input_json_path = _write_research_input(output_dir, research_input)
-    print(f"  Wrote: {input_json_path}")
-
-    # Step 4: Create run group directory structure
-    print(f"Creating run group (runs={runs})...")
-    group_dir, run_dirs = _create_run_group_dir(output_dir, runs)
-    print(f"  Run group: {group_dir.name}")
-    for rd in run_dirs:
-        print(f"  Created: {rd.name}/")
-
-    # Step 5: Save methodology snapshots (common guidelines from the package)
+    # Save methodology snapshot (common guidelines from the package)
     guidelines_src = _PACKAGE_DIR / "prompts" / "common-guidelines.md"
     if guidelines_src.exists():
-        snapshot_dest = group_dir / "prompt-snapshot.md"
+        snapshot_dest = instance_dir / "prompt-snapshot.md"
         snapshot_dest.write_text(guidelines_src.read_text())
         print("  Saved: prompt-snapshot.md")
 
     # --- Pipeline execution (state-machine-driven) ---
-    for run_dir in run_dirs:
-        print()
-        print(f"=== {run_dir.name} ===")
+    print()
+    print(f"=== {instance_dir.name} ===")
 
-        # Copy research-input.json into the run dir so the renderer can
-        # find it when rendering a single run (not just via run-group).
-        write_step_output(run_dir, "research-input-clarified.json", research_input)
+    event_logger = EventLogger(
+        run_id=instance_dir.name,
+        output_dir=instance_dir,
+        model=client.model,
+        execution_path="cli",
+    )
 
-        event_logger = EventLogger(
-            run_id=run_dir.name,
-            output_dir=run_dir,
-            model=client.model,
-            execution_path="cli",
-        )
+    state = PipelineState(instance_dir)
 
-        state = PipelineState(run_dir)
+    # Accumulated step outputs — keyed by output filename stem.
+    # Step 1 (clarify) is done before the loop; seed the outputs.
+    outputs: dict[str, Any] = {"research_input": research_input}
+    state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
 
-        # Accumulated step outputs — keyed by output filename stem.
-        # Step 1 (clarify) is done before the loop; seed the outputs.
-        outputs: dict[str, Any] = {"research_input": research_input}
-        state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
+    # Iterate the canonical step sequence from the state machine.
+    for step_def in PIPELINE_STEPS:
+        if state.is_complete(step_def.name):
+            continue
 
-        # Iterate the canonical step sequence from the state machine.
-        for step_def in PIPELINE_STEPS:
-            if state.is_complete(step_def.name):
-                continue
+        print(f"{step_def.display_name}...")
+        state.mark_started(step_def.name)
+        result = _dispatch_step(step_def, outputs, client, search_provider, event_logger, instance_dir)
+        if result is None:
+            state.mark_failed(step_def.name, diagnostics="Handler returned None")
+            print(f"ERROR: {step_def.name} returned no result")
+            return 1
 
-            print(f"{step_def.display_name}...")
-            state.mark_started(step_def.name)
-            result = _dispatch_step(step_def, outputs, client, search_provider, event_logger, run_dir)
-            if result is None:
-                state.mark_failed(step_def.name, diagnostics="Handler returned None")
-                print(f"ERROR: {step_def.name} returned no result")
-                return 1
+        # Store the result and write to disk (unless the step wrote its own file)
+        if step_def.output_file and not result.get("_self_written"):
+            output_key = step_def.output_file.replace(".json", "").replace("-", "_")
+            outputs[output_key] = result
+            out_path = write_step_output(instance_dir, step_def.output_file, result)
+            print(f"  Wrote: {out_path}")
 
-            # Store the result and write to disk (unless the step wrote its own file)
-            if step_def.output_file and not result.get("_self_written"):
-                output_key = step_def.output_file.replace(".json", "").replace("-", "_")
-                outputs[output_key] = result
-                out_path = write_step_output(run_dir, step_def.output_file, result)
-                print(f"  Wrote: {out_path}")
+        state.mark_complete(step_def.name, output_file=step_def.output_file)
 
-            state.mark_complete(step_def.name, output_file=step_def.output_file)
-
-    # Write usage report
+    # Write usage report into the instance directory
     usage_data = client.usage.to_dict()
-    usage_path = write_step_output(group_dir, "usage.json", usage_data)
+    usage_path = write_step_output(instance_dir, "usage.json", usage_data)
 
     print()
-    print(f"Research complete. Output: {group_dir}")
+    print(f"Research complete. Output: {instance_dir}")
     print()
     totals = usage_data["totals"]
     cost = totals.get("estimated_cost_usd", 0)
@@ -400,3 +385,91 @@ def execute(input_file: str, output: str, runs: int) -> int:
     print(f"  Details: {usage_path}")
 
     return 0
+
+
+def execute(input_file: str, output: str) -> int:
+    """Execute the ``dio run`` command — first-time research invocation.
+
+    Creates a fresh research container at ``output``, copies the source
+    input file there, and runs one full instance of the research pipeline.
+
+    ``output`` must not already exist with content. If it does, the user
+    is told to use ``dio rerun`` to add a new instance to existing
+    research — this prevents silently producing a new instance against
+    a source input the user didn't mean to re-use.
+
+    Args:
+        input_file: Path to the input file (JSON or text markdown).
+        output: Parent output directory (the research container). Must be
+            fresh — either non-existent or empty.
+
+    Returns:
+        Exit code (0 for success, non-zero for failure).
+
+    """
+    parent_dir = Path(output)
+    input_path = Path(input_file)
+
+    if not input_path.exists():
+        print(f"ERROR: Input file not found: {input_path}")
+        return 1
+
+    # Refuse to silently reuse an existing research container. Directing
+    # the user to `dio rerun` preserves the invariant that `dio run`
+    # always establishes a new research definition from an explicit
+    # input file.
+    if parent_dir.exists() and any(parent_dir.iterdir()):
+        print(f"ERROR: --output {parent_dir} already exists and is not empty.")
+        print(
+            "  Use 'dio rerun --output "
+            f"{parent_dir}' to add a new instance to existing research,\n"
+            "  or choose a different --output for a new research definition."
+        )
+        return 1
+
+    # Establish the research container: create the parent and copy the
+    # source input into it. The source is immutable once here;
+    # per-instance state lives in timestamped subdirectories.
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    src_dest = parent_dir / input_path.name
+    shutil.copyfile(input_path, src_dest)
+    print(f"Output directory: {parent_dir}")
+    print(f"  Saved source input: {src_dest}")
+
+    return _run_pipeline(parent_dir, src_dest)
+
+
+def execute_rerun(output: str) -> int:
+    """Execute the ``dio rerun`` command — new instance of existing research.
+
+    Finds the saved source input in the parent output directory (copied
+    there by a prior ``dio run``) and runs one full instance of the
+    research pipeline using it. Each rerun produces a fresh timestamped
+    instance, re-clarifying the input from scratch so the per-instance
+    record reflects the current state of the models and tools.
+
+    Args:
+        output: Parent output directory (the research container). Must
+            exist and contain a source input file from a prior ``dio run``.
+
+    Returns:
+        Exit code (0 for success, non-zero for failure).
+
+    """
+    parent_dir = Path(output)
+
+    if not parent_dir.exists():
+        print(f"ERROR: --output {parent_dir} does not exist.")
+        print("  'dio rerun' requires a parent populated by a prior 'dio run'.")
+        return 1
+
+    input_path = _find_saved_input(parent_dir)
+    if input_path is None:
+        print(f"ERROR: Could not locate a single source input in {parent_dir}.")
+        print("  Expected exactly one regular file (the input copied by 'dio run').")
+        return 1
+
+    print(f"Output directory: {parent_dir}")
+    print(f"  Using saved source input: {input_path}")
+
+    return _run_pipeline(parent_dir, input_path)

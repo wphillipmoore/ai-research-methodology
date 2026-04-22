@@ -7,13 +7,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from diogenes.commands.run import (
-    _create_run_group_dir,
+    _create_instance_dir,
     _create_search_provider,
     _dispatch_step,
+    _find_saved_input,
     _parse_and_clarify,
     _timestamp,
-    _write_research_input,
     execute,
+    execute_rerun,
 )
 from diogenes.events import EventLogger
 from diogenes.state_machine import PIPELINE_STEPS, StepDefinition
@@ -24,49 +25,86 @@ class TestTimestamp:
 
     def test_format(self) -> None:
         ts = _timestamp()
-        # Should be YYYY-MM-DD-HHMMSS
+        # YYYY-MM-DD-HHMMSS
         assert len(ts) == 17
         assert ts[4] == "-"
         assert ts[7] == "-"
         assert ts[10] == "-"
 
 
-class TestCreateRunGroupDir:
-    """Tests for _create_run_group_dir."""
+class TestCreateInstanceDir:
+    """Tests for _create_instance_dir."""
 
-    def test_single_run(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir, run_dirs = _create_run_group_dir(tmp_path, 1)  # type: ignore[arg-type]
-        assert group_dir.exists()
-        assert len(run_dirs) == 1
-        assert run_dirs[0].name == "run-1"
+    def test_creates_unique_dir(self, tmp_path: pytest.TempPathFactory) -> None:
+        parent = tmp_path  # type: ignore[assignment]
+        instance = _create_instance_dir(parent)  # type: ignore[arg-type]
+        assert instance.exists()
+        assert instance.parent == parent
+        # Directory name is a timestamp
+        assert len(instance.name) == 17
 
-    def test_multiple_runs(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir, run_dirs = _create_run_group_dir(tmp_path, 3)  # type: ignore[arg-type]
-        assert len(run_dirs) == 3
-        assert run_dirs[0].name == "run-1"
-        assert run_dirs[2].name == "run-3"
+    def test_collision_retry(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+        """If the first timestamp collides, sleep and retry with a later stamp."""
+        # Pre-create a collision at the first timestamp we'll generate
+        from diogenes.commands import run as run_mod
 
-    def test_zero_padding(self, tmp_path: pytest.TempPathFactory) -> None:
-        group_dir, run_dirs = _create_run_group_dir(tmp_path, 12)  # type: ignore[arg-type]
-        assert run_dirs[0].name == "run-01"
-        assert run_dirs[11].name == "run-12"
+        ts1 = "2026-04-22-120000"
+        ts2 = "2026-04-22-120001"
+        (tmp_path / ts1).mkdir()  # type: ignore[operator]
+
+        stamps = iter([ts1, ts2])
+        monkeypatch.setattr(run_mod, "_timestamp", lambda: next(stamps))
+        # Patch sleep so the test runs fast
+        monkeypatch.setattr(run_mod.time, "sleep", lambda _s: None)
+
+        instance = _create_instance_dir(tmp_path)  # type: ignore[arg-type]
+        assert instance.name == ts2
+
+    def test_exhausts_retries_raises(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+        """If every retry hits a collision, raise RuntimeError."""
+        from diogenes.commands import run as run_mod
+
+        ts = "2026-04-22-120000"
+        (tmp_path / ts).mkdir()  # type: ignore[operator]
+
+        monkeypatch.setattr(run_mod, "_timestamp", lambda: ts)
+        monkeypatch.setattr(run_mod.time, "sleep", lambda _s: None)
+
+        with pytest.raises(RuntimeError, match="unique instance dir"):
+            _create_instance_dir(tmp_path)  # type: ignore[arg-type]
 
 
-class TestWriteResearchInput:
-    """Tests for _write_research_input."""
+class TestFindSavedInput:
+    """Tests for _find_saved_input."""
 
-    def test_writes_file(self, tmp_path: pytest.TempPathFactory) -> None:
-        data = {"claims": [], "queries": []}
-        path = _write_research_input(tmp_path, data)  # type: ignore[arg-type]
-        assert path.exists()
-        assert json.loads(path.read_text()) == data
+    def test_single_file_found(self, tmp_path: pytest.TempPathFactory) -> None:
+        (tmp_path / "input.md").write_text("content")  # type: ignore[operator]
+        result = _find_saved_input(tmp_path)  # type: ignore[arg-type]
+        assert result is not None
+        assert result.name == "input.md"
 
-    def test_exits_if_exists(self, tmp_path: pytest.TempPathFactory) -> None:
-        data = {"claims": []}
-        # Pre-create the file
-        (tmp_path / "research-input-clarified.json").write_text("{}")  # type: ignore[operator]
-        with pytest.raises(SystemExit):
-            _write_research_input(tmp_path, data)  # type: ignore[arg-type]
+    def test_ignores_subdirectories(self, tmp_path: pytest.TempPathFactory) -> None:
+        (tmp_path / "input.md").write_text("content")  # type: ignore[operator]
+        (tmp_path / "2026-04-22-120000").mkdir()  # type: ignore[operator]
+        result = _find_saved_input(tmp_path)  # type: ignore[arg-type]
+        assert result is not None
+        assert result.name == "input.md"
+
+    def test_ignores_hidden_files(self, tmp_path: pytest.TempPathFactory) -> None:
+        (tmp_path / "input.md").write_text("content")  # type: ignore[operator]
+        (tmp_path / ".DS_Store").write_text("")  # type: ignore[operator]
+        result = _find_saved_input(tmp_path)  # type: ignore[arg-type]
+        assert result is not None
+        assert result.name == "input.md"
+
+    def test_zero_candidates_returns_none(self, tmp_path: pytest.TempPathFactory) -> None:
+        (tmp_path / "2026-04-22-120000").mkdir()  # type: ignore[operator]
+        assert _find_saved_input(tmp_path) is None  # type: ignore[arg-type]
+
+    def test_multiple_candidates_returns_none(self, tmp_path: pytest.TempPathFactory) -> None:
+        (tmp_path / "a.md").write_text("content")  # type: ignore[operator]
+        (tmp_path / "b.md").write_text("content")  # type: ignore[operator]
+        assert _find_saved_input(tmp_path) is None  # type: ignore[arg-type]
 
 
 class TestParseAndClarify:
@@ -345,25 +383,65 @@ class TestExecute:
     """Tests for execute function."""
 
     @patch("diogenes.commands.run.APIClient")
-    def test_api_client_failure(self, mock_cls: MagicMock) -> None:
+    def test_api_client_failure(self, mock_cls: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
         from diogenes.api_client import SubAgentError
 
         mock_cls.side_effect = SubAgentError("config", "No API key")
-        assert execute("input.json", "/tmp/out", 1) == 1
+        input_path = tmp_path / "input.json"  # type: ignore[operator]
+        input_path.write_text(json.dumps({"claims": [], "queries": [{"text": "t"}]}))
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        assert execute(str(input_path), str(output_dir)) == 1
 
     @patch("diogenes.commands.run._create_search_provider")
     @patch("diogenes.commands.run.APIClient")
-    def test_search_provider_failure(self, mock_api: MagicMock, mock_sp: MagicMock) -> None:
+    def test_search_provider_failure(
+        self,
+        mock_api: MagicMock,
+        mock_sp: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
         mock_sp.return_value = None
-        assert execute("input.json", "/tmp/out", 1) == 1
+        input_path = tmp_path / "input.json"  # type: ignore[operator]
+        input_path.write_text(json.dumps({"claims": [], "queries": [{"text": "t"}]}))
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        assert execute(str(input_path), str(output_dir)) == 1
 
-    @patch("diogenes.commands.run._parse_and_clarify")
-    @patch("diogenes.commands.run._create_search_provider")
-    @patch("diogenes.commands.run.APIClient")
-    def test_parse_failure(self, mock_api: MagicMock, mock_sp: MagicMock, mock_parse: MagicMock) -> None:
-        mock_sp.return_value = MagicMock()
-        mock_parse.return_value = None
-        assert execute("input.json", "/tmp/out", 1) == 1
+    def _make_input_file(self, tmp_path: Path, name: str = "input.json") -> Path:
+        """Create a minimal valid JSON input file and return its path."""
+        p = tmp_path / name
+        p.write_text(json.dumps({"claims": [], "queries": [{"text": "test"}]}))
+        return p
+
+    def _usage_stub(self, *, with_web: bool = False) -> dict:
+        return {
+            "totals": {
+                "api_calls": 1,
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+                "estimated_cost_usd": 0.0,
+                "web_search_requests": 3 if with_web else 0,
+                "web_fetch_requests": 2 if with_web else 0,
+            },
+            "per_call": [],
+        }
+
+    def test_missing_input_file(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Refuse to run if --input doesn't exist."""
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        result = execute("/nonexistent/input.md", str(output_dir))
+        assert result == 1
+        # Must not have created the output directory
+        assert not output_dir.exists()
+
+    def test_refuses_nonempty_output(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Refuses to silently reuse an existing research container."""
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir.mkdir()
+        (output_dir / "existing.txt").write_text("leftover")
+        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
+        result = execute(str(input_path), str(output_dir))
+        assert result == 1
 
     @patch("diogenes.commands.run._dispatch_step")
     @patch("diogenes.commands.run._parse_and_clarify")
@@ -377,29 +455,14 @@ class TestExecute:
         mock_dispatch: MagicMock,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """Integration test covering lines 320-402: full pipeline loop."""
-        # Setup APIClient mock
+        """Happy path: run completes, creates instance dir, copies source, writes clarified in instance."""
         mock_client = MagicMock()
         mock_client.model = "test-model"
-        mock_client.usage.to_dict.return_value = {
-            "totals": {
-                "api_calls": 10,
-                "input_tokens": 5000,
-                "output_tokens": 2000,
-                "total_tokens": 7000,
-                "estimated_cost_usd": 0.05,
-                "web_search_requests": 3,
-                "web_fetch_requests": 5,
-            },
-            "per_call": [],
-        }
+        mock_client.usage.to_dict.return_value = self._usage_stub(with_web=True)
         mock_api_cls.return_value = mock_client
-
         mock_sp.return_value = MagicMock()
-        mock_parse.return_value = {"claims": [{"text": "test"}], "queries": [], "axioms": []}
+        mock_parse.return_value = {"claims": [], "queries": [{"text": "test"}], "axioms": []}
 
-        # _dispatch_step returns a result dict for most steps, and
-        # {"_self_written": True} for archive/events steps
         def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
                 return {"_self_written": True}
@@ -407,12 +470,43 @@ class TestExecute:
 
         mock_dispatch.side_effect = dispatch_side_effect
 
-        output_dir = str(tmp_path / "output")  # type: ignore[operator]
-        result = execute("input.json", output_dir, 1)
+        input_path = self._make_input_file(tmp_path, "input.md")  # type: ignore[arg-type]
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        result = execute(str(input_path), str(output_dir))
         assert result == 0
 
-        # Verify dispatch was called for steps 2-11 (step 1 is pre-done)
+        # Source input copied to parent
+        assert (output_dir / "input.md").exists()
+        # Exactly one instance dir
+        instance_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
+        assert len(instance_dirs) == 1
+        # Clarified JSON lives INSIDE the instance dir (not at parent)
+        assert (instance_dirs[0] / "research-input-clarified.json").exists()
+        assert not (output_dir / "research-input-clarified.json").exists()
+        # Dispatch called for steps 2-11 (step 1 is handled in _run_pipeline)
         assert mock_dispatch.call_count == 10
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._parse_and_clarify")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_clarifier_failure(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_parse: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """If _parse_and_clarify returns None, execute aborts with exit 1."""
+        mock_api_cls.return_value = MagicMock(model="m")
+        mock_sp.return_value = MagicMock()
+        mock_parse.return_value = None
+
+        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        result = execute(str(input_path), str(output_dir))
+        assert result == 1
 
     @patch("diogenes.commands.run._dispatch_step")
     @patch("diogenes.commands.run._parse_and_clarify")
@@ -426,19 +520,15 @@ class TestExecute:
         mock_dispatch: MagicMock,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """Test that a failing step returns exit code 1."""
-        mock_client = MagicMock()
-        mock_client.model = "test-model"
-        mock_api_cls.return_value = mock_client
-
+        """A dispatch failure causes execute to return 1."""
+        mock_api_cls.return_value = MagicMock(model="m")
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
-
-        # First dispatch returns None (failure)
         mock_dispatch.return_value = None
 
-        output_dir = str(tmp_path / "output")  # type: ignore[operator]
-        result = execute("input.json", output_dir, 1)
+        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        result = execute(str(input_path), str(output_dir))
         assert result == 1
 
     @patch("diogenes.commands.run._dispatch_step")
@@ -453,21 +543,9 @@ class TestExecute:
         mock_dispatch: MagicMock,
         tmp_path: pytest.TempPathFactory,
     ) -> None:
-        """Test execute with zero web searches (branch in usage report)."""
-        mock_client = MagicMock()
-        mock_client.model = "test-model"
-        mock_client.usage.to_dict.return_value = {
-            "totals": {
-                "api_calls": 5,
-                "input_tokens": 1000,
-                "output_tokens": 500,
-                "total_tokens": 1500,
-                "estimated_cost_usd": 0.01,
-                "web_search_requests": 0,
-                "web_fetch_requests": 0,
-            },
-            "per_call": [],
-        }
+        """Exercises the False branch of the web-search totals print."""
+        mock_client = MagicMock(model="m")
+        mock_client.usage.to_dict.return_value = self._usage_stub(with_web=False)
         mock_api_cls.return_value = mock_client
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
@@ -479,8 +557,9 @@ class TestExecute:
 
         mock_dispatch.side_effect = dispatch_side_effect
 
-        output_dir = str(tmp_path / "output")  # type: ignore[operator]
-        result = execute("input.json", output_dir, 1)
+        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        result = execute(str(input_path), str(output_dir))
         assert result == 0
 
     @patch("diogenes.commands.run._dispatch_step")
@@ -496,9 +575,64 @@ class TestExecute:
         tmp_path: pytest.TempPathFactory,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Covers 333->339: guidelines file missing, skips snapshot write."""
-        mock_client = MagicMock()
-        mock_client.model = "test-model"
+        """Guidelines file missing → skip snapshot write."""
+        mock_client = MagicMock(model="m")
+        mock_client.usage.to_dict.return_value = self._usage_stub()
+        mock_api_cls.return_value = mock_client
+        mock_sp.return_value = MagicMock()
+        mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
+
+        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+            if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
+                return {"_self_written": True}
+            return {"result": "ok"}
+
+        mock_dispatch.side_effect = dispatch_side_effect
+
+        empty_pkg_dir = tmp_path / "empty_pkg"  # type: ignore[operator]
+        empty_pkg_dir.mkdir()
+        monkeypatch.setattr("diogenes.commands.run._PACKAGE_DIR", empty_pkg_dir)
+
+        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        result = execute(str(input_path), str(output_dir))
+        assert result == 0
+        instance_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
+        assert len(instance_dirs) == 1
+        assert not (instance_dirs[0] / "prompt-snapshot.md").exists()
+
+
+class TestExecuteRerun:
+    """Tests for execute_rerun."""
+
+    def test_missing_output_dir(self) -> None:
+        result = execute_rerun("/nonexistent/path")
+        assert result == 1
+
+    def test_missing_source_input(self, tmp_path: pytest.TempPathFactory) -> None:
+        """If the parent has no saved source input, rerun aborts."""
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir.mkdir()
+        # Only a subdirectory, no regular file
+        (output_dir / "2026-04-22-120000").mkdir()
+
+        result = execute_rerun(str(output_dir))
+        assert result == 1
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._parse_and_clarify")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_rerun_uses_saved_input(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_parse: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """Rerun finds the saved input, runs a fresh instance, re-clarifies."""
+        mock_client = MagicMock(model="m")
         mock_client.usage.to_dict.return_value = {
             "totals": {
                 "api_calls": 1,
@@ -513,7 +647,7 @@ class TestExecute:
         }
         mock_api_cls.return_value = mock_client
         mock_sp.return_value = MagicMock()
-        mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
+        mock_parse.return_value = {"claims": [], "queries": [{"text": "t"}], "axioms": []}
 
         def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
@@ -522,15 +656,23 @@ class TestExecute:
 
         mock_dispatch.side_effect = dispatch_side_effect
 
-        # Point _PACKAGE_DIR to an empty dir so common-guidelines.md doesn't exist
-        empty_pkg_dir = tmp_path / "empty_pkg"
-        empty_pkg_dir.mkdir()
-        monkeypatch.setattr("diogenes.commands.run._PACKAGE_DIR", empty_pkg_dir)
+        # Simulate a previous `dio run` having populated the parent.
+        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir.mkdir()
+        saved_input = output_dir / "input.md"
+        saved_input.write_text("previous research input")
+        # Also simulate an existing prior instance
+        (output_dir / "2026-04-22-100000").mkdir()
 
-        output_dir = str(tmp_path / "output")
-        result = execute("input.json", output_dir, 1)
+        result = execute_rerun(str(output_dir))
         assert result == 0
-        # Guidelines snapshot should NOT have been written
-        group_dirs = list((tmp_path / "output").iterdir())
-        snapshot = group_dirs[0] / "prompt-snapshot.md"
-        assert not snapshot.exists()
+
+        # Rerun re-clarified (parse was called) — not a silent reuse.
+        mock_parse.assert_called_once()
+
+        # A new instance dir was created alongside the existing one.
+        instance_dirs = sorted(d for d in output_dir.iterdir() if d.is_dir())
+        assert len(instance_dirs) == 2
+        # Each instance has its own clarified JSON
+        new_instance = next(d for d in instance_dirs if d.name != "2026-04-22-100000")
+        assert (new_instance / "research-input-clarified.json").exists()
