@@ -524,20 +524,7 @@ class TestDioRender:
         out_dir = tmp_path / "md"  # type: ignore[operator]
 
         result = json.loads(dio_render(str(run_dir), str(out_dir)))
-        assert result["mode"] == "single-run"
-        mock_render.assert_called_once()
-
-    @patch("diogenes.mcp_server.render_run_group")
-    def test_run_group(self, mock_render: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
-        from diogenes.mcp_server import dio_render
-
-        group_dir = tmp_path / "group"  # type: ignore[operator]
-        group_dir.mkdir()
-        (group_dir / "run-1").mkdir()
-        out_dir = tmp_path / "md"  # type: ignore[operator]
-
-        result = json.loads(dio_render(str(group_dir), str(out_dir)))
-        assert result["mode"] == "run-group"
+        assert result["input_dir"] == str(run_dir)
         mock_render.assert_called_once()
 
 

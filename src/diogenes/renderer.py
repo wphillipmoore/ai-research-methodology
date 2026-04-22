@@ -5,9 +5,9 @@ of linked markdown files. Pure Python, zero LLM tokens. Produces generic
 markdown with relative links — no CSS classes, admonitions, or
 framework-specific markup.
 
-Output structure (per run):
+Output structure:
 
-    run-N/
+    <run-dir>/
     ├── index.md                  (run overview + verdict summary)
     └── C001-<slug>/
         ├── index.md              (item overview, BLUF, summary)
@@ -20,14 +20,6 @@ Output structure (per run):
         │   └── S01/search-log.md
         └── sources/
             └── SRC001/scorecard.md
-
-Group-level (run group directory):
-
-    <run-group>/
-    ├── index.md                  (group overview)
-    ├── synthesis.md              (cross-run synthesis, if multi-run)
-    ├── consistency.md            (cross-run metrics, if multi-run)
-    └── reading-list.md           (consolidated sources)
 """
 
 from __future__ import annotations
@@ -434,39 +426,6 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         audit,
         pipeline_events,
     )
-
-
-def render_run_group(group_dir: Path, output_dir: Path) -> None:
-    """Render an entire run group (possibly multiple runs) to markdown.
-
-    Args:
-        group_dir: Run group directory containing run-N/ subdirs and
-            optionally group-level JSON files.
-        output_dir: Where to write the rendered markdown tree.
-
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Render each run
-    run_dirs = sorted(d for d in group_dir.iterdir() if d.is_dir() and d.name.startswith("run-"))
-    for run_dir in run_dirs:
-        run_output = output_dir / run_dir.name
-        render_run(run_dir, run_output)
-
-    # Render group-level content if present
-    group_synthesis = _load_json(group_dir / "group-synthesis.json")
-    group_consistency = _load_json(group_dir / "group-consistency.json")
-    group_reading_list = _load_json(group_dir / "group-reading-list.json")
-
-    if group_synthesis:
-        _write_group_synthesis(output_dir, group_synthesis)
-    if group_consistency:
-        _write_group_consistency(output_dir, group_consistency)
-    if group_reading_list:
-        _write_group_reading_list(output_dir, group_reading_list)
-
-    # Write index LAST so existence checks see the actual files
-    _write_group_index(output_dir, run_dirs, group_synthesis)
 
 
 # ---------------------------------------------------------------------------
@@ -1658,152 +1617,3 @@ def _write_sources(
         lines.append("[← Back to item overview](../../index.md)")
         lines = _add_toc(lines)
         (src_subdir / "scorecard.md").write_text("\n".join(lines) + "\n")
-
-
-# ---------------------------------------------------------------------------
-# Group-level writers
-# ---------------------------------------------------------------------------
-
-
-def _write_group_index(
-    output_dir: Path,
-    run_dirs: list[Path],
-    group_synthesis: dict[str, Any],  # noqa: ARG001
-) -> None:
-    """Write the run group index.md."""
-    lines = ["# Research Run Group", ""]
-    lines.append(f"Runs: {len(run_dirs)}")
-    lines.append("")
-
-    if run_dirs:
-        lines.extend(["## Runs", ""])
-        for rd in run_dirs:
-            lines.append(f"- [{rd.name}]({rd.name}/index.md)")
-        lines.append("")
-
-    group_links = [
-        ("synthesis.md", "Cross-run synthesis"),
-        ("consistency.md", "Cross-run consistency metrics"),
-        ("reading-list.md", "Consolidated reading list"),
-    ]
-    existing_links = [(f, lab) for f, lab in group_links if (output_dir / f).exists()]
-    if existing_links:
-        lines.extend(["## Group-Level Reports", ""])
-        for filename, label in existing_links:
-            lines.append(f"- [{label}]({filename})")
-        lines.append("")
-
-    lines = _add_toc(lines)
-    (output_dir / "index.md").write_text("\n".join(lines) + "\n")
-
-
-def _write_group_synthesis(output_dir: Path, data: dict[str, Any]) -> None:
-    """Write group-level synthesis.md."""
-    lines = ["# Cross-Run Synthesis", ""]
-
-    total_runs = data.get("total_runs", 0)
-    if total_runs:
-        lines.append(f"**Total runs**: {total_runs}")
-        lines.append("")
-    note = data.get("note")
-    if note:
-        lines.extend([f"> {note}", ""])
-
-    items = data.get("items", [])
-    if items:
-        lines.extend(["## Consensus Per Item", ""])
-        for item in items:
-            item_id = item.get("id", "?")
-            verdict = item.get("consensus_verdict", "—")
-            summary = item.get("summary", "")
-            lines.append(f"### {item_id} — {verdict}")
-            lines.append("")
-            if summary:
-                lines.append(summary)
-                lines.append("")
-            divergences = item.get("divergences", [])
-            if divergences:
-                lines.append("**Divergences across runs:**")
-                for d in divergences:
-                    lines.append(f"- {d}")
-                lines.append("")
-            sources_count = item.get("sources_union_count")
-            if sources_count is not None:
-                lines.append(f"Sources (union across runs): {sources_count}")
-                lines.append("")
-
-    lines.append("[← Back to group overview](index.md)")
-    lines = _add_toc(lines)
-    (output_dir / "synthesis.md").write_text("\n".join(lines) + "\n")
-
-
-def _write_group_consistency(output_dir: Path, data: dict[str, Any]) -> None:
-    """Write group-level consistency.md."""
-    lines = ["# Cross-Run Consistency Metrics", ""]
-
-    total_runs = data.get("total_runs", 0)
-    if total_runs:
-        lines.append(f"**Total runs**: {total_runs}")
-        lines.append("")
-    note = data.get("note")
-    if note:
-        lines.extend([f"> {note}", ""])
-
-    metrics = data.get("metrics", {})
-    if isinstance(metrics, dict) and metrics:
-        lines.extend(["## Metrics", "", "| Metric | Value |", "|--------|-------|"])
-        for k, v in metrics.items():
-            label = k.replace("_", " ").title()
-            lines.append(f"| {label} | {v} |")
-        lines.append("")
-
-    diagnostic = data.get("diagnostic")
-    if diagnostic:
-        lines.extend(["## Diagnostic", "", diagnostic, ""])
-
-    lines.append("[← Back to group overview](index.md)")
-    lines = _add_toc(lines)
-    (output_dir / "consistency.md").write_text("\n".join(lines) + "\n")
-
-
-def _write_group_reading_list(output_dir: Path, data: dict[str, Any]) -> None:
-    """Write group-level reading-list.md."""
-    lines = ["# Consolidated Reading List", ""]
-
-    reading_list = data.get("reading_list", [])
-    if not reading_list:
-        lines.append("No sources recorded.")
-        lines.append("")
-        (output_dir / "reading-list.md").write_text("\n".join(lines) + "\n")
-        return
-
-    # Group by priority
-    by_priority: dict[str, list[dict[str, Any]]] = {"must read": [], "should read": [], "reference": []}
-    for entry in reading_list:
-        priority = entry.get("priority", "reference")
-        if priority in by_priority:
-            by_priority[priority].append(entry)
-
-    for priority_label in ("must read", "should read", "reference"):
-        entries = by_priority[priority_label]
-        if not entries:
-            continue
-        lines.extend([f"## {priority_label.title()}", ""])
-        for e in entries:
-            title = e.get("title") or e.get("url", "")
-            url = e.get("url", "")
-            summary = e.get("summary", "")
-            items_refs = e.get("items", [])
-            runs_found = e.get("found_in_runs", [])
-            lines.append(f"- **[{title}]({url})**")
-            if summary:
-                lines.append(f"  - {summary}")
-            if items_refs:
-                lines.append(f"  - Referenced by: {', '.join(items_refs)}")
-            if runs_found:
-                lines.append(f"  - Found in runs: {', '.join(runs_found)}")
-        lines.append("")
-
-    lines.append("[← Back to group overview](index.md)")
-    lines = _add_toc(lines)
-    (output_dir / "reading-list.md").write_text("\n".join(lines) + "\n")

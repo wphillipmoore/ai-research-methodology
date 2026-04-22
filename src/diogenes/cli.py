@@ -1,9 +1,10 @@
 """Diogenes CLI — entry point for the dio command.
 
 Usage:
-    dio run <input-file> --output <dir> [--runs N]
-    dio rerun <research-dir> [--runs N]
-    dio fact-check <document> --output <dir> [--runs N]
+    dio run <input-file> --output <dir>
+    dio rerun --output <dir>
+    dio fact-check <document> --output <dir>
+    dio render <run-dir> --output <dir>
 """
 
 from __future__ import annotations
@@ -32,29 +33,18 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--output",
         required=True,
-        help="Output directory for research results",
-    )
-    run_parser.add_argument(
-        "--runs",
-        type=int,
-        default=3,
-        help="Number of independent runs (default: 3)",
+        help="Output directory for research results (must be fresh — one run per directory)",
     )
 
     # --- dio rerun ---
     rerun_parser = subparsers.add_parser(
         "rerun",
-        help="Re-execute previous research from saved input",
+        help="Run a new instance of existing research (uses the saved source input)",
     )
     rerun_parser.add_argument(
-        "research_dir",
-        help="Path to existing research instance directory",
-    )
-    rerun_parser.add_argument(
-        "--runs",
-        type=int,
-        default=3,
-        help="Number of independent runs (default: 3)",
+        "--output",
+        required=True,
+        help="Parent output directory previously populated by 'dio run'",
     )
 
     # --- dio fact-check ---
@@ -69,13 +59,7 @@ def _build_parser() -> argparse.ArgumentParser:
     factcheck_parser.add_argument(
         "--output",
         required=True,
-        help="Output directory for research results",
-    )
-    factcheck_parser.add_argument(
-        "--runs",
-        type=int,
-        default=3,
-        help="Number of independent runs (default: 3)",
+        help="Output directory for research results (must be fresh — one run per directory)",
     )
 
     # --- dio render ---
@@ -85,7 +69,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     render_parser.add_argument(
         "input_dir",
-        help="Path to a run group directory (containing run-N/ subdirs) or a single run directory",
+        help="Path to a run directory (containing JSON step outputs)",
     )
     render_parser.add_argument(
         "--output",
@@ -104,34 +88,28 @@ def main() -> int:
     if args.command == "run":
         from diogenes.commands.run import execute as run_execute
 
-        return run_execute(args.input_file, args.output, args.runs)
+        return run_execute(args.input_file, args.output)
 
     if args.command == "rerun":
-        print(f"dio rerun: dir={args.research_dir} runs={args.runs}")
-        print("Not yet implemented.")
-        return 1
+        from diogenes.commands.run import execute_rerun
+
+        return execute_rerun(args.output)
 
     if args.command == "fact-check":
-        print(f"dio fact-check: doc={args.document} output={args.output} runs={args.runs}")
+        print(f"dio fact-check: doc={args.document} output={args.output}")
         print("Not yet implemented.")
         return 1
 
     if args.command == "render":
         from pathlib import Path
 
-        from diogenes.renderer import render_run, render_run_group
+        from diogenes.renderer import render_run
 
-        input_path = Path(args.input_file if hasattr(args, "input_file") else args.input_dir)
+        input_path = Path(args.input_dir)
         output_path = Path(args.output)
 
-        # Detect: run-N directory (single run) vs run group (contains run-N subdirs)
-        has_run_subdirs = any(d.is_dir() and d.name.startswith("run-") for d in input_path.iterdir())
-        if has_run_subdirs:
-            print(f"Rendering run group: {input_path}")
-            render_run_group(input_path, output_path)
-        else:
-            print(f"Rendering single run: {input_path}")
-            render_run(input_path, output_path)
+        print(f"Rendering run: {input_path}")
+        render_run(input_path, output_path)
 
         print(f"Rendered to: {output_path}")
         return 0

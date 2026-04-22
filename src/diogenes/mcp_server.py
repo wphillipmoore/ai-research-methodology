@@ -27,7 +27,7 @@ from mcp.server.fastmcp import FastMCP
 from diogenes.config import ConfigError, load_config
 from diogenes.content_cache import get_content_cache, reset_content_cache
 from diogenes.events import get_mcp_logger, reconcile_run, reset_mcp_logger
-from diogenes.renderer import render_run, render_run_group
+from diogenes.renderer import render_run
 from diogenes.search import FetchError, fetch_page_extract
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
 from diogenes.state_machine import PipelineState
@@ -569,8 +569,7 @@ def dio_render(input_dir: str, output_dir: str) -> str:
     """Render JSON research output to linked markdown.
 
     Args:
-        input_dir: Path to a run directory (with JSON files) or a run group
-            directory (containing run-N/ subdirectories).
+        input_dir: Path to a run directory (containing JSON step outputs).
         output_dir: Path where the markdown tree should be written.
 
     Returns:
@@ -583,19 +582,11 @@ def dio_render(input_dir: str, output_dir: str) -> str:
     if not input_path.exists():
         return json.dumps({"error": True, "message": f"Input directory not found: {input_dir}"})
 
-    has_run_subdirs = any(d.is_dir() and d.name.startswith("run-") for d in input_path.iterdir())
-
-    if has_run_subdirs:
-        render_run_group(input_path, output_path)
-        mode = "run-group"
-    else:
-        render_run(input_path, output_path)
-        mode = "single-run"
+    render_run(input_path, output_path)
 
     md_files = list(output_path.rglob("*.md"))
     return json.dumps(
         {
-            "mode": mode,
             "input_dir": str(input_path),
             "output_dir": str(output_path),
             "markdown_files_written": len(md_files),
