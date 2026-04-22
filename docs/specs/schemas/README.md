@@ -1,5 +1,17 @@
 # JSON Schemas
 
+**Status:** Locked (baseline) — the schemas listed below are contracts.
+Breaking changes require a spec update and a bump of the affected schema
+file.
+**Last verified:** 2026-04-22 (canonical packaged schemas live under
+`src/diogenes/schemas/`; this directory retains reference copies).
+**Sources:** Relocated from `docs/design/schemas/` as part of the
+retroactive spec extraction for issue #129. The JSON-first architecture
+and the "Python validates, model proposes" contract are formalized in
+[`../output-contract.md`](../output-contract.md); the surrounding
+pipeline is specified in
+[`../workflow-architecture.md`](../workflow-architecture.md).
+
 JSON Schema definitions for all data interchange in the research
 methodology workflow. Each sub-agent has an input schema and an output
 schema. The Python coordinator validates all data against these schemas
