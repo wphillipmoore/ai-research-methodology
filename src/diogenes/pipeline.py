@@ -948,8 +948,6 @@ def step9_self_audit(
         results[item_id] = response
         audit = response.get("process_audit", {})
         ratings = [
-            audit.get("eligibility_criteria", {}).get("rating", "?"),
-            audit.get("search_comprehensiveness", {}).get("rating", "?"),
             audit.get("evaluation_consistency", {}).get("rating", "?"),
             audit.get("synthesis_fairness", {}).get("rating", "?"),
         ]

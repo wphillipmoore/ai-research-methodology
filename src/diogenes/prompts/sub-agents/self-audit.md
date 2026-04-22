@@ -38,23 +38,26 @@ stage.
 
 ## Task
 
-### Step 9: Self-Audit (ROBIS four domains)
+### Step 9: Self-Audit (ROBIS analytical domains)
 
-Audit the research process against four domains. Rate each Pass /
-Concern / Fail:
+Audit the research process against the two domains that require
+cross-source analytical judgment. Rate each Pass / Concern / Fail:
 
-1. **Eligibility criteria**: Were relevance criteria defined before
-   searching, or did they shift after seeing results?
-2. **Search comprehensiveness**: Was the search broad enough? Did it
-   stop when sufficient evidence was found for one hypothesis?
-3. **Evaluation consistency**: Was the same scoring rigor applied to
+1. **Evaluation consistency**: Was the same scoring rigor applied to
    all sources regardless of whether they supported or contradicted
    the hypothesis?
-4. **Synthesis fairness**: Was all evidence synthesized fairly, or
+2. **Synthesis fairness**: Was all evidence synthesized fairly, or
    were some sources weighted disproportionately?
 
 If any domain rates Concern or Fail, document why and assess the
 impact on conclusions.
+
+**Note on scope:** the other two classical ROBIS domains — eligibility
+criteria and search comprehensiveness — are now enforced
+deterministically by the pipeline itself (fixed relevance threshold,
+canonical step sequence, fetch/score event log in pipeline-events.json).
+An LLM opinion on whether those criteria shifted is less authoritative
+than the recorded data, so they are omitted from this prompt.
 
 ### Step 9b: Source-Back Verification
 
