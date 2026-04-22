@@ -11,6 +11,7 @@ import anthropic
 import jsonschema
 
 from diogenes.config import DEFAULT_MODEL, ConfigError, DioConfig, load_config
+from diogenes.retry import is_retriable_anthropic, retry_with_backoff
 
 
 @dataclass
@@ -458,7 +459,10 @@ class APIClient:
             ]
 
         try:
-            response = self._client.messages.create(**api_kwargs)
+            response = retry_with_backoff(
+                lambda: self._client.messages.create(**api_kwargs),
+                is_retriable=is_retriable_anthropic,
+            )
         except anthropic.APIError as e:
             msg = f"API call failed: {e}"
             raise SubAgentError(prompt_file.stem, msg) from e

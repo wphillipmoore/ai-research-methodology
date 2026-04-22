@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 
+from diogenes.retry import is_retriable_http, retry_with_backoff
 from diogenes.search import SearchResult
 
 _DEFAULT_TIMEOUT = 10
@@ -40,13 +41,17 @@ class SerperSearchProvider:
             "num": max_results,
         }
 
-        resp = requests.post(
-            self.API_URL,
-            headers=headers,
-            json=payload,
-            timeout=_DEFAULT_TIMEOUT,
-        )
-        resp.raise_for_status()
+        def fetch() -> requests.Response:
+            resp = requests.post(
+                self.API_URL,
+                headers=headers,
+                json=payload,
+                timeout=_DEFAULT_TIMEOUT,
+            )
+            resp.raise_for_status()
+            return resp
+
+        resp = retry_with_backoff(fetch, is_retriable=is_retriable_http)
         data = resp.json()
 
         organic = data.get("organic", [])
@@ -96,13 +101,17 @@ class BraveSearchProvider:
             "count": max_results,
         }
 
-        resp = requests.get(
-            self.API_URL,
-            headers=headers,
-            params=params,
-            timeout=_DEFAULT_TIMEOUT,
-        )
-        resp.raise_for_status()
+        def fetch() -> requests.Response:
+            resp = requests.get(
+                self.API_URL,
+                headers=headers,
+                params=params,
+                timeout=_DEFAULT_TIMEOUT,
+            )
+            resp.raise_for_status()
+            return resp
+
+        resp = retry_with_backoff(fetch, is_retriable=is_retriable_http)
         data = resp.json()
 
         web_results = data.get("web", {}).get("results", [])
@@ -150,8 +159,12 @@ class GoogleSearchProvider:
             "num": min(max_results, 10),
         }
 
-        resp = requests.get(self.API_URL, params=params, timeout=_DEFAULT_TIMEOUT)
-        resp.raise_for_status()
+        def fetch() -> requests.Response:
+            resp = requests.get(self.API_URL, params=params, timeout=_DEFAULT_TIMEOUT)
+            resp.raise_for_status()
+            return resp
+
+        resp = retry_with_backoff(fetch, is_retriable=is_retriable_http)
         data = resp.json()
 
         items = data.get("items", [])

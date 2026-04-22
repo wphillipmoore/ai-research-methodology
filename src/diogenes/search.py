@@ -16,6 +16,8 @@ import pypdf
 import requests
 import trafilatura
 
+from diogenes.retry import is_retriable_http, retry_with_backoff
+
 
 @dataclass
 class SearchResult:
@@ -177,13 +179,18 @@ def fetch_page_extract(url: str) -> str:
             scanned image PDF, encrypted PDF, etc.).
 
     """
-    try:
+
+    def fetch() -> requests.Response:
         resp = requests.get(
             url,
             timeout=_FETCH_TIMEOUT,
             headers={"User-Agent": "Diogenes/0.1 (research-methodology)"},
         )
         resp.raise_for_status()
+        return resp
+
+    try:
+        resp = retry_with_backoff(fetch, is_retriable=is_retriable_http)
     except requests.RequestException as exc:
         msg = f"Fetch failed for {url}: {exc}"
         raise FetchError(msg) from exc
