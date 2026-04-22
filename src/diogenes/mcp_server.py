@@ -22,6 +22,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import requests
 from mcp.server.fastmcp import FastMCP
 
 from diogenes.config import ConfigError, load_config
@@ -217,13 +218,88 @@ def dio_execute_step(run_dir: str, step_name: str) -> str:
     )
 
 
+def _classify_search_error(exc: BaseException, provider_name: str) -> dict[str, Any]:
+    """Classify a search-provider failure into an actionable category.
+
+    Returns a structured error payload for dio_search / dio_search_batch
+    responses. The ``error_kind`` tag lets the calling agent decide
+    whether to stop, ask the user, or fall back to ``web_search``:
+
+    - ``quota_exhausted`` / ``rate_limited`` — the provider's free tier
+      is tapped out or we're hammering it. Falling back to ``web_search``
+      is reasonable, but the user should be told because web_search costs
+      tokens per call rather than being free on a quota.
+    - ``auth_failed`` — API key is missing, invalid, or revoked. Not a
+      fallback situation; fix the config.
+    - ``network_error`` — transport failure that already survived #77's
+      retry loop. Something upstream is down; stopping is usually right.
+    - ``other`` — anything else. Surface the message and let the agent
+      use judgment.
+
+    The ``fallback_available`` flag is set for categories where calling
+    ``web_search`` as an alternative makes sense. Set to False for
+    auth_failed (web_search won't help) and True for the others.
+    """
+    error_kind = "other"
+    fallback_available = True
+
+    if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+        error_kind = "network_error"
+    elif isinstance(exc, requests.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        quota_exhausted_status = 402
+        rate_limited_status = 429
+        auth_failed_statuses = {401, 403}
+        if status == quota_exhausted_status:
+            error_kind = "quota_exhausted"
+        elif status == rate_limited_status:
+            error_kind = "rate_limited"
+        elif status in auth_failed_statuses:
+            error_kind = "auth_failed"
+            fallback_available = False
+
+    messages = {
+        "quota_exhausted": (
+            f"Search provider '{provider_name}' quota exhausted. "
+            "You can continue with web_search (higher token cost per call) "
+            "or wait for the quota to reset."
+        ),
+        "rate_limited": (
+            f"Search provider '{provider_name}' is rate-limiting requests. "
+            "You can continue with web_search or wait and retry."
+        ),
+        "auth_failed": (
+            f"Search provider '{provider_name}' rejected credentials. "
+            "Fix the API key in .diorc or .env; web_search cannot substitute "
+            "for a misconfigured provider."
+        ),
+        "network_error": (
+            f"Search provider '{provider_name}' is unreachable after retries. "
+            "You can continue with web_search or wait for the service to recover."
+        ),
+        "other": f"Search failed ({provider_name}): {exc}",
+    }
+
+    return {
+        "error": True,
+        "error_kind": error_kind,
+        "message": messages[error_kind],
+        "fallback_available": fallback_available,
+    }
+
+
 @server.tool(
     name="dio_search",
     description=(
         "Execute a web search for the Diogenes research methodology. "
         "Returns titles, URLs, and snippets from the configured search "
         "provider. ONLY use this within /research workflows — do not use "
-        "as a general web search replacement. Uses a limited search API quota."
+        "as a general web search replacement. Uses a limited search API "
+        "quota. On failure, returns a structured error with 'error_kind' "
+        "(quota_exhausted / rate_limited / auth_failed / network_error / "
+        "other) and 'fallback_available'; the caller can offer web_search "
+        "as a fallback for quota/rate/network issues, but must not switch "
+        "silently — the user needs to know the token cost changes."
     ),
 )
 def dio_search(query: str, max_results: int = 5) -> str:
@@ -242,13 +318,14 @@ def dio_search(query: str, max_results: int = 5) -> str:
         results, total = provider.search(query, max_results=max_results)
     except Exception as exc:  # noqa: BLE001
         logger = get_mcp_logger()
+        classification = _classify_search_error(exc, provider.name)
         logger.log(
             step="step4_execute_searches",
             kind="search_error",
-            detail=f"Search provider '{provider.name}' error for query '{query}': {exc}",
+            detail=(f"Search provider '{provider.name}' {classification['error_kind']} for query '{query}': {exc}"),
             layer="mcp",
         )
-        return json.dumps({"error": True, "message": f"Search failed: {exc}", "query": query})
+        return json.dumps({**classification, "query": query})
 
     output: dict[str, Any] = {
         "provider": provider.name,
@@ -350,13 +427,14 @@ def dio_search_batch(queries: list[str], max_results_per_query: int = 5) -> str:
             results, total = provider.search(query, max_results=max_results_per_query)
         except Exception as exc:  # noqa: BLE001
             logger = get_mcp_logger()
+            classification = _classify_search_error(exc, provider.name)
             logger.log(
                 step="step4_execute_searches",
                 kind="search_error",
-                detail=f"Search provider '{provider.name}' error for query '{query}': {exc}",
+                detail=(f"Search provider '{provider.name}' {classification['error_kind']} for query '{query}': {exc}"),
                 layer="mcp",
             )
-            all_results.append({"query": query, "error": str(exc), "results": []})
+            all_results.append({**classification, "query": query, "results": []})
             continue
         all_results.append(
             {
