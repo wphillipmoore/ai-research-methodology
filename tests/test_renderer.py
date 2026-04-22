@@ -3251,3 +3251,269 @@ class TestSourceBareMinimum:
         content = scorecards[0].read_text()
         # No metadata table since all fields absent
         assert "## Metadata" not in content
+
+
+def _create_run_with_partial_gaps(run_dir: Path) -> None:
+    """CLI-dict gaps with only SOME fields populated (expected empty, unanswered empty, etc.)."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+
+    # gaps dict with ONLY impact_on_confidence (no expected_not_found, no unanswered)
+    syn = {
+        "C001": {
+            "id": "C001",
+            "gaps": {"impact_on_confidence": "Low impact"},
+        },
+    }
+    (run_dir / "synthesis.json").write_text(json.dumps(syn))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestPartialGaps:
+    """Cover 1192->1197, 1198->1203 False branches."""
+
+    def test_only_impact_in_gaps(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_partial_gaps(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        assessment = (c001_dirs[0] / "assessment.md").read_text()
+        assert "Impact on confidence" in assessment
+        assert "Expected but not found" not in assessment
+        assert "Unanswered questions" not in assessment
+
+
+def _create_run_with_plugin_source_verification(run_dir: Path) -> None:
+    """Audit with source_interpretation_verification (plugin format) varied fields."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": []}}))
+
+    # Self-audit with plugin-style source_interpretation_verification
+    sa = {
+        "C001": {
+            "id": "C001",
+            "process_audit": {},
+            "source_interpretation_verification": {
+                "sources_checked": 3,
+                "findings": "Key findings text",
+                "assessment": "Overall assessment text",
+            },
+            "reading_list": [],
+        },
+    }
+    (run_dir / "self-audit.json").write_text(json.dumps(sa))
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestPluginSourceVerification:
+    """Cover 1296->1299, 1299->1302, 1302->1306 branches."""
+
+    def test_plugin_verification(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_plugin_source_verification(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        audit = (c001_dirs[0] / "self-audit.md").read_text()
+        assert "Source Interpretation Verification" in audit
+        assert "Sources checked: 3" in audit
+        assert "Key findings text" in audit
+        assert "Overall assessment text" in audit
+
+
+def _create_run_with_empty_plugin_verification(run_dir: Path) -> None:
+    """Audit with source_interpretation_verification that has NO sub-fields."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": {}}}))  # Empty gaps dict
+
+    # Self-audit with empty source_interpretation_verification
+    sa = {
+        "C001": {
+            "id": "C001",
+            "process_audit": {},
+            "source_interpretation_verification": {"other": "value"},  # No sources_checked/findings/assessment
+            "reading_list": [],
+        },
+    }
+    (run_dir / "self-audit.json").write_text(json.dumps(sa))
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestEmptyPluginVerificationAndGaps:
+    """Cover 1204->1208, 1296->1299, 1299->1302, 1302->1306 False branches."""
+
+    def test_empty_plugin_verification_fields(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_empty_plugin_verification(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        audit = (c001_dirs[0] / "self-audit.md").read_text()
+        # The Source Interpretation Verification header is rendered but no sub-fields
+        assert "Source Interpretation Verification" in audit
+        assert "Sources checked:" not in audit
+
+
+def _create_run_with_no_synthesis_for_item(run_dir: Path) -> None:
+    """Item has scorecards but NO synthesis — assessment.md shouldn't be written."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "scorecards": [
+                        {"url": "https://x.com", "title": "X", "reliability_score": 5, "relevance_score": 5},
+                    ],
+                }
+            }
+        )
+    )
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    # Synthesis: empty dict (no C001 key) — so item_synthesis is {} — falsy — _write_assessment NOT called
+    (run_dir / "synthesis.json").write_text(json.dumps({}))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestItemWithoutSynthesis:
+    """Cover 831->833: assessment.md NOT existing in Results table."""
+
+    def test_no_synthesis_item(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_no_synthesis_for_item(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        # assessment.md should NOT have been written
+        assert not (c001_dirs[0] / "assessment.md").exists()
+        # Results table in index should not include Assessment link
+        index = (c001_dirs[0] / "index.md").read_text()
+        assert "[Assessment](assessment.md)" not in index
