@@ -566,16 +566,18 @@ class TestExecute:
     @patch("diogenes.commands.run._parse_and_clarify")
     @patch("diogenes.commands.run._create_search_provider")
     @patch("diogenes.commands.run.APIClient")
-    def test_pipeline_no_guidelines_file(
+    def test_pipeline_does_not_write_prompt_snapshot(
         self,
         mock_api_cls: MagicMock,
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
         tmp_path: pytest.TempPathFactory,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Guidelines file missing → skip snapshot write."""
+        """Regression guard: prompt-snapshot.md is never written.
+
+        Replaced by the version block in pipeline-state.json (#127).
+        """
         mock_client = MagicMock(model="m")
         mock_client.usage.to_dict.return_value = self._usage_stub()
         mock_api_cls.return_value = mock_client
@@ -588,10 +590,6 @@ class TestExecute:
             return {"result": "ok"}
 
         mock_dispatch.side_effect = dispatch_side_effect
-
-        empty_pkg_dir = tmp_path / "empty_pkg"  # type: ignore[operator]
-        empty_pkg_dir.mkdir()
-        monkeypatch.setattr("diogenes.commands.run._PACKAGE_DIR", empty_pkg_dir)
 
         input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
         output_dir = tmp_path / "output"  # type: ignore[operator]

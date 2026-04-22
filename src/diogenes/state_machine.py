@@ -21,10 +21,67 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 — needed at runtime for file operations
+from pathlib import Path
 from typing import Any
+
+import diogenes
+
+# Resolve against the package directory so git queries run inside the
+# Diogenes source tree, not wherever the pipeline happens to be writing.
+_PACKAGE_DIR = Path(__file__).parent
+
+
+def _git_metadata() -> dict[str, Any] | None:
+    """Collect git commit/branch/dirty for the Diogenes source tree.
+
+    Returns None when the package is installed from a wheel or the git
+    CLI is otherwise unavailable — version metadata gracefully degrades
+    to just the package_version in that case.
+    """
+    # S603/S607: we deliberately invoke git by name (not an absolute path)
+    # so it resolves from PATH — the standard way of calling git across
+    # macOS/Linux/CI images. Arguments are constant, no user input.
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            cwd=_PACKAGE_DIR,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],  # noqa: S607
+            cwd=_PACKAGE_DIR,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        dirty_output = subprocess.check_output(
+            ["git", "status", "--porcelain"],  # noqa: S607
+            cwd=_PACKAGE_DIR,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    return {"commit": commit, "branch": branch, "dirty": bool(dirty_output.strip())}
+
+
+def _compute_version() -> dict[str, Any]:
+    """Version stamp for a run — the code that produced the outputs.
+
+    Always includes ``package_version``. Adds ``git_commit``,
+    ``git_branch``, and ``git_dirty`` when available (i.e., running
+    from a source checkout).
+    """
+    meta: dict[str, Any] = {"package_version": diogenes.__version__}
+    git = _git_metadata()
+    if git is not None:
+        meta["git_commit"] = git["commit"]
+        meta["git_branch"] = git["branch"]
+        meta["git_dirty"] = git["dirty"]
+    return meta
 
 
 @dataclass
@@ -236,15 +293,22 @@ class PipelineState:
         self._state_file = run_dir / "pipeline-state.json"
         self._completed: dict[str, StepStatus] = {}
         self._created_at: str | None = None
+        # Version is captured at run *start* — it identifies which code
+        # produced the outputs. On reload (resume), we preserve the
+        # original version rather than overwrite, so the field always
+        # points back to the source commit that kicked the run off.
+        self._version: dict[str, Any] | None = None
         if self._state_file.exists():
             self._load()
         else:
             self._created_at = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self._version = _compute_version()
 
     def _load(self) -> None:
         """Load state from disk."""
         data = json.loads(self._state_file.read_text())
         self._created_at = data.get("created_at")
+        self._version = data.get("version")
         for entry in data.get("steps", []):
             self._completed[entry["name"]] = StepStatus(**entry)
 
@@ -272,6 +336,7 @@ class PipelineState:
             "completed_at": now_str if self.all_complete() else None,
             "elapsed_seconds": elapsed,
             "pid": os.getpid(),
+            "version": self._version,
             "steps": [
                 {
                     "name": s.name,
