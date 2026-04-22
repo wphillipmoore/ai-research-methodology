@@ -2525,3 +2525,256 @@ class TestGroupRenderingBranches:
         output_dir = tmp_path / "md"
         render_run_group(group_dir, output_dir)
         assert (output_dir / "index.md").exists()
+
+
+def _create_run_with_search_variants(run_dir: Path) -> None:
+    """Build a fixture with search variants to flip _write_searches branches."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+
+    # Multiple searches with variants: no terms, no theme, no target_hypothesis
+    sp = {
+        "C001": {
+            "id": "C001",
+            "searches": [
+                {"id": "S01"},  # No terms, no theme
+                {"id": "S02", "terms": [], "theme": ""},  # Empty terms, empty theme
+                {"id": "S03", "terms": ["t1"], "sources": []},  # Empty planned sources
+            ],
+        },
+    }
+    (run_dir / "search-plans.json").write_text(json.dumps(sp))
+
+    # search_execution_log variants: empty query, no results, all selected, all rejected
+    sr = {
+        "C001": {
+            "id": "C001",
+            "searches_executed": [],
+            "selected_sources": [],
+            "rejected_sources": [],
+            "summary": {
+                "total_searches": 3,
+                "total_results_found": 0,
+                "total_selected": 0,
+                "total_rejected": 0,
+                "relevance_threshold": 5,
+            },
+        },
+        "search_execution_log": [
+            {"id": "S01", "query": "", "results": []},  # No results, empty query
+            {
+                "id": "S02",
+                "query": "q2",
+                "results": [
+                    {"disposition": "selected", "title": "Sel", "url": "u1", "relevance_score": 9},  # no reason
+                ],
+            },
+            {
+                "id": "S03",
+                "query": "q3",
+                "results": [
+                    {"disposition": "rejected", "title": "Rej", "url": "u2", "relevance_score": 1, "reason": "off"},
+                ],
+            },
+        ],
+    }
+    (run_dir / "search-results.json").write_text(json.dumps(sr))
+
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": []}}))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestSearchRenderingVariants:
+    """Cover branches in _write_searches."""
+
+    def test_search_variants(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_search_variants(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        # Each search should have its own log
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        searches_dir = c001_dirs[0] / "searches"
+        assert (searches_dir / "S01").exists()
+        assert (searches_dir / "S02").exists()
+        assert (searches_dir / "S03").exists()
+
+
+def _create_run_with_sources_variants(run_dir: Path) -> None:
+    """Build a fixture with source scorecard variants to flip _write_sources branches."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+
+    # Scorecards with variants: minimal (just url), full, with bias dict, dict reliability
+    sc = {
+        "C001": {
+            "id": "C001",
+            "scorecards": [
+                {"url": "https://a.com"},  # Minimal
+                {
+                    "url": "https://b.com",
+                    "title": "Paper B",
+                    "authors": "A. Author",
+                    "publication_date": "2025",
+                    "content_summary": "Summary",
+                    "reliability_score": 8,
+                    "relevance_score": 9,
+                    "bias_assessment": "Low bias",
+                    "content_extract": "Full extract text",
+                },
+                {
+                    "url": "https://c.com",
+                    "title": "Paper C",
+                    # Dict bias instead of string
+                    "bias_assessment": {"rating": "Medium", "rationale": "known issue"},
+                    # Dict reliability/relevance instead of int
+                    "reliability_score": {"rating": 7, "rationale": "peer-reviewed"},
+                    "relevance_score": {"rating": 6, "rationale": "tangential"},
+                },
+            ],
+        },
+    }
+    (run_dir / "scorecards.json").write_text(json.dumps(sc))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": []}}))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestSourcesRenderingVariants:
+    """Cover branches in _write_sources."""
+
+    def test_sources_variants(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_sources_variants(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        sources_dir = c001_dirs[0] / "sources"
+        assert sources_dir.exists()
+        # Should have SRC001, SRC002, SRC003 scorecards
+        scorecards = list(sources_dir.rglob("scorecard.md"))
+        assert len(scorecards) == 3
+
+
+def _create_run_with_self_audit_variants(run_dir: Path) -> None:
+    """Build a fixture with self-audit variants to flip _write_self_audit branches."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": []}}))
+
+    # Self-audit with source_verification, sensitivity_analysis, and robis_audit
+    sa = {
+        "C001": {
+            "id": "C001",
+            "process_audit": {
+                "eligibility_criteria": {"rating": "Pass", "notes": ""},  # Empty notes
+                "search_comprehensiveness": {"rating": "", "notes": "notes only"},  # No rating
+            },
+            "source_verification": {
+                "sources_verified": 5,
+                "discrepancies": [
+                    {"source_url": "https://a.com", "issue": "wrong quote"},
+                ],
+            },
+            "sensitivity_analysis": {
+                "robustness": "Good",
+                "alternative_interpretations": ["alt 1", "alt 2"],
+            },
+            "robis_audit": {
+                "domain_1_eligibility": {"risk": "Low"},
+            },
+            "reading_list": [
+                {"title": "P", "url": "https://x.com"},  # Minimal reading list entry
+            ],
+        },
+    }
+    (run_dir / "self-audit.json").write_text(json.dumps(sa))
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestSelfAuditVariants:
+    """Cover branches in _write_self_audit and related writers."""
+
+    def test_self_audit_variants(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_self_audit_variants(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        audit = (c001_dirs[0] / "self-audit.md").read_text()
+        # Should include discrepancies section and sensitivity
+        assert "discrepancies" in audit.lower() or "Source Verification" in audit
