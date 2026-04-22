@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -94,16 +95,17 @@ class TestStepStatus:
 class TestPipelineState:
     """Tests for PipelineState."""
 
-    def test_fresh_state(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_fresh_state(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         assert not state.all_complete()
-        assert state.next_step() is not None
-        assert state.next_step().name == "step_01_research_input_clarified"
+        first = state.next_step()
+        assert first is not None
+        assert first.name == "step_01_research_input_clarified"
 
-    def test_mark_complete(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_mark_complete(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
@@ -111,8 +113,8 @@ class TestPipelineState:
         # State file should exist
         assert (run_dir / "pipeline-state.json").exists()
 
-    def test_mark_started(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_mark_started(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_started("step_01_research_input_clarified")
@@ -120,8 +122,8 @@ class TestPipelineState:
         data = json.loads((run_dir / "pipeline-state.json").read_text())
         assert data["steps"][0]["status"] == "running"
 
-    def test_mark_failed(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_mark_failed(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_started("step_01_research_input_clarified")
@@ -131,8 +133,8 @@ class TestPipelineState:
         assert data["steps"][0]["status"] == "failed"
         assert data["steps"][0]["diagnostics"] == "API error"
 
-    def test_persistence_and_reload(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_persistence_and_reload(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state1 = PipelineState(run_dir)
         state1.mark_complete("step_01_research_input_clarified")
@@ -140,8 +142,8 @@ class TestPipelineState:
         state2 = PipelineState(run_dir)
         assert state2.is_complete("step_01_research_input_clarified")
 
-    def test_next_step_checks_prerequisites(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_next_step_checks_prerequisites(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Complete step 1
@@ -154,8 +156,8 @@ class TestPipelineState:
         assert next_step is not None
         assert next_step.name == "step_02_hypotheses"
 
-    def test_all_complete(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_all_complete(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         for step in PIPELINE_STEPS:
@@ -163,8 +165,8 @@ class TestPipelineState:
         assert state.all_complete()
         assert state.next_step() is None
 
-    def test_summary(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_summary(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_complete("step_01_research_input_clarified")
@@ -174,8 +176,8 @@ class TestPipelineState:
         assert s["failed"] == 0
         assert s["remaining"] == 10
 
-    def test_summary_with_failure(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_summary_with_failure(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_failed("step_01_research_input_clarified", diagnostics="err")
@@ -183,8 +185,8 @@ class TestPipelineState:
         assert s["failed"] == 1
         assert s["remaining"] == 10
 
-    def test_elapsed_seconds_computed(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_elapsed_seconds_computed(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_started("step_01_research_input_clarified")
@@ -193,7 +195,7 @@ class TestPipelineState:
         assert data["elapsed_seconds"] is not None
         assert data["elapsed_seconds"] >= 0
 
-    def test_pid_captured_on_save(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_pid_captured_on_save(self, tmp_path: Path) -> None:
         """pipeline-state.json includes the PID of the writing process.
 
         Used to correlate OS-level crash reports (e.g., macOS SIGABRT)
@@ -202,15 +204,15 @@ class TestPipelineState:
         """
         import os
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_complete("step_01_research_input_clarified")
         data = json.loads((run_dir / "pipeline-state.json").read_text())
         assert data["pid"] == os.getpid()
 
-    def test_completed_at_set_when_all_done(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_completed_at_set_when_all_done(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         for step in PIPELINE_STEPS:
@@ -218,25 +220,25 @@ class TestPipelineState:
         data = json.loads((run_dir / "pipeline-state.json").read_text())
         assert data["completed_at"] is not None
 
-    def test_mark_complete_without_prior_start(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_mark_complete_without_prior_start(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Complete without calling mark_started first
         state.mark_complete("step_01_research_input_clarified")
         assert state.is_complete("step_01_research_input_clarified")
 
-    def test_mark_failed_without_prior_start(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_mark_failed_without_prior_start(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_failed("step_01_research_input_clarified", diagnostics="immediate fail")
         data = json.loads((run_dir / "pipeline-state.json").read_text())
         assert data["steps"][0]["status"] == "failed"
 
-    def test_save_with_invalid_created_at(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_save_with_invalid_created_at(self, tmp_path: Path) -> None:
         """Covers the ValueError handler in _save when _created_at is unparseable."""
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Inject an invalid created_at to trigger the ValueError branch
@@ -246,9 +248,9 @@ class TestPipelineState:
         # elapsed_seconds should be None because parsing created_at failed
         assert data["elapsed_seconds"] is None
 
-    def test_mark_complete_with_invalid_started_at(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_mark_complete_with_invalid_started_at(self, tmp_path: Path) -> None:
         """Covers the ValueError handler in mark_complete when started_at is unparseable."""
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Inject a step with an invalid started_at
@@ -263,9 +265,9 @@ class TestPipelineState:
         assert step["status"] == "complete"
         assert step["elapsed_seconds"] is None
 
-    def test_mark_failed_with_invalid_started_at(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_mark_failed_with_invalid_started_at(self, tmp_path: Path) -> None:
         """Covers the ValueError handler in mark_failed when started_at is unparseable."""
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Inject a step with an invalid started_at
@@ -280,9 +282,9 @@ class TestPipelineState:
         assert step["status"] == "failed"
         assert step["elapsed_seconds"] is None
 
-    def test_save_with_no_created_at(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_save_with_no_created_at(self, tmp_path: Path) -> None:
         """Covers 257->263: _save when _created_at is None (falsy)."""
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         # Pre-populate a state file with no created_at key
         (run_dir / "pipeline-state.json").write_text(json.dumps({"steps": []}))
@@ -292,9 +294,9 @@ class TestPipelineState:
         # elapsed_seconds should be None because created_at is None
         assert data["elapsed_seconds"] is None
 
-    def test_mark_complete_with_none_started_at(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_mark_complete_with_none_started_at(self, tmp_path: Path) -> None:
         """Covers 310->316: mark_complete when existing.started_at is None (falsy)."""
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Inject a step with started_at=None
@@ -309,9 +311,9 @@ class TestPipelineState:
         assert step["status"] == "complete"
         assert step["elapsed_seconds"] is None
 
-    def test_mark_failed_with_none_started_at(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_mark_failed_with_none_started_at(self, tmp_path: Path) -> None:
         """Covers 334->340: mark_failed when existing.started_at is None (falsy)."""
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state._completed["step_01_research_input_clarified"] = StepStatus(
@@ -382,8 +384,8 @@ class TestComputeVersion:
 class TestVersionInPipelineState:
     """Version metadata persisted in pipeline-state.json."""
 
-    def test_version_written_on_fresh_state(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_version_written_on_fresh_state(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         state.mark_complete("step_01_research_input_clarified")
@@ -391,7 +393,7 @@ class TestVersionInPipelineState:
         assert "version" in data
         assert "package_version" in data["version"]
 
-    def test_version_preserved_across_reload(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_version_preserved_across_reload(self, tmp_path: Path) -> None:
         """Resuming a run keeps the version from when the run was created.
 
         The version stamp identifies which code produced the outputs, not
@@ -399,7 +401,7 @@ class TestVersionInPipelineState:
         reload means resuming on a different commit doesn't overwrite the
         provenance trail.
         """
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         # Pre-populate with a specific version block that differs from
         # whatever _compute_version would produce here

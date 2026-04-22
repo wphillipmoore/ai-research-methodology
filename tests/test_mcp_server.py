@@ -1,6 +1,7 @@
 """Tests for mcp_server module."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,14 +21,14 @@ class TestDioInitRun:
         reset_mcp_logger()
         reset_content_cache()
 
-    def test_initializes(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_initializes(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_init_run
 
         result = json.loads(dio_init_run(str(tmp_path), "run-1"))
         assert result["initialized"] is True
         assert result["run_id"] == "run-1"
 
-    def test_resets_logger(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_resets_logger(self, tmp_path: Path) -> None:
         from diogenes.events import get_mcp_logger
         from diogenes.mcp_server import dio_init_run
 
@@ -42,20 +43,20 @@ class TestDioInitRun:
 class TestDioNextStep:
     """Tests for dio_next_step tool."""
 
-    def test_first_step(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_first_step(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_next_step
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         result = json.loads(dio_next_step(str(run_dir)))
         assert result["step"] == "step_01_research_input_clarified"
         assert result["status"] == "ready"
 
-    def test_all_complete(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_all_complete(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_next_step
         from diogenes.state_machine import PIPELINE_STEPS, PipelineState
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         for step in PIPELINE_STEPS:
@@ -70,11 +71,11 @@ class TestDioNextStep:
         result = json.loads(dio_next_step("/nonexistent/path"))
         assert result["error"] is True
 
-    def test_python_only_step(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_python_only_step(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_next_step
         from diogenes.state_machine import PIPELINE_STEPS, PipelineState
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Complete all steps up to step_10_archive (which is python_only)
@@ -86,11 +87,11 @@ class TestDioNextStep:
         assert result["step"] == "step_10_archive"
         assert "dio_execute_step" in result["instructions"]
 
-    def test_step_with_post_validators(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_with_post_validators(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_next_step
         from diogenes.state_machine import PIPELINE_STEPS, PipelineState
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Complete up to step_06 (evidence_packets has post_validators)
@@ -102,12 +103,12 @@ class TestDioNextStep:
         assert result["step"] == "step_06_evidence_packets"
         assert "post_step" in result
 
-    def test_step_without_prompt_non_python(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_without_prompt_non_python(self, tmp_path: Path) -> None:
         """Covers line 142: step with category != python_only and no prompt field."""
         from diogenes.mcp_server import dio_next_step
         from diogenes.state_machine import StepDefinition
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
 
         # Create a custom step with category="hybrid" but no prompt
@@ -126,11 +127,11 @@ class TestDioNextStep:
             result = json.loads(dio_next_step(str(run_dir)))
         assert "dio_execute_step" in result["instructions"]
 
-    def test_step_with_mcp_tools(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_with_mcp_tools(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_next_step
         from diogenes.state_machine import PIPELINE_STEPS, PipelineState
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         state = PipelineState(run_dir)
         # Complete up to step_04 (search_results) so step_05 (scorecards) is next — has mcp_tools
@@ -146,27 +147,27 @@ class TestDioNextStep:
 class TestDioExecuteStep:
     """Tests for dio_execute_step tool."""
 
-    def test_unknown_step(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_unknown_step(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_execute_step
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         result = json.loads(dio_execute_step(str(run_dir), "nonexistent_step"))
         assert result["error"] is True
 
-    def test_llm_step_rejected(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_llm_step_rejected(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_execute_step
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         result = json.loads(dio_execute_step(str(run_dir), "step_02_hypotheses"))
         assert result["error"] is True
         assert "llm" in result["message"].lower()
 
-    def test_python_only_step(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_python_only_step(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_execute_step
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         result = json.loads(dio_execute_step(str(run_dir), "step_10_archive"))
         assert result["executed"] is True
@@ -480,18 +481,18 @@ class TestDioFlushEvents:
         result = json.loads(dio_flush_events())
         assert result["error"] is True
 
-    def test_flush_success(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_flush_success(self, tmp_path: Path) -> None:
         from diogenes.events import get_mcp_logger
         from diogenes.mcp_server import dio_flush_events
 
         logger = get_mcp_logger()
-        logger.set_output_dir(tmp_path)  # type: ignore[arg-type]
+        logger.set_output_dir(tmp_path)
         # Create minimal run files so reconciler doesn't fail
         for fname in ("search-results.json", "scorecards.json", "evidence-packets.json"):
-            (tmp_path / fname).write_text("{}")  # type: ignore[operator]
+            (tmp_path / fname).write_text("{}")
         result = json.loads(dio_flush_events())
         assert "written_to" in result
-        assert (tmp_path / "pipeline-events.json").exists()  # type: ignore[operator]
+        assert (tmp_path / "pipeline-events.json").exists()
 
 
 class TestDioValidatePackets:
@@ -505,13 +506,13 @@ class TestDioValidatePackets:
         reset_mcp_logger()
         reset_content_cache()
 
-    def test_missing_packets_file(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_missing_packets_file(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_validate_packets
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["error"] is True
 
-    def test_cli_format_validation(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_cli_format_validation(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_validate_packets
 
         # Create packets and scorecards in CLI format
@@ -531,15 +532,15 @@ class TestDioValidatePackets:
                 ],
             }
         }
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
         assert result["packets_kept"] == 1
         assert result["packets_dropped"] == 1
 
-    def test_skill_format_validation(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_skill_format_validation(self, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_validate_packets
 
         packets = {
@@ -553,14 +554,14 @@ class TestDioValidatePackets:
                 {"url": "https://a.com", "content_extract": "the real text here is good"},
             ],
         }
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
         assert result["packets_kept"] == 1
 
-    def test_non_dict_item_skipped(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_non_dict_item_skipped(self, tmp_path: Path) -> None:
         """Covers line 486: non-dict value in packets_data is skipped."""
         from diogenes.mcp_server import dio_validate_packets
 
@@ -569,14 +570,14 @@ class TestDioValidatePackets:
             "Q001": {"id": "Q001", "packets": []},
             "metadata": "not a dict",
         }
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text("{}")  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text("{}")
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
         assert result["packets_claimed"] == 0
 
-    def test_cache_url_already_in_content(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_cache_url_already_in_content(self, tmp_path: Path) -> None:
         """Covers branch 468->467: cache URL already has content from scorecards."""
         from diogenes.content_cache import get_content_cache
         from diogenes.mcp_server import dio_validate_packets
@@ -593,13 +594,13 @@ class TestDioValidatePackets:
                 ],
             }
         }
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
 
-    def test_cache_url_returns_empty(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_cache_url_returns_empty(self, tmp_path: Path) -> None:
         """Covers branch 470->467: cache.get returns empty/None for a URL."""
         from diogenes.content_cache import get_content_cache
         from diogenes.mcp_server import dio_validate_packets
@@ -608,13 +609,13 @@ class TestDioValidatePackets:
         cache.put("https://empty.com", "")
 
         packets = {"Q001": {"id": "Q001", "packets": []}}
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text("{}")  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text("{}")
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
 
-    def test_scorecard_skill_format_empty_url(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_scorecard_skill_format_empty_url(self, tmp_path: Path) -> None:
         """Covers branch 546->543: skill-format scorecard with empty url."""
         from diogenes.mcp_server import dio_validate_packets
 
@@ -625,13 +626,13 @@ class TestDioValidatePackets:
                 {"url": "https://a.com", "content_extract": ""},
             ],
         }
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
 
-    def test_scorecard_cli_format_non_dict_values(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_scorecard_cli_format_non_dict_values(self, tmp_path: Path) -> None:
         """Covers branch 550->549: CLI-format scorecards with non-dict items."""
         from diogenes.mcp_server import dio_validate_packets
 
@@ -640,13 +641,13 @@ class TestDioValidatePackets:
             "Q001": {"scorecards": [{"url": "", "content_extract": "content"}]},
             "metadata": "string value",
         }
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
 
-    def test_uses_content_cache(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_uses_content_cache(self, tmp_path: Path) -> None:
         from diogenes.content_cache import get_content_cache
         from diogenes.mcp_server import dio_validate_packets
 
@@ -661,8 +662,8 @@ class TestDioValidatePackets:
                 ],
             }
         }
-        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
-        (tmp_path / "scorecards.json").write_text("{}")  # type: ignore[operator]
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))
+        (tmp_path / "scorecards.json").write_text("{}")
 
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["packets_kept"] == 1
@@ -678,12 +679,12 @@ class TestDioRender:
         assert result["error"] is True
 
     @patch("diogenes.mcp_server.render_run")
-    def test_single_run(self, mock_render: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+    def test_single_run(self, mock_render: MagicMock, tmp_path: Path) -> None:
         from diogenes.mcp_server import dio_render
 
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
-        out_dir = tmp_path / "md"  # type: ignore[operator]
+        out_dir = tmp_path / "md"
 
         result = json.loads(dio_render(str(run_dir), str(out_dir)))
         assert result["input_dir"] == str(run_dir)

@@ -1,6 +1,7 @@
 """Tests for schema_validator module."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -72,15 +73,15 @@ class TestValidateResearchInput:
 class TestParseInputFile:
     """Tests for parse_input_file."""
 
-    def test_json_file(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "input.json"  # type: ignore[operator]
+    def test_json_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "input.json"
         path.write_text(json.dumps({"claims": [{"text": "Test"}]}))
         result = parse_input_file(path)
         assert isinstance(result, dict)
         assert result["claims"][0]["text"] == "Test"
 
-    def test_text_file(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "input.md"  # type: ignore[operator]
+    def test_text_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "input.md"
         path.write_text("Is AI reliable for fact-checking?")
         result = parse_input_file(path)
         assert isinstance(result, str)
@@ -110,10 +111,10 @@ class TestValidationError:
 class TestLoadSchemaInvalidJson:
     """Test _load_schema with invalid JSON content."""
 
-    def test_invalid_json_schema_file(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_invalid_json_schema_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from diogenes import schema_validator
 
-        schema_dir = tmp_path / "schemas"  # type: ignore[operator]
+        schema_dir = tmp_path / "schemas"
         schema_dir.mkdir()
         bad_schema = schema_dir / "bad.schema.json"
         bad_schema.write_text("not valid json {{{")

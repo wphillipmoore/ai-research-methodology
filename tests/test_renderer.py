@@ -2,8 +2,7 @@
 
 import json
 from pathlib import Path
-
-import pytest
+from typing import Any
 
 from diogenes.renderer import (
     _add_toc,
@@ -48,17 +47,17 @@ class TestSlugify:
 class TestLoadJson:
     """Tests for _load_json."""
 
-    def test_valid(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "data.json"  # type: ignore[operator]
+    def test_valid(self, tmp_path: Path) -> None:
+        path = tmp_path / "data.json"
         path.write_text('{"key": "value"}')
         assert _load_json(path) == {"key": "value"}
 
-    def test_missing(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "missing.json"  # type: ignore[operator]
+    def test_missing(self, tmp_path: Path) -> None:
+        path = tmp_path / "missing.json"
         assert _load_json(path) == {}
 
-    def test_invalid(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "bad.json"  # type: ignore[operator]
+    def test_invalid(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
         path.write_text("not json")
         assert _load_json(path) == {}
 
@@ -521,12 +520,12 @@ def _create_realistic_run(run_dir: Path) -> None:
 class TestRenderRun:
     """Tests for render_run."""
 
-    def test_renders_markdown_files(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_renders_markdown_files(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_realistic_run(run_dir)
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         # Check that index.md was created
@@ -539,10 +538,10 @@ class TestRenderRun:
         md_files = list(output_dir.rglob("*.md"))
         assert len(md_files) >= 1
 
-    def test_empty_run_dir(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_empty_run_dir(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         # Should not crash with empty dir
         render_run(run_dir, output_dir)
         assert (output_dir / "index.md").exists()
@@ -1183,12 +1182,12 @@ def _create_plugin_format_run(run_dir: Path) -> None:
 class TestRenderRunPluginFormat:
     """Tests for render_run with plugin-format data covering uncovered branches."""
 
-    def test_renders_all_plugin_format_files(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_renders_all_plugin_format_files(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         # Index exists
@@ -1201,12 +1200,12 @@ class TestRenderRunPluginFormat:
         assert "Collection Self-Audit" in index_content
         assert "Overall risk of bias" in index_content
 
-    def test_claim_item_files(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_claim_item_files(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         # Find C001 directory
@@ -1292,12 +1291,12 @@ class TestRenderRunPluginFormat:
         assert "Revisit Triggers" in item_index
         assert "evidence" in item_index.lower()
 
-    def test_query_item_files(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_query_item_files(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         # Find Q001 directory
@@ -1318,8 +1317,8 @@ class TestRenderRunPluginFormat:
 class TestRenderRunWithoutSourceVerificationDiscrepancies:
     """Test self-audit branch where source_verification has no discrepancies."""
 
-    def test_no_discrepancies(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_no_discrepancies(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
@@ -1333,7 +1332,7 @@ class TestRenderRunWithoutSourceVerificationDiscrepancies:
                 }
         (run_dir / "self-audit.json").write_text(json.dumps(sa, indent=2))
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
@@ -1344,8 +1343,8 @@ class TestRenderRunWithoutSourceVerificationDiscrepancies:
 class TestRenderRunFallbackReadingList:
     """Test reading-list fallback to scorecards when no reading_list in audit."""
 
-    def test_falls_back_to_scorecards(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_falls_back_to_scorecards(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
@@ -1355,7 +1354,7 @@ class TestRenderRunFallbackReadingList:
             item.pop("reading_list", None)
         (run_dir / "self-audit.json").write_text(json.dumps(sa, indent=2))
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
@@ -1368,12 +1367,12 @@ class TestRenderRunFallbackReadingList:
 class TestRenderRunCollectionStatsPluginFormat:
     """Test collection statistics from search_execution_log (plugin format)."""
 
-    def test_execution_log_stats(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_execution_log_stats(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         index_content = (output_dir / "index.md").read_text()
@@ -1385,8 +1384,8 @@ class TestRenderRunCollectionStatsPluginFormat:
 class TestSourceScorecardBiasFormats:
     """Test bias_assessment rendering for dict, string, and other formats."""
 
-    def test_bias_as_other_type(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_bias_as_other_type(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
@@ -1398,7 +1397,7 @@ class TestSourceScorecardBiasFormats:
         }
         (run_dir / "scorecards.json").write_text(json.dumps(sc, indent=2))
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
@@ -1410,8 +1409,8 @@ class TestSourceScorecardBiasFormats:
 class TestReliabilityRelevanceRationale:
     """Test reliability and relevance with string rationale fields."""
 
-    def test_string_reliability_with_rationale(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_string_reliability_with_rationale(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
@@ -1423,7 +1422,7 @@ class TestReliabilityRelevanceRationale:
         sc["sources"][0]["relevance_rationale"] = "Core topic match"
         (run_dir / "scorecards.json").write_text(json.dumps(sc, indent=2))
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
@@ -1437,8 +1436,8 @@ class TestReliabilityRelevanceRationale:
 class TestRenderRunRobisAuditFallback:
     """Test that per-item self-audit falls back to global robis_audit when item has no audit."""
 
-    def test_robis_audit_on_item_page(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_robis_audit_on_item_page(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
         _create_plugin_format_run(run_dir)
 
@@ -1461,7 +1460,7 @@ class TestRenderRunRobisAuditFallback:
         }
         (run_dir / "self-audit.json").write_text(json.dumps(sa, indent=2))
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         # C001 should get the global robis_audit since it has no per-item audit
@@ -1476,8 +1475,8 @@ class TestRenderRunRobisAuditFallback:
 class TestRenderRunItemWithNoId:
     """Test that items with no ID are skipped gracefully."""
 
-    def test_item_without_id_skipped(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_item_without_id_skipped(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
 
         ri = {
@@ -1504,7 +1503,7 @@ class TestRenderRunItemWithNoId:
         ]:
             (run_dir / f).write_text("{}")
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         # Only C001 dir should exist, no-id item should be skipped
@@ -1516,8 +1515,8 @@ class TestRenderRunItemWithNoId:
 class TestItemIndexWithoutOptionalSections:
     """Test item index when optional sections are absent."""
 
-    def test_minimal_item_index(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+    def test_minimal_item_index(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
 
         # Minimal run with just a query, no hypotheses or synthesis
@@ -1541,7 +1540,7 @@ class TestItemIndexWithoutOptionalSections:
         (run_dir / "self-audit.json").write_text("{}")
         (run_dir / "reports.json").write_text("{}")
 
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
         render_run(run_dir, output_dir)
 
         assert (output_dir / "index.md").exists()
@@ -1797,7 +1796,7 @@ def _create_rich_cli_run(run_dir: Path) -> None:
 class TestRenderRunRichCli:
     """Tests for render_run with rich optional fields in CLI format."""
 
-    def test_rich_cli_run(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_rich_cli_run(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run-rich"
         run_dir.mkdir()
         _create_rich_cli_run(run_dir)
@@ -1817,12 +1816,12 @@ class TestCollectHypothesisRatingsEdgeCases:
 
     def test_non_dict_report(self) -> None:
         """Covers 322->333: isinstance(report, dict) is False."""
-        result = _collect_hypothesis_ratings("not a dict", {})
+        result = _collect_hypothesis_ratings("not a dict", {})  # type: ignore[arg-type]
         assert result == {}
 
     def test_non_dict_synthesis(self) -> None:
         """Covers the False path for synthesis being non-dict."""
-        result = _collect_hypothesis_ratings({}, "not a dict")
+        result = _collect_hypothesis_ratings({}, "not a dict")  # type: ignore[arg-type]
         assert result == {}
 
     def test_non_dict_assessment_in_report(self) -> None:
@@ -1879,7 +1878,7 @@ class TestExtractSourcesForItemExtra:
 
     def test_empty_sources_list(self) -> None:
         """Covers the branch where sources_list exists but no matches."""
-        scorecards = {"sources": []}
+        scorecards: dict[str, Any] = {"sources": []}
         result = _extract_sources_for_item(scorecards, "C001")
         assert result == []
 
@@ -1893,7 +1892,7 @@ class TestExtractSourcesForItemExtra:
 class TestWriteHypothesesEmpty:
     """Cover the early-return path in _write_hypotheses."""
 
-    def test_empty_hypotheses(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_empty_hypotheses(self, tmp_path: Path) -> None:
         """Covers line 1021: `return` when hyps is empty."""
         from diogenes.renderer import _write_hypotheses
 
@@ -1908,7 +1907,7 @@ class TestWriteHypothesesEmpty:
 class TestWriteSearchesEmpty:
     """Cover the early-return path in _write_searches."""
 
-    def test_empty_searches(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_empty_searches(self, tmp_path: Path) -> None:
         """Covers line 1417: `return` when searches is empty."""
         from diogenes.renderer import _write_searches
 
@@ -1917,7 +1916,7 @@ class TestWriteSearchesEmpty:
         _write_searches(item_dir, "C001", {"searches": []}, {}, {})
         assert not (item_dir / "searches").exists()
 
-    def test_no_item_plan(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_no_item_plan(self, tmp_path: Path) -> None:
         """Covers `if not item_plan` branch."""
         from diogenes.renderer import _write_searches
 
@@ -2099,7 +2098,7 @@ def _create_cli_dict_gaps_run(run_dir: Path) -> None:
 class TestRenderRunMinimal:
     """Tests for render_run with minimal optional fields (False branches)."""
 
-    def test_minimal_run_renders(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_minimal_run_renders(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run-min"
         run_dir.mkdir()
         _create_minimal_run(run_dir)
@@ -2112,7 +2111,7 @@ class TestRenderRunMinimal:
 class TestRenderRunCliDictGaps:
     """Tests for render_run with CLI-format dict gaps."""
 
-    def test_cli_dict_gaps(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_cli_dict_gaps(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run-gaps"
         run_dir.mkdir()
         _create_cli_dict_gaps_run(run_dir)
@@ -2251,7 +2250,7 @@ def _create_run_with_assessment_variants(
 class TestAssessmentRenderingVariants:
     """Cover branches in _write_assessment for various data shapes."""
 
-    def test_no_report(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_no_report(self, tmp_path: Path) -> None:
         """Cover 1100->1112: report is falsy, skip verdict section."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
@@ -2262,7 +2261,7 @@ class TestAssessmentRenderingVariants:
         # Should still render assessment.md without report-based sections
         assert (c001_dirs[0] / "assessment.md").exists()
 
-    def test_verdict_chain_reasoning(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_verdict_chain_reasoning(self, tmp_path: Path) -> None:
         """Cover reasoning_chain branch (vs just `reasoning`)."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
@@ -2274,7 +2273,7 @@ class TestAssessmentRenderingVariants:
         assert "verdict string" in assessment
         assert "chain of reasoning" in assessment
 
-    def test_empty_assessment_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_empty_assessment_dict(self, tmp_path: Path) -> None:
         """Cover 1151->1181: assessment dict exists but is empty."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
@@ -2286,7 +2285,7 @@ class TestAssessmentRenderingVariants:
         assessment = (c001_dirs[0] / "assessment.md").read_text()
         assert "Probability Assessment" not in assessment
 
-    def test_empty_gaps_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_empty_gaps_dict(self, tmp_path: Path) -> None:
         """Cover 1190->1208: gaps is dict but empty (no expected/unanswered/impact)."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
@@ -2368,7 +2367,7 @@ def _create_run_with_search_variants(run_dir: Path) -> None:
 class TestSearchRenderingVariants:
     """Cover branches in _write_searches."""
 
-    def test_search_variants(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_search_variants(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_search_variants(run_dir)
@@ -2455,7 +2454,7 @@ def _create_run_with_sources_variants(run_dir: Path) -> None:
 class TestSourcesRenderingVariants:
     """Cover branches in _write_sources."""
 
-    def test_sources_variants(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_sources_variants(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_sources_variants(run_dir)
@@ -2537,7 +2536,7 @@ def _create_run_with_self_audit_variants(run_dir: Path) -> None:
 class TestSelfAuditVariants:
     """Cover branches in _write_self_audit and related writers."""
 
-    def test_self_audit_variants(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_self_audit_variants(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_self_audit_variants(run_dir)
@@ -2570,7 +2569,7 @@ def _create_run_no_synthesis_or_audit(run_dir: Path) -> None:
 class TestItemWithoutSynthesisOrAudit:
     """Cover branches where assessment.md/self-audit.md don't exist."""
 
-    def test_no_synthesis_or_audit(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_no_synthesis_or_audit(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_no_synthesis_or_audit(run_dir)
@@ -2601,7 +2600,7 @@ def _create_run_minimal_item(run_dir: Path) -> None:
 class TestItemWithoutAnyText:
     """Cover has_summary=False branch."""
 
-    def test_item_without_text(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_item_without_text(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_minimal_item(run_dir)
@@ -2613,11 +2612,11 @@ class TestItemWithoutAnyText:
 class TestRenderRunEmptyItems:
     """Cover branches when the run has no items at all."""
 
-    def test_render_run_no_items(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_render_run_no_items(self, tmp_path: Path) -> None:
         """Covers 563->572: toc_entries empty, no card sections."""
         run_dir = tmp_path / "run"
         run_dir.mkdir()
-        ri = {"claims": [], "queries": [], "axioms": []}
+        ri: dict[str, Any] = {"claims": [], "queries": [], "axioms": []}
         (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
         for fname in (
             "hypotheses.json",
@@ -2662,7 +2661,7 @@ def _create_run_with_item_no_id(run_dir: Path) -> None:
 class TestRenderRunItemWithoutIdInCards:
     """Cover 644->575: continue on item without id."""
 
-    def test_item_no_id_in_cards(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_item_no_id_in_cards(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_item_no_id(run_dir)
@@ -2724,7 +2723,7 @@ def _create_run_with_robis_no_overall(run_dir: Path) -> None:
 class TestRobisAuditBranches:
     """Cover robis_audit rendering branches."""
 
-    def test_robis_no_overall_and_bad_domain(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_robis_no_overall_and_bad_domain(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_robis_no_overall(run_dir)
@@ -2783,7 +2782,7 @@ def _create_run_report_no_bluf_no_verdict(run_dir: Path) -> None:
 class TestReportWithoutBlufOrVerdict:
     """Cover 811->813 and 818->820: report dict without bluf/verdict fields."""
 
-    def test_no_bluf_no_verdict(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_no_bluf_no_verdict(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_report_no_bluf_no_verdict(run_dir)
@@ -2848,7 +2847,7 @@ def _create_run_assessment_verdict_no_confidence(run_dir: Path) -> None:
 class TestAssessmentVerdictNoConfidence:
     """Cover 1174->1176: verdict present, confidence absent."""
 
-    def test_verdict_no_confidence(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_verdict_no_confidence(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_assessment_verdict_no_confidence(run_dir)
@@ -2913,7 +2912,7 @@ def _create_run_source_no_url_no_metadata(run_dir: Path) -> None:
 class TestSourceBareMinimum:
     """Cover 1577->1579 and 1586->1590: source with no metadata fields."""
 
-    def test_bare_source(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_bare_source(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_source_no_url_no_metadata(run_dir)
@@ -2979,7 +2978,7 @@ def _create_run_with_partial_gaps(run_dir: Path) -> None:
 class TestPartialGaps:
     """Cover 1192->1197, 1198->1203 False branches."""
 
-    def test_only_impact_in_gaps(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_only_impact_in_gaps(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_partial_gaps(run_dir)
@@ -3047,7 +3046,7 @@ def _create_run_with_plugin_source_verification(run_dir: Path) -> None:
 class TestPluginSourceVerification:
     """Cover 1296->1299, 1299->1302, 1302->1306 branches."""
 
-    def test_plugin_verification(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_plugin_verification(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_plugin_source_verification(run_dir)
@@ -3112,7 +3111,7 @@ def _create_run_with_empty_plugin_verification(run_dir: Path) -> None:
 class TestEmptyPluginVerificationAndGaps:
     """Cover 1204->1208, 1296->1299, 1299->1302, 1302->1306 False branches."""
 
-    def test_empty_plugin_verification_fields(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_empty_plugin_verification_fields(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_empty_plugin_verification(run_dir)
@@ -3180,7 +3179,7 @@ def _create_run_with_no_synthesis_for_item(run_dir: Path) -> None:
 class TestItemWithoutSynthesis:
     """Cover 831->833: assessment.md NOT existing in Results table."""
 
-    def test_no_synthesis_item(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_no_synthesis_item(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         _create_run_with_no_synthesis_for_item(run_dir)
@@ -3207,7 +3206,7 @@ class TestRendererDefensiveGuards:
     # in _write_item_index and would crash on non-dict report. Those branches
     # are legitimately unreachable defensive guards.
 
-    def test_write_assessment_synthesis_non_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_write_assessment_synthesis_non_dict(self, tmp_path: Path) -> None:
         """Cover 633->637, 635->637 inside _write_run_index.
 
         Similar defensive isinstance guards in run-index card rendering.
@@ -3234,7 +3233,7 @@ class TestRendererDefensiveGuards:
         result = _collect_hypothesis_ratings({}, {"assessment": "not a dict"})
         assert result == {}
 
-    def test_write_self_audit_process_non_dict_domain(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_write_self_audit_process_non_dict_domain(self, tmp_path: Path) -> None:
         """Cover the `not a dict` skip branch in the process_audit domain loop."""
         from diogenes.renderer import _write_self_audit
 
@@ -3251,7 +3250,7 @@ class TestRendererDefensiveGuards:
         content = (item_dir / "self-audit.md").read_text()
         assert "Synthesis Fairness" in content
 
-    def test_write_assessment_gaps_non_list_non_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_write_assessment_gaps_non_list_non_dict(self, tmp_path: Path) -> None:
         """Cover 1190->1208: gaps is truthy but neither list nor dict.
 
         A string "gaps" value would trigger this defensive else-skip.
@@ -3266,7 +3265,7 @@ class TestRendererDefensiveGuards:
         # Evidence Gaps header may render but no list/dict content
         assert "Evidence Gaps" in content
 
-    def test_write_assessment_gaps_dict_no_impact(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_write_assessment_gaps_dict_no_impact(self, tmp_path: Path) -> None:
         """Cover 1204->1208: gaps dict with expected but no impact_on_confidence."""
         from diogenes.renderer import _write_assessment
 
@@ -3285,7 +3284,7 @@ class TestRendererDefensiveGuards:
 class TestMoreDefensiveBranches:
     """Additional targeted tests for remaining branches."""
 
-    def test_reading_list_unusual_priority(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_reading_list_unusual_priority(self, tmp_path: Path) -> None:
         """Cover 1353->1351: reading_list entry with priority outside the standard set."""
         from diogenes.renderer import _write_reading_list
 
@@ -3312,7 +3311,7 @@ class TestMoreDefensiveBranches:
         result = _extract_sources_for_item(scorecards, "C001")
         assert len(result) == 1
 
-    def test_assessment_confidence_without_verdict(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_assessment_confidence_without_verdict(self, tmp_path: Path) -> None:
         """Cover 1174->1176: assessment has confidence but no verdict.
 
         (1174 is `if assessment.get("verdict"):` — False path skips verdict, still

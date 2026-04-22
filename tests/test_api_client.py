@@ -1,6 +1,8 @@
 """Tests for api_client module."""
 
 import json
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -227,7 +229,7 @@ class TestStripToSchema:
         assert len(stripped) == 1
 
     def test_non_dict_data(self) -> None:
-        schema = {"properties": {"x": {}}}
+        schema: dict[str, Any] = {"properties": {"x": {}}}
         stripped = _strip_to_schema("not a dict", schema)
         assert stripped == []
 
@@ -325,15 +327,15 @@ class TestAPIClient:
     def _make_config(self) -> DioConfig:
         return DioConfig(api_key="test-key")
 
-    def test_init_with_config(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_init_with_config(self, tmp_path: Path) -> None:
         cfg = self._make_config()
         # Create a guidelines file so it can be loaded
-        guidelines = tmp_path / "guidelines.md"  # type: ignore[operator]
+        guidelines = tmp_path / "guidelines.md"
         guidelines.write_text("# Guidelines\nBe nice.")
         client = APIClient(config=cfg, guidelines_path=guidelines)
         assert client.model == "claude-sonnet-4-6"
 
-    def test_init_no_config_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
+    def test_init_no_config_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         for var in ("SERPER_API_KEY", "BRAVE_API_KEY", "GOOGLE_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"):
             monkeypatch.delenv(var, raising=False)
@@ -407,7 +409,7 @@ class TestAPIClient:
             )
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_success(self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+    def test_call_sub_agent_success(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         # Set up mock
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
@@ -428,7 +430,7 @@ class TestAPIClient:
         mock_client.messages.create.return_value = mock_response
 
         # Create prompt file
-        prompt = tmp_path / "test-prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "test-prompt.md"
         prompt.write_text("# Test Prompt\nDo stuff.")
 
         cfg = self._make_config()
@@ -439,9 +441,7 @@ class TestAPIClient:
         assert len(client.usage.calls) == 1
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_with_dict_input(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_with_dict_input(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -459,7 +459,7 @@ class TestAPIClient:
         mock_response.content = [mock_block]
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -468,7 +468,7 @@ class TestAPIClient:
         assert result == {"ok": True}
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_api_error(self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+    def test_call_sub_agent_api_error(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         import anthropic
 
         mock_client = MagicMock()
@@ -479,7 +479,7 @@ class TestAPIClient:
             body=None,
         )
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -488,9 +488,7 @@ class TestAPIClient:
             client.call_sub_agent(prompt_path=prompt, user_input="test")
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_empty_response(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_empty_response(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -505,7 +503,7 @@ class TestAPIClient:
         mock_response.content = []  # No content blocks
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -514,7 +512,7 @@ class TestAPIClient:
             client.call_sub_agent(prompt_path=prompt, user_input="test")
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_with_schema(self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+    def test_call_sub_agent_with_schema(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -534,7 +532,7 @@ class TestAPIClient:
         mock_response.content = [mock_block]
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -547,13 +545,11 @@ class TestAPIClient:
         assert "queries" in result
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_schema_not_found(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_schema_not_found(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -566,9 +562,7 @@ class TestAPIClient:
             )
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_with_guidelines(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_with_guidelines(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -586,9 +580,9 @@ class TestAPIClient:
         mock_response.content = [mock_block]
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
-        guidelines = tmp_path / "guidelines.md"  # type: ignore[operator]
+        guidelines = tmp_path / "guidelines.md"
         guidelines.write_text("# Guidelines")
 
         cfg = self._make_config()
@@ -602,9 +596,7 @@ class TestAPIClient:
         assert len(system_blocks) == 2  # guidelines + prompt
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_no_guidelines(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_no_guidelines(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -622,7 +614,7 @@ class TestAPIClient:
         mock_response.content = [mock_block]
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -634,9 +626,7 @@ class TestAPIClient:
         assert len(system_blocks) == 1  # prompt only
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_with_web_search(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_with_web_search(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -656,7 +646,7 @@ class TestAPIClient:
         mock_response.content = [mock_block]
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -668,9 +658,7 @@ class TestAPIClient:
         assert client.usage.total_web_searches == 3
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_schema_strip_and_validate(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_schema_strip_and_validate(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
 
@@ -696,7 +684,7 @@ class TestAPIClient:
         mock_response.content = [mock_block]
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()
@@ -710,9 +698,7 @@ class TestAPIClient:
         assert "extra_field" not in result
 
     @patch("diogenes.api_client.anthropic.Anthropic")
-    def test_call_sub_agent_skips_non_text_blocks(
-        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
-    ) -> None:
+    def test_call_sub_agent_skips_non_text_blocks(self, mock_anthropic_cls: MagicMock, tmp_path: Path) -> None:
         """Covers branch 485->484: response contains non-text blocks."""
         mock_client = MagicMock()
         mock_anthropic_cls.return_value = mock_client
@@ -735,7 +721,7 @@ class TestAPIClient:
         mock_response.content = [tool_block, text_block]
         mock_client.messages.create.return_value = mock_response
 
-        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt = tmp_path / "prompt.md"
         prompt.write_text("Prompt")
 
         cfg = self._make_config()

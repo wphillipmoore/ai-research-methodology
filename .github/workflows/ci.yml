@@ -97,7 +97,7 @@ jobs:
         run: uv sync --frozen --group dev
 
       - name: Run mypy
-        run: uv run mypy src/
+        run: uv run mypy src tests
 
   dependency-audit:
     name: "ci: dependency-audit"

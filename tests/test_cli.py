@@ -1,5 +1,6 @@
 """Tests for cli module."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -85,10 +86,10 @@ class TestMain:
         mock_execute.assert_called_once_with("input.json", "out/")
 
     @patch("diogenes.cli.argparse.ArgumentParser.parse_args")
-    def test_render_dispatches(self, mock_parse: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run"  # type: ignore[operator]
+    def test_render_dispatches(self, mock_parse: MagicMock, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
         run_dir.mkdir()
-        output_dir = tmp_path / "md"  # type: ignore[operator]
+        output_dir = tmp_path / "md"
 
         args = MagicMock(spec=["command", "input_dir", "output"])
         args.command = "render"
