@@ -221,3 +221,71 @@ class TestLoadConfig:
         diorc.write_text('[api]\nbase_url = "https://custom.api.com"\n')
         cfg = load_config()
         assert cfg.base_url == "https://custom.api.com"
+
+
+class TestPipelineConfig:
+    """Tests for the [pipeline] section in .diorc."""
+
+    def test_defaults_when_section_missing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        """Omitting [pipeline] falls back to the dataclass defaults."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
+        monkeypatch.chdir(tmp_path)  # type: ignore[arg-type]
+        cfg = load_config()
+        # The defaults match the hard-coded values from before this PR.
+        assert cfg.pipeline.results_per_search == 5
+        assert cfg.pipeline.scoring_batch_size == 5
+        assert cfg.pipeline.relevance_threshold == 5
+        assert cfg.pipeline.search_terms_per_query == 3
+        assert cfg.pipeline.max_output_tokens == 8192
+        assert cfg.pipeline.model_overrides == {}
+
+    def test_fields_override_defaults(self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
+        """[pipeline] fields in .diorc override the dataclass defaults."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
+        monkeypatch.chdir(tmp_path)  # type: ignore[arg-type]
+        diorc = tmp_path / ".diorc"  # type: ignore[operator]
+        diorc.write_text(
+            "[pipeline]\n"
+            "results_per_search = 10\n"
+            "scoring_batch_size = 7\n"
+            "relevance_threshold = 6\n"
+            "search_terms_per_query = 4\n"
+            "max_output_tokens = 16384\n"
+        )
+        cfg = load_config()
+        assert cfg.pipeline.results_per_search == 10
+        assert cfg.pipeline.scoring_batch_size == 7
+        assert cfg.pipeline.relevance_threshold == 6
+        assert cfg.pipeline.search_terms_per_query == 4
+        assert cfg.pipeline.max_output_tokens == 16384
+
+    def test_model_overrides_parsed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
+        """[pipeline.model_overrides] becomes a dict[str, str]."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
+        monkeypatch.chdir(tmp_path)  # type: ignore[arg-type]
+        diorc = tmp_path / ".diorc"  # type: ignore[operator]
+        diorc.write_text(
+            "[pipeline.model_overrides]\n"
+            'relevance_scorer = "claude-haiku-4-5-20251001"\n'
+            'clarifier = "claude-sonnet-4-6"\n'
+        )
+        cfg = load_config()
+        assert cfg.pipeline.model_overrides == {
+            "relevance_scorer": "claude-haiku-4-5-20251001",
+            "clarifier": "claude-sonnet-4-6",
+        }
+
+    def test_model_overrides_non_dict_falls_back_to_empty(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        """If model_overrides is not a table (malformed .diorc), treat as empty."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "key")
+        monkeypatch.chdir(tmp_path)  # type: ignore[arg-type]
+        diorc = tmp_path / ".diorc"  # type: ignore[operator]
+        # Writing model_overrides as a string (not a table) is technically valid TOML
+        # but not what we expect; should gracefully fall back.
+        diorc.write_text('[pipeline]\nmodel_overrides = "not-a-table"\n')
+        cfg = load_config()
+        assert cfg.pipeline.model_overrides == {}

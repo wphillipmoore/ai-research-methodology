@@ -22,10 +22,12 @@ if TYPE_CHECKING:
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts" / "sub-agents"
 
-# Model overrides for cost optimization. Set to None to use the client default.
-# Testing showed Haiku produces different verdicts than Sonnet on scoring steps,
-# which changes downstream assessments. Correctness > cost. See issue #84.
-_SCORING_MODEL: str | None = None
+# Per-sub-agent model overrides are now configurable via .diorc under
+# [pipeline.model_overrides]. Each call site uses client.model_for("<name>")
+# to resolve: override if configured, default model otherwise. Historical
+# testing (#84) showed Haiku produces different verdicts than Sonnet on
+# scoring steps — overrides default to empty so behavior matches pre-#76
+# unless a user opts in.
 
 
 def step2_generate_hypotheses(
@@ -70,6 +72,7 @@ def step2_generate_hypotheses(
             prompt_path=prompt_path,
             user_input=agent_input,
             output_schema="hypotheses.schema.json",
+            model=client.model_for("hypothesis_generator"),
         )
 
         results[item_id] = response
@@ -89,6 +92,7 @@ def step2_generate_hypotheses(
             prompt_path=prompt_path,
             user_input=agent_input,
             output_schema="hypotheses.schema.json",
+            model=client.model_for("hypothesis_generator"),
         )
 
         results[item_id] = response
@@ -152,6 +156,7 @@ def step3_design_searches(
             prompt_path=prompt_path,
             user_input=agent_input,
             output_schema="search-plans.schema.json",
+            model=client.model_for("search_designer"),
         )
 
         results[item_id] = response
@@ -160,10 +165,6 @@ def step3_design_searches(
         print(f"    {item_id}: {search_count} searches planned ({approach})")
 
     return results
-
-
-_RELEVANCE_BATCH_SIZE = 5
-_RELEVANCE_THRESHOLD = 5
 
 
 def step4_execute_searches(
@@ -177,8 +178,13 @@ def step4_execute_searches(
 
     Three phases:
     - 4A (Python): Execute searches via search provider. Zero LLM tokens.
-    - 4B (LLM, batched): Score relevance 0-10 in batches of 5. Tiny calls.
+    - 4B (LLM, batched): Score relevance 0-10 in batches. Tiny calls.
     - 4C (Python): Sort by score, filter by threshold, deduplicate.
+
+    Pipeline tunables read from ``client.pipeline``:
+    - ``results_per_search`` controls how many results each search query returns
+    - ``scoring_batch_size`` controls how many results are scored per LLM call
+    - ``relevance_threshold`` controls the inclusion cut-off for Step 4C
 
     Args:
         research_input: The clarified research input (output of step 1).
@@ -196,6 +202,7 @@ def step4_execute_searches(
     """
     scorer_prompt = _PROMPTS_DIR / "search-results.md"
     results: dict[str, Any] = {}
+    threshold = client.pipeline.relevance_threshold
 
     items = [*research_input.get("claims", []), *research_input.get("queries", [])]
 
@@ -206,7 +213,11 @@ def step4_execute_searches(
         print(f"  Executing {len(searches)} searches for {item_id} via {search_provider.name}...")
 
         # Phase 4A: Python executes searches
-        executions = execute_search_plan(item_plan, search_provider)
+        executions = execute_search_plan(
+            item_plan,
+            search_provider,
+            max_results_per_search=client.pipeline.results_per_search,
+        )
         total_results = sum(len(e.results) for e in executions)
         print(f"    {total_results} raw results from {len(executions)} searches")
 
@@ -219,21 +230,19 @@ def step4_execute_searches(
         )
 
         # Phase 4C: Python filters and deduplicates
-        selected, rejected = _filter_and_deduplicate(all_scored)
-        print(
-            f"    {len(selected)} sources selected (score >= {_RELEVANCE_THRESHOLD}), {len(rejected)} below threshold"
-        )
+        selected, rejected = _filter_and_deduplicate(all_scored, threshold=threshold)
+        print(f"    {len(selected)} sources selected (score >= {threshold}), {len(rejected)} below threshold")
 
         if event_logger and rejected:
             for rej in rejected:
                 event_logger.log(
                     step="step4_execute_searches",
                     kind="below_threshold",
-                    detail=f"Relevance score {rej.get('relevance_score', '?')}/10 below threshold {_RELEVANCE_THRESHOLD}",
+                    detail=f"Relevance score {rej.get('relevance_score', '?')}/10 below threshold {threshold}",
                     url=rej.get("url", ""),
                     item_id=item_id,
                     score=rej.get("relevance_score"),
-                    threshold=float(_RELEVANCE_THRESHOLD),
+                    threshold=float(threshold),
                     layer="pipeline",
                 )
 
@@ -247,7 +256,7 @@ def step4_execute_searches(
                 "total_results_found": total_results,
                 "total_selected": len(selected),
                 "total_rejected": len(rejected),
-                "relevance_threshold": _RELEVANCE_THRESHOLD,
+                "relevance_threshold": threshold,
             },
         }
 
@@ -262,17 +271,19 @@ def _score_results_batched(
 ) -> list[dict[str, Any]]:
     """Score all search results in batches via the relevance-scorer sub-agent."""
     all_scored: list[dict[str, Any]] = []
+    batch_size = client.pipeline.scoring_batch_size
+    terms_per_query = client.pipeline.search_terms_per_query
 
     for execution in executions:
         results_list = execution.results
         search_id = execution.search_id
 
         # Determine search intent from the execution
-        search_intent = f"Search {search_id}: {' '.join(execution.terms[:3])}"
+        search_intent = f"Search {search_id}: {' '.join(execution.terms[:terms_per_query])}"
 
         # Process in batches
-        for i in range(0, len(results_list), _RELEVANCE_BATCH_SIZE):
-            batch = results_list[i : i + _RELEVANCE_BATCH_SIZE]
+        for i in range(0, len(results_list), batch_size):
+            batch = results_list[i : i + batch_size]
             batch_input = {
                 "item_id": item["id"],
                 "clarified_text": item.get("clarified_text", ""),
@@ -285,7 +296,7 @@ def _score_results_batched(
                 user_input=batch_input,
                 output_schema="relevance-scores.schema.json",
                 include_guidelines=False,
-                model=_SCORING_MODEL,
+                model=client.model_for("relevance_scorer"),
             )
 
             # Enrich scores with metadata from original results
@@ -305,6 +316,8 @@ def _score_results_batched(
 
 def _filter_and_deduplicate(
     scored_results: list[dict[str, Any]],
+    *,
+    threshold: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Filter by relevance threshold and deduplicate by URL."""
     # Sort by score descending
@@ -322,7 +335,7 @@ def _filter_and_deduplicate(
             continue
         seen_urls.add(url)
 
-        if score >= _RELEVANCE_THRESHOLD:
+        if score >= threshold:
             selected.append(result)
         else:
             rejected.append(result)
@@ -469,8 +482,8 @@ def step5_score_sources(
                 prompt_path=scorer_prompt,
                 user_input=batch_input,
                 output_schema="scorecards.schema.json",
-                max_tokens=8192,
-                model=_SCORING_MODEL,
+                max_tokens=client.pipeline.max_output_tokens,
+                model=client.model_for("source_scorer"),
             )
 
             all_scorecards.extend(response.get("scorecards", []))
@@ -565,7 +578,8 @@ def _extract_single_source(
             "scorecards": [scorecard],
         },
         output_schema="evidence-packets.schema.json",
-        max_tokens=8192,
+        max_tokens=client.pipeline.max_output_tokens,
+        model=client.model_for("evidence_extractor"),
     )
 
     claimed_packets = response.get("packets", []) or []
@@ -860,6 +874,7 @@ def steps678_synthesize_and_assess(
             user_input=agent_input,
             output_schema="synthesis.schema.json",
             max_tokens=16384,
+            model=client.model_for("synthesizer"),
         )
 
         results[item_id] = response
@@ -924,6 +939,7 @@ def step9_self_audit(
             user_input=agent_input,
             output_schema="self-audit.schema.json",
             max_tokens=16384,
+            model=client.model_for("self_auditor"),
         )
 
         results[item_id] = response
@@ -997,6 +1013,7 @@ def step10_report(
             user_input=agent_input,
             output_schema="reports.schema.json",
             max_tokens=16384,
+            model=client.model_for("reporter"),
         )
 
         results[item_id] = response

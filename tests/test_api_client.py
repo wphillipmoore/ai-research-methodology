@@ -346,6 +346,51 @@ class TestAPIClient:
         client = APIClient(config=cfg, model="claude-haiku-4-5-20251001", guidelines_path="/dev/null")
         assert client.model == "claude-haiku-4-5-20251001"
 
+    def test_pipeline_property_exposes_tunables(self) -> None:
+        """client.pipeline is a shortcut to config.pipeline."""
+        cfg = self._make_config()
+        client = APIClient(config=cfg, guidelines_path="/dev/null")
+        assert client.pipeline is cfg.pipeline
+        # Defaults match the pre-#76 hard-coded values
+        assert client.pipeline.relevance_threshold == 5
+        assert client.pipeline.max_output_tokens == 8192
+
+    def test_max_tokens_defaults_to_config(self) -> None:
+        """APIClient picks up max_output_tokens from config.pipeline."""
+        from diogenes.config import PipelineConfig
+
+        cfg = DioConfig(api_key="k", pipeline=PipelineConfig(max_output_tokens=4096))
+        client = APIClient(config=cfg, guidelines_path="/dev/null")
+        assert client._max_tokens == 4096
+
+    def test_max_tokens_explicit_overrides_config(self) -> None:
+        """Explicit max_tokens on APIClient wins over config."""
+        from diogenes.config import PipelineConfig
+
+        cfg = DioConfig(api_key="k", pipeline=PipelineConfig(max_output_tokens=4096))
+        client = APIClient(config=cfg, max_tokens=2048, guidelines_path="/dev/null")
+        assert client._max_tokens == 2048
+
+    def test_model_for_returns_override(self) -> None:
+        """model_for returns the override when configured."""
+        from diogenes.config import PipelineConfig
+
+        cfg = DioConfig(
+            api_key="k",
+            pipeline=PipelineConfig(
+                model_overrides={"relevance_scorer": "claude-haiku-4-5-20251001"},
+            ),
+        )
+        client = APIClient(config=cfg, guidelines_path="/dev/null")
+        assert client.model_for("relevance_scorer") == "claude-haiku-4-5-20251001"
+
+    def test_model_for_falls_back_to_default(self) -> None:
+        """model_for returns the client's default model when no override."""
+        cfg = self._make_config()
+        client = APIClient(config=cfg, guidelines_path="/dev/null")
+        # No override configured for 'hypothesis_generator' → default model
+        assert client.model_for("hypothesis_generator") == client.model
+
     def test_missing_guidelines_path(self) -> None:
         cfg = self._make_config()
         client = APIClient(config=cfg, guidelines_path="/nonexistent/guidelines.md")

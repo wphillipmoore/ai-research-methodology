@@ -4,16 +4,40 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 DEFAULT_BASE_URL = "https://api.anthropic.com"
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
+# Pipeline tuning defaults. These match the values historically hard-coded
+# across pipeline.py / api_client.py / search.py. Keeping them here lets
+# .diorc override any of them without editing source.
+_DEFAULT_RESULTS_PER_SEARCH = 5
+_DEFAULT_SCORING_BATCH_SIZE = 5
+_DEFAULT_RELEVANCE_THRESHOLD = 5
+_DEFAULT_SEARCH_TERMS_PER_QUERY = 3
+_DEFAULT_MAX_OUTPUT_TOKENS = 8192
+
 
 class ConfigError(Exception):
     """Raised when Diogenes configuration cannot be resolved."""
+
+
+@dataclass
+class PipelineConfig:
+    """Tunable pipeline parameters, overridable via ``[pipeline]`` in .diorc."""
+
+    results_per_search: int = _DEFAULT_RESULTS_PER_SEARCH
+    scoring_batch_size: int = _DEFAULT_SCORING_BATCH_SIZE
+    relevance_threshold: int = _DEFAULT_RELEVANCE_THRESHOLD
+    search_terms_per_query: int = _DEFAULT_SEARCH_TERMS_PER_QUERY
+    max_output_tokens: int = _DEFAULT_MAX_OUTPUT_TOKENS
+    # Per-agent model overrides keyed by logical sub-agent name (e.g.,
+    # "relevance_scorer"). Absent keys fall back to the global ``model``
+    # on DioConfig. See APIClient.model_for().
+    model_overrides: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -28,6 +52,7 @@ class DioConfig:
     brave_api_key: str = ""
     google_api_key: str = ""
     google_search_engine_id: str = ""
+    pipeline: PipelineConfig = field(default_factory=PipelineConfig)
 
 
 def _parse_dotenv(path: Path) -> dict[str, str]:
@@ -155,6 +180,8 @@ def load_config() -> DioConfig:
         or str(search_sect.get("google_search_engine_id", ""))
     )
 
+    pipeline_cfg = _load_pipeline_config(toml)
+
     return DioConfig(
         api_key=api_key,
         base_url=base_url,
@@ -164,4 +191,29 @@ def load_config() -> DioConfig:
         brave_api_key=brave_api_key,
         google_api_key=google_api_key,
         google_search_engine_id=google_search_engine_id,
+        pipeline=pipeline_cfg,
     )
+
+
+def _load_pipeline_config(toml: dict[str, Any]) -> PipelineConfig:
+    """Build a PipelineConfig from the ``[pipeline]`` section of .diorc.
+
+    Any field not present in the TOML falls back to the dataclass default.
+    Model overrides come from the nested ``[pipeline.model_overrides]``
+    subtable and are stored as a ``dict[str, str]``.
+    """
+    pipeline_sect = _section(toml, "pipeline")
+    overrides_raw = pipeline_sect.get("model_overrides", {})
+    model_overrides = {str(k): str(v) for k, v in overrides_raw.items()} if isinstance(overrides_raw, dict) else {}
+
+    cfg = PipelineConfig(model_overrides=model_overrides)
+    for field_name in (
+        "results_per_search",
+        "scoring_batch_size",
+        "relevance_threshold",
+        "search_terms_per_query",
+        "max_output_tokens",
+    ):
+        if field_name in pipeline_sect:
+            setattr(cfg, field_name, int(pipeline_sect[field_name]))
+    return cfg
