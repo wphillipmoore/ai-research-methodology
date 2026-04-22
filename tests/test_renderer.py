@@ -390,7 +390,12 @@ def _create_realistic_run(run_dir: Path) -> None:
             "assessment": {
                 "verdict": "Supported with caveats",
                 "confidence": "Moderate",
+                "probability_label": "Likely (70-85%)",
                 "reasoning": "Multiple studies show improvement but sample sizes are small.",
+            },
+            "evidence_quality": {
+                "source_agreement": "Moderate agreement among sources",
+                "evidence_grade": "B — consistent but small samples",
             },
             "gaps": ["Larger sample sizes needed"],
             "outliers": [{"source": "https://example.com/counter", "observation": "One study found opposite"}],
@@ -408,8 +413,13 @@ def _create_realistic_run(run_dir: Path) -> None:
     }
     (run_dir / "synthesis.json").write_text(json.dumps(syn, indent=2))
 
-    # Self-audit — both items
+    # Self-audit — both items (includes robis_audit for collection self-audit rendering)
     sa = {
+        "robis_audit": {
+            "domain_1_eligibility": {"risk": "Low", "notes": "All studies meet inclusion criteria"},
+            "domain_2_identification": {"risk": "Low", "notes": "Comprehensive search"},
+            "overall_risk_of_bias": "Low",
+        },
         "C001": {
             "id": "C001",
             "process_audit": {
@@ -455,6 +465,7 @@ def _create_realistic_run(run_dir: Path) -> None:
             "id": "C001",
             "mode": "claim",
             "topic": "RLHF reduces sycophancy",
+            "verdict_summary": "Supported with caveats",
             "assessment_summary": {
                 "verdict": "Supported with caveats — evidence supports reduction but more studies needed",
                 "confidence": "Moderate",
@@ -463,6 +474,9 @@ def _create_realistic_run(run_dir: Path) -> None:
             "evidence_quality": "Moderate — small sample sizes",
             "key_findings": ["RLHF reduces sycophancy in controlled settings"],
             "gaps_and_limitations": ["Small sample sizes", "Limited to English"],
+            "source_back_verification": [
+                {"claim": "RLHF reduces sycophancy", "source": "https://example.com/rlhf", "verified": True},
+            ],
         },
         "Q001": {
             "id": "Q001",
