@@ -8,6 +8,7 @@ The coordinator (run command) calls these in sequence.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,8 @@ from diogenes.search import SearchProvider, execute_search_plan, fetch_page_extr
 if TYPE_CHECKING:
     from diogenes.api_client import APIClient
     from diogenes.events import EventLogger
+
+logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts" / "sub-agents"
 
@@ -60,7 +63,7 @@ def step2_generate_hypotheses(
 
     for claim in claims:
         item_id = claim["id"]
-        print(f"  Generating hypotheses for {item_id}: {claim['clarified_text'][:60]}...")
+        logger.info(f"  Generating hypotheses for {item_id}: {claim['clarified_text'][:60]}...")
 
         agent_input = {
             "mode": "claim",
@@ -80,7 +83,7 @@ def step2_generate_hypotheses(
 
     for query in queries:
         item_id = query["id"]
-        print(f"  Generating hypotheses for {item_id}: {query['clarified_text'][:60]}...")
+        logger.info(f"  Generating hypotheses for {item_id}: {query['clarified_text'][:60]}...")
 
         agent_input = {
             "mode": "query",
@@ -106,12 +109,12 @@ def _print_hypothesis_summary(item_id: str, response: dict[str, Any]) -> None:
     approach = response.get("approach", "unknown")
     if approach == "hypotheses":
         count = len(response.get("hypotheses", []))
-        print(f"    {item_id}: {count} hypotheses generated")
+        logger.info(f"    {item_id}: {count} hypotheses generated")
     elif approach == "open-ended":
         count = len(response.get("search_themes", []))
-        print(f"    {item_id}: open-ended, {count} search themes")
+        logger.info(f"    {item_id}: open-ended, {count} search themes")
     else:
-        print(f"    {item_id}: approach={approach}")
+        logger.info(f"    {item_id}: approach={approach}")
 
 
 def step3_design_searches(
@@ -145,7 +148,7 @@ def step3_design_searches(
     for item in items:
         item_id = item["id"]
         item_hypotheses = hypotheses.get(item_id, {})
-        print(f"  Designing searches for {item_id}...")
+        logger.info(f"  Designing searches for {item_id}...")
 
         agent_input = {
             "item": item,
@@ -162,7 +165,7 @@ def step3_design_searches(
         results[item_id] = response
         search_count = len(response.get("searches", []))
         approach = response.get("approach", "unknown")
-        print(f"    {item_id}: {search_count} searches planned ({approach})")
+        logger.info(f"    {item_id}: {search_count} searches planned ({approach})")
 
     return results
 
@@ -210,7 +213,7 @@ def step4_execute_searches(
         item_id = item["id"]
         item_plan = search_plans.get(item_id, {})
         searches = item_plan.get("searches", [])
-        print(f"  Executing {len(searches)} searches for {item_id} via {search_provider.name}...")
+        logger.info(f"  Executing {len(searches)} searches for {item_id} via {search_provider.name}...")
 
         # Phase 4A: Python executes searches
         executions = execute_search_plan(
@@ -219,7 +222,7 @@ def step4_execute_searches(
             max_results_per_search=client.pipeline.results_per_search,
         )
         total_results = sum(len(e.results) for e in executions)
-        print(f"    {total_results} raw results from {len(executions)} searches")
+        logger.info(f"    {total_results} raw results from {len(executions)} searches")
 
         # Phase 4B: LLM scores relevance in batches
         all_scored = _score_results_batched(
@@ -231,7 +234,7 @@ def step4_execute_searches(
 
         # Phase 4C: Python filters and deduplicates
         selected, rejected = _filter_and_deduplicate(all_scored, threshold=threshold)
-        print(f"    {len(selected)} sources selected (score >= {threshold}), {len(rejected)} below threshold")
+        logger.info(f"    {len(selected)} sources selected (score >= {threshold}), {len(rejected)} below threshold")
 
         if event_logger and rejected:
             for rej in rejected:
@@ -372,7 +375,7 @@ def _fetch_sources_for_scoring(
     crashes with SIGABRT under thread contention. Each process gets
     its own lxml instance in separate memory — thread-safety irrelevant.
     """
-    print(f"    Fetching {len(selected)} sources ({_FETCH_WORKERS} processes)...")
+    logger.info(f"    Fetching {len(selected)} sources ({_FETCH_WORKERS} processes)...")
     kwargs_list = [{"url": s.get("url", "")} for s in selected]
     results = parallelize_process(
         func=_fetch_single_source,
@@ -403,7 +406,7 @@ def _fetch_sources_for_scoring(
             )
 
     if results.error_count:
-        print(f"    {item_id}: {results.error_count} of {len(selected)} sources dropped due to fetch failures.")
+        logger.info(f"    {item_id}: {results.error_count} of {len(selected)} sources dropped due to fetch failures.")
 
     # Build enriched sources from successful fetches, matching back to
     # original source metadata (title, snippet)
@@ -421,7 +424,7 @@ def _fetch_sources_for_scoring(
             }
         )
 
-    print(f"    {len(enriched_sources)} sources fetched successfully.")
+    logger.info(f"    {len(enriched_sources)} sources fetched successfully.")
     return enriched_sources
 
 
@@ -461,9 +464,9 @@ def step5_score_sources(
         # Cap at top N by relevance score to control cost
         selected = all_selected[:_MAX_SOURCES_TO_SCORE]
         if len(all_selected) > _MAX_SOURCES_TO_SCORE:
-            print(f"  Scoring top {len(selected)} of {len(all_selected)} sources for {item_id}...")
+            logger.info(f"  Scoring top {len(selected)} of {len(all_selected)} sources for {item_id}...")
         else:
-            print(f"  Scoring {len(selected)} sources for {item_id}...")
+            logger.info(f"  Scoring {len(selected)} sources for {item_id}...")
 
         # Phase A: Python fetches page content.
         enriched_sources = _fetch_sources_for_scoring(item_id, selected, event_logger)
@@ -506,7 +509,7 @@ def step5_score_sources(
             if "items" not in sc:
                 sc["items"] = [item_id]
 
-        print(f"    {item_id}: {len(all_scorecards)} sources scored")
+        logger.info(f"    {item_id}: {len(all_scorecards)} sources scored")
         results[item_id] = {"id": item_id, "scorecards": all_scorecards}
 
     return results
@@ -630,7 +633,7 @@ def _extract_evidence_for_item(
         for sc in substantive
     ]
 
-    print(f"    Extracting from {len(substantive)} sources ({_EXTRACT_WORKERS} threads)...")
+    logger.info(f"    Extracting from {len(substantive)} sources ({_EXTRACT_WORKERS} threads)...")
     results = parallelize_thread(
         func=_extract_single_source,
         kwargs_list=kwargs_list,
@@ -661,15 +664,15 @@ def _extract_evidence_for_item(
             )
 
         if res["dropped"]:
-            print(f"      {res['url'][:60]}: {res['kept']} verified / {res['dropped']} dropped")
+            logger.info(f"      {res['url'][:60]}: {res['kept']} verified / {res['dropped']} dropped")
         else:
-            print(f"      {res['url'][:60]}: {res['kept']} packet(s) verified")
+            logger.info(f"      {res['url'][:60]}: {res['kept']} packet(s) verified")
 
     # Log API failures from the parallel run
     for exc in results.exceptions:
         err = f"extractor error: {exc}"
         errors.append(err)
-        print(f"      extractor FAILED: {exc}")
+        logger.info(f"      extractor FAILED: {exc}")
         if event_logger:
             event_logger.log(
                 step="step5b_extract_evidence",
@@ -747,7 +750,7 @@ def step5b_extract_evidence(
         item_scorecards = scorecards.get(item_id, {}).get("scorecards", [])
 
         if not item_scorecards:
-            print(f"  No scorecards for {item_id}; skipping evidence extraction.")
+            logger.info(f"  No scorecards for {item_id}; skipping evidence extraction.")
             results[item_id] = {"id": item_id, "packets": []}
             continue
 
@@ -760,7 +763,7 @@ def step5b_extract_evidence(
             else:
                 substantive.append(sc)
 
-        print(
+        logger.info(
             f"  Extracting evidence for {item_id} "
             f"({len(substantive)} sources, one call each; "
             f"{len(skipped)} skipped for insufficient content)..."
@@ -777,7 +780,7 @@ def step5b_extract_evidence(
                 "packets": [],
                 "extraction_notes": note,
             }
-            print(f"    {item_id}: 0 evidence packets (all sources insufficient)")
+            logger.info(f"    {item_id}: 0 evidence packets (all sources insufficient)")
             continue
 
         aggregated_packets, extractor_errors, verbatim_stats = _extract_evidence_for_item(
@@ -817,7 +820,7 @@ def step5b_extract_evidence(
             response["extraction_notes"] = " ".join(notes_parts)
 
         results[item_id] = response
-        print(f"    {item_id}: {len(aggregated_packets)} evidence packets total")
+        logger.info(f"    {item_id}: {len(aggregated_packets)} evidence packets total")
 
     return results
 
@@ -857,7 +860,7 @@ def steps678_synthesize_and_assess(
         item_hypotheses = hypotheses.get(item_id, {})
         item_scorecards = scorecards.get(item_id, {}).get("scorecards", [])
         item_packets = evidence_packets.get(item_id, {}).get("packets", [])
-        print(f"  Synthesizing {item_id} ({len(item_scorecards)} sources, {len(item_packets)} packets)...")
+        logger.info(f"  Synthesizing {item_id} ({len(item_scorecards)} sources, {len(item_packets)} packets)...")
 
         agent_input = {
             "item": item,
@@ -880,7 +883,7 @@ def steps678_synthesize_and_assess(
         results[item_id] = response
         assessment = response.get("assessment", {})
         verdict = assessment.get("verdict", assessment.get("answer", ""))
-        print(f"    {item_id}: {verdict[:80]}")
+        logger.info(f"    {item_id}: {verdict[:80]}")
 
     return results
 
@@ -918,7 +921,7 @@ def step9_self_audit(
 
     for item in items:
         item_id = item["id"]
-        print(f"  Auditing {item_id}...")
+        logger.info(f"  Auditing {item_id}...")
 
         agent_input = {
             "item": item,
@@ -950,7 +953,7 @@ def step9_self_audit(
             audit.get("evaluation_consistency", {}).get("rating", "?"),
             audit.get("synthesis_fairness", {}).get("rating", "?"),
         ]
-        print(f"    {item_id}: audit [{', '.join(ratings)}]")
+        logger.info(f"    {item_id}: audit [{', '.join(ratings)}]")
 
     return results
 
@@ -991,7 +994,7 @@ def step10_report(
     for item in items:
         item_id = item["id"]
         mode = "claim" if item_id.startswith("C") else "query"
-        print(f"  Assembling report for {item_id} ({mode})...")
+        logger.info(f"  Assembling report for {item_id} ({mode})...")
 
         agent_input = {
             "item": item,
@@ -1021,7 +1024,7 @@ def step10_report(
             "verdict",
             response.get("assessment_summary", {}).get("answer", ""),
         )
-        print(f"    {item_id}: {verdict[:80]}")
+        logger.info(f"    {item_id}: {verdict[:80]}")
 
     return results
 

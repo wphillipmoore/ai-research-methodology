@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import time
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from typing import Any
 from diogenes.api_client import APIClient, SubAgentError
 from diogenes.config import load_config
 from diogenes.events import EventLogger, reconcile_run
+from diogenes.logger import configure_progress_logger
 from diogenes.pipeline import (
     step2_generate_hypotheses,
     step3_design_searches,
@@ -26,6 +28,8 @@ from diogenes.pipeline import (
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
 from diogenes.state_machine import PIPELINE_STEPS, PipelineState
+
+logger = logging.getLogger(__name__)
 
 # Resolve prompts from the package (works for both repo checkout and pip install)
 _PACKAGE_DIR = Path(__file__).parent.parent
@@ -173,22 +177,22 @@ def _dispatch_step(
             coverage = reconcile_run(run_dir, event_logger)
             adherence = coverage.get("verbatim_adherence_pct")
             if adherence is not None:
-                print(
+                logger.info(
                     f"  Coverage: {coverage['sources_scored']}/{coverage['sources_attempted']} "
                     f"sources, {adherence}% verbatim adherence"
                 )
             event_logger.write()
             n_events = len(event_logger.events)
             if n_events:
-                print(f"  Events: {n_events}")
+                logger.info(f"  Events: {n_events}")
             # Events file writes itself — return sentinel.
             return {"_self_written": True}
 
     except SubAgentError as e:
-        print(f"ERROR: {e}")
+        logger.info(f"ERROR: {e}")
         return None
 
-    print(f"ERROR: Unknown step '{name}'")
+    logger.info(f"ERROR: Unknown step '{name}'")
     return None
 
 
@@ -200,28 +204,28 @@ def _parse_and_clarify(
 
     Returns the research input dict, or None on error (after printing).
     """
-    print(f"Reading input: {input_path}")
+    logger.info(f"Reading input: {input_path}")
     try:
         raw_input = parse_input_file(input_path)
     except FileNotFoundError as e:
-        print(f"ERROR: {e}")
+        logger.info(f"ERROR: {e}")
         return None
 
     # Route — JSON or text?
     if isinstance(raw_input, dict):
-        print("Input format: JSON — validating schema...")
+        logger.info("Input format: JSON — validating schema...")
         try:
             research_input = validate_research_input(raw_input)
         except ValidationError as e:
-            print(f"ERROR: {e}")
+            logger.info(f"ERROR: {e}")
             return None
-        print(f"  Claims: {len(research_input.get('claims', []))}")
-        print(f"  Queries: {len(research_input.get('queries', []))}")
-        print(f"  Axioms: {len(research_input.get('axioms', []))}")
+        logger.info(f"  Claims: {len(research_input.get('claims', []))}")
+        logger.info(f"  Queries: {len(research_input.get('queries', []))}")
+        logger.info(f"  Axioms: {len(research_input.get('axioms', []))}")
         return research_input
 
     # Text input — call input-clarifier sub-agent
-    print("Input format: text — calling input-clarifier sub-agent...")
+    logger.info("Input format: text — calling input-clarifier sub-agent...")
     clarifier_prompt = _PROMPTS_DIR / "research-input-clarified.md"
 
     try:
@@ -232,11 +236,11 @@ def _parse_and_clarify(
             model=client.model_for("clarifier"),
         )
     except SubAgentError as e:
-        print(f"ERROR: {e}")
+        logger.info(f"ERROR: {e}")
         return None
 
     if clarified.get("error"):
-        print(f"ERROR: Input clarifier failed: {clarified.get('message', 'unknown error')}")
+        logger.info(f"ERROR: Input clarifier failed: {clarified.get('message', 'unknown error')}")
         return None
 
     research_input = {
@@ -248,7 +252,7 @@ def _parse_and_clarify(
     claims_count = len(research_input.get("claims", []))
     queries_count = len(research_input.get("queries", []))
     axioms_count = len(research_input.get("axioms", []))
-    print(f"  Clarified: {claims_count} claims, {queries_count} queries, {axioms_count} axioms")
+    logger.info(f"  Clarified: {claims_count} claims, {queries_count} queries, {axioms_count} axioms")
     return research_input
 
 
@@ -261,24 +265,24 @@ def _create_search_provider() -> SerperSearchProvider | BraveSearchProvider | Go
 
     if cfg.search_provider == "serper":
         if not cfg.serper_api_key:
-            print("ERROR: Serper.dev requires SERPER_API_KEY in .diorc or .env")
-            print("  Sign up free at https://serper.dev/ (2,500 searches/month)")
+            logger.info("ERROR: Serper.dev requires SERPER_API_KEY in .diorc or .env")
+            logger.info("  Sign up free at https://serper.dev/ (2,500 searches/month)")
             return None
         return SerperSearchProvider(cfg.serper_api_key)
 
     if cfg.search_provider == "brave":
         if not cfg.brave_api_key:
-            print("ERROR: Brave Search requires BRAVE_API_KEY in .diorc or .env")
+            logger.info("ERROR: Brave Search requires BRAVE_API_KEY in .diorc or .env")
             return None
         return BraveSearchProvider(cfg.brave_api_key)
 
     if cfg.search_provider == "google":
         if not cfg.google_api_key or not cfg.google_search_engine_id:
-            print("ERROR: Google Search requires GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID")
+            logger.info("ERROR: Google Search requires GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID")
             return None
         return GoogleSearchProvider(cfg.google_api_key, cfg.google_search_engine_id)
 
-    print(f"ERROR: Unknown search provider: {cfg.search_provider}")
+    logger.info(f"ERROR: Unknown search provider: {cfg.search_provider}")
     return None
 
 
@@ -299,7 +303,7 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
     try:
         client = APIClient()
     except SubAgentError as e:
-        print(f"ERROR: {e}")
+        logger.info(f"ERROR: {e}")
         return 1
 
     search_provider = _create_search_provider()
@@ -308,7 +312,11 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
 
     # Create a fresh timestamped instance subdirectory
     instance_dir = _create_instance_dir(parent_dir)
-    print(f"Instance: {instance_dir}")
+    # Configure the progress logger now that the instance dir exists —
+    # every subsequent logger.info() fans out to progress.log and, if a
+    # TTY is attached, also to stdout.
+    configure_progress_logger(instance_dir / "progress.log")
+    logger.info(f"Instance: {instance_dir}")
 
     # Step 1: parse & clarify the source input into this instance dir.
     # Intentionally run per-instance — clarifier output can drift as
@@ -317,7 +325,7 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
     if research_input is None:
         return 1
     clarified_path = write_step_output(instance_dir, "research-input-clarified.json", research_input)
-    print(f"  Wrote: {clarified_path}")
+    logger.info(f"  Wrote: {clarified_path}")
 
     # Methodology provenance now lives in pipeline-state.json's 'version'
     # block (package_version + git commit/branch/dirty). The previous
@@ -326,8 +334,8 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
     # revision produced this run.
 
     # --- Pipeline execution (state-machine-driven) ---
-    print()
-    print(f"=== {instance_dir.name} ===")
+    logger.info("")
+    logger.info(f"=== {instance_dir.name} ===")
 
     event_logger = EventLogger(
         run_id=instance_dir.name,
@@ -348,12 +356,12 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
         if state.is_complete(step_def.name):
             continue
 
-        print(f"{step_def.display_name}...")
+        logger.info(f"{step_def.display_name}...")
         state.mark_started(step_def.name)
         result = _dispatch_step(step_def, outputs, client, search_provider, event_logger, instance_dir)
         if result is None:
             state.mark_failed(step_def.name, diagnostics="Handler returned None")
-            print(f"ERROR: {step_def.name} returned no result")
+            logger.info(f"ERROR: {step_def.name} returned no result")
             return 1
 
         # Store the result and write to disk (unless the step wrote its own file)
@@ -361,7 +369,7 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
             output_key = step_def.output_file.replace(".json", "").replace("-", "_")
             outputs[output_key] = result
             out_path = write_step_output(instance_dir, step_def.output_file, result)
-            print(f"  Wrote: {out_path}")
+            logger.info(f"  Wrote: {out_path}")
 
         state.mark_complete(step_def.name, output_file=step_def.output_file)
 
@@ -369,20 +377,20 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
     usage_data = client.usage.to_dict()
     usage_path = write_step_output(instance_dir, "usage.json", usage_data)
 
-    print()
-    print(f"Research complete. Output: {instance_dir}")
-    print()
+    logger.info("")
+    logger.info(f"Research complete. Output: {instance_dir}")
+    logger.info("")
     totals = usage_data["totals"]
     cost = totals.get("estimated_cost_usd", 0)
-    print(
+    logger.info(
         f"Usage: {totals['api_calls']} API calls, "
         f"{totals['input_tokens']:,} input + {totals['output_tokens']:,} output "
         f"= {totals['total_tokens']:,} tokens"
     )
-    print(f"  Estimated cost: ${cost:.4f}")
+    logger.info(f"  Estimated cost: ${cost:.4f}")
     if totals["web_search_requests"]:
-        print(f"  Web: {totals['web_search_requests']} searches, {totals['web_fetch_requests']} fetches")
-    print(f"  Details: {usage_path}")
+        logger.info(f"  Web: {totals['web_search_requests']} searches, {totals['web_fetch_requests']} fetches")
+    logger.info(f"  Details: {usage_path}")
 
     return 0
 
@@ -411,7 +419,7 @@ def execute(input_file: str, output: str) -> int:
     input_path = Path(input_file)
 
     if not input_path.exists():
-        print(f"ERROR: Input file not found: {input_path}")
+        logger.info(f"ERROR: Input file not found: {input_path}")
         return 1
 
     # Refuse to silently reuse an existing research container. Directing
@@ -419,8 +427,8 @@ def execute(input_file: str, output: str) -> int:
     # always establishes a new research definition from an explicit
     # input file.
     if parent_dir.exists() and any(parent_dir.iterdir()):
-        print(f"ERROR: --output {parent_dir} already exists and is not empty.")
-        print(
+        logger.info(f"ERROR: --output {parent_dir} already exists and is not empty.")
+        logger.info(
             "  Use 'dio rerun --output "
             f"{parent_dir}' to add a new instance to existing research,\n"
             "  or choose a different --output for a new research definition."
@@ -433,8 +441,8 @@ def execute(input_file: str, output: str) -> int:
     parent_dir.mkdir(parents=True, exist_ok=True)
     src_dest = parent_dir / input_path.name
     shutil.copyfile(input_path, src_dest)
-    print(f"Output directory: {parent_dir}")
-    print(f"  Saved source input: {src_dest}")
+    logger.info(f"Output directory: {parent_dir}")
+    logger.info(f"  Saved source input: {src_dest}")
 
     return _run_pipeline(parent_dir, src_dest)
 
@@ -459,17 +467,17 @@ def execute_rerun(output: str) -> int:
     parent_dir = Path(output)
 
     if not parent_dir.exists():
-        print(f"ERROR: --output {parent_dir} does not exist.")
-        print("  'dio rerun' requires a parent populated by a prior 'dio run'.")
+        logger.info(f"ERROR: --output {parent_dir} does not exist.")
+        logger.info("  'dio rerun' requires a parent populated by a prior 'dio run'.")
         return 1
 
     input_path = _find_saved_input(parent_dir)
     if input_path is None:
-        print(f"ERROR: Could not locate a single source input in {parent_dir}.")
-        print("  Expected exactly one regular file (the input copied by 'dio run').")
+        logger.info(f"ERROR: Could not locate a single source input in {parent_dir}.")
+        logger.info("  Expected exactly one regular file (the input copied by 'dio run').")
         return 1
 
-    print(f"Output directory: {parent_dir}")
-    print(f"  Using saved source input: {input_path}")
+    logger.info(f"Output directory: {parent_dir}")
+    logger.info(f"  Using saved source input: {input_path}")
 
     return _run_pipeline(parent_dir, input_path)

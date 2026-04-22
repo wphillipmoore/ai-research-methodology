@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ import jsonschema
 
 from diogenes.config import DEFAULT_MODEL, ConfigError, DioConfig, load_config
 from diogenes.retry import is_retriable_anthropic, retry_with_backoff
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -519,11 +522,12 @@ class APIClient:
             stripped = _strip_to_schema(result, schema_dict)
             if stripped:
                 max_detail = 5
-                print(
-                    f"    schema-strip ({prompt_file.stem}): "
-                    f"removed {len(stripped)} non-schema field(s): "
-                    + "; ".join(stripped[:max_detail])
-                    + (" ..." if len(stripped) > max_detail else "")
+                logger.info(
+                    "    schema-strip (%s): removed %d non-schema field(s): %s%s",
+                    prompt_file.stem,
+                    len(stripped),
+                    "; ".join(stripped[:max_detail]),
+                    " ..." if len(stripped) > max_detail else "",
                 )
             _validate_against_schema(result, schema_dict, prompt_file.stem)
 

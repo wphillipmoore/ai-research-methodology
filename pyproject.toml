@@ -128,11 +128,10 @@ docstring-quotes = "double"
     "INP001", # Scripts are not a package; no __init__.py needed.
 ]
 "src/diogenes/cli.py" = [
-    "T201",   # CLI uses print for user-facing output.
+    "T201",   # CLI entry dispatcher prints before any run-scoped logger exists.
     "PLC0415", # Lazy imports for subcommands are intentional.
 ]
 "src/diogenes/commands/**/*.py" = [
-    "T201",    # Command implementations use print for user-facing output.
     "PLR0911", # Command execute() has early-return error handling per step.
     "PLR0912", # _dispatch_step branches per pipeline step.
     "PLR0913", # _dispatch_step takes context args for all handler signatures.
@@ -140,17 +139,17 @@ docstring-quotes = "double"
     "C901",    # _dispatch_step maps steps to handlers with per-step args.
     "C416",    # Dict comprehension in archive assembly is clearer than dict().
     "ANN401",  # _dispatch_step accepts Any — handlers have heterogeneous signatures.
+    "G004",    # Progress-log f-strings: readability > lazy-formatting micro-perf.
 ]
 "src/diogenes/pipeline.py" = [
-    "T201",    # Pipeline steps print progress for user-facing output.
     "PLR0913", # Later steps receive all prior step outputs as arguments.
+    "G004",    # Progress-log f-strings: readability > lazy-formatting micro-perf.
 ]
 "src/diogenes/api_client.py" = [
     "PLR0913", # call_sub_agent has keyword-only params for composability.
     "C901",    # _parse_json_response handles multiple extraction strategies.
     "PLR0912", # _strip_to_schema recurses through schema structure.
     "ANN401",  # _strip_to_schema and _preview accept Any — JSON data is untyped.
-    "T201",    # Schema-strip notifications printed for observability.
 ]
 "src/diogenes/mcp_server.py" = [
     "C901",    # dio_validate_packets handles both CLI and skill output formats.
