@@ -2875,3 +2875,66 @@ class TestGroupSparseFiles:
         assert (output_dir / "synthesis.md").exists()
         assert (output_dir / "consistency.md").exists()
         assert (output_dir / "reading-list.md").exists()
+
+
+class TestRenderRunEmptyItems:
+    """Cover branches when the run has no items at all."""
+
+    def test_render_run_no_items(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers 563->572: toc_entries empty, no card sections."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        ri = {"claims": [], "queries": [], "axioms": []}
+        (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+        for fname in (
+            "hypotheses.json",
+            "search-plans.json",
+            "search-results.json",
+            "scorecards.json",
+            "evidence-packets.json",
+            "synthesis.json",
+            "self-audit.json",
+            "reports.json",
+        ):
+            (run_dir / fname).write_text("{}")
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        assert (output_dir / "index.md").exists()
+
+
+def _create_run_with_item_no_id(run_dir: Path) -> None:
+    """Item without an id field to hit 644->575 (continue branch in card loop)."""
+    ri = {
+        "claims": [
+            {"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"},
+            {"type": "claim", "text": "No id"},  # No id - should be skipped
+        ],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    for fname in (
+        "hypotheses.json",
+        "search-plans.json",
+        "search-results.json",
+        "scorecards.json",
+        "evidence-packets.json",
+        "synthesis.json",
+        "self-audit.json",
+        "reports.json",
+    ):
+        (run_dir / fname).write_text("{}")
+
+
+class TestRenderRunItemWithoutIdInCards:
+    """Cover 644->575: continue on item without id."""
+
+    def test_item_no_id_in_cards(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_item_no_id(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        # Only C001 should render as a card
+        index = (output_dir / "index.md").read_text()
+        assert "C001" in index
