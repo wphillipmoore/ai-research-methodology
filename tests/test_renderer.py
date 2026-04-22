@@ -1765,3 +1765,379 @@ class TestItemIndexWithoutOptionalSections:
         assert len(q001_dirs) == 1
         item_index = (q001_dirs[0] / "index.md").read_text()
         assert "Results" in item_index
+
+
+def _create_rich_cli_run(run_dir: Path) -> None:
+    """Create a CLI-format run with rich optional fields.
+
+    Exercises branches that appear when optional fields are populated:
+    - gaps as list (not dict)
+    - synthesis with evidence_summary, ipcc_* fields
+    - assessment with scale, probability_label, rationale
+    - outliers, independence, revisit_triggers
+    - search_execution_log at top level
+    - audit with robis_audit domain fields
+    """
+    # Research input — axiom-only item to exercise that branch too
+    ri = {
+        "claims": [
+            {
+                "id": "C001",
+                "type": "claim",
+                "text": "Test claim",
+                "clarified_text": "Test claim clarified",
+                "original_text": "Test claim",
+            },
+        ],
+        "queries": [],
+        "axioms": [{"id": "A001", "type": "axiom", "text": "Peer review preferred"}],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+
+    # Hypotheses — with derived_from, look_for, perspectives
+    hyp = {
+        "C001": {
+            "id": "C001",
+            "approach": "open-ended",
+            "search_themes": [
+                {
+                    "id": "T01",
+                    "theme": "Primary theme",
+                    "derived_from": "axiom A001",
+                    "look_for": ["evidence A", "evidence B"],
+                    "perspectives": ["supports", "contradicts"],
+                },
+            ],
+        },
+    }
+    (run_dir / "hypotheses.json").write_text(json.dumps(hyp))
+
+    # Search plans
+    sp = {
+        "C001": {
+            "id": "C001",
+            "searches": [
+                {
+                    "id": "S01",
+                    "terms": ["test"],
+                    "theme": "Primary theme",
+                    "sources": ["academic databases"],
+                },
+            ],
+        },
+    }
+    (run_dir / "search-plans.json").write_text(json.dumps(sp))
+
+    # Search results with top-level execution_log (plugin-format)
+    sr = {
+        "C001": {
+            "id": "C001",
+            "searches_executed": [],
+            "selected_sources": [{"url": "https://a.com", "title": "Paper A"}],
+            "rejected_sources": [],
+            "summary": {
+                "total_searches": 1,
+                "total_results_found": 2,
+                "total_selected": 1,
+                "total_rejected": 1,
+                "relevance_threshold": 5,
+            },
+        },
+        "search_execution_log": [
+            {
+                "search_id": "S01",
+                "id": "S01",
+                "query": "test query",
+                "results": [
+                    {
+                        "disposition": "selected",
+                        "title": "Good Result",
+                        "url": "https://a.com",
+                        "relevance_score": 8,
+                        "reason": "directly relevant",
+                    },
+                    {
+                        "disposition": "rejected",
+                        "title": "Bad Result",
+                        "url": "https://b.com",
+                        "relevance_score": 2,
+                        "reason": "off-topic",
+                    },
+                ],
+                "total_returned": 2,
+            }
+        ],
+    }
+    (run_dir / "search-results.json").write_text(json.dumps(sr))
+
+    # Scorecards with plugin format (top-level sources list)
+    sc = {
+        "sources": [
+            {
+                "id": "SRC001",
+                "item_id": "C001",
+                "url": "https://a.com",
+                "title": "Paper A",
+                "authors": "Author A",
+                "publication_date": "2025",
+                "content_summary": "Summary A",
+                "reliability_score": 8,
+                "relevance_score": 9,
+                "content_extract": "Extract A",
+            },
+        ],
+    }
+    (run_dir / "scorecards.json").write_text(json.dumps(sc))
+
+    # Evidence packets
+    ep = {
+        "C001": {
+            "id": "C001",
+            "packets": [{"excerpt": "quote", "source_url": "https://a.com"}],
+            "verbatim_stats": {"claimed": 1, "kept": 1, "dropped": 0},
+        },
+    }
+    (run_dir / "evidence-packets.json").write_text(json.dumps(ep))
+
+    # Synthesis with plugin-style fields: evidence_summary, ipcc axes, independence
+    syn = {
+        "C001": {
+            "id": "C001",
+            "synthesis": {
+                "evidence_summary": "Summary of evidence",
+                "ipcc_combined": "Likely (66-100%)",
+                "ipcc_agreement_axis": "High agreement",
+                "ipcc_evidence_axis": "Robust evidence",
+                "evidence_quality": {"rating": "High", "rationale": "Strong sources"},
+                "source_agreement": {"rating": "Strong", "rationale": "Consensus"},
+                "independence": {"assessment": "Independent sources"},
+                "outliers": [
+                    {
+                        "source_url": "https://outlier.com",
+                        "divergence": "disagrees",
+                        "explanation": "different methodology",
+                    },
+                ],
+            },
+            "assessment": {
+                "scale": "IPCC-style",
+                "probability_label": "Likely",
+                "probability_range": "66-100%",
+                "rationale": "Based on multiple studies",
+                "hypothesis_disposition": {"H1": "Supported"},
+                "verdict": "Supported",
+                "confidence": "High",
+                "hypothesis_ratings": [
+                    {
+                        "hypothesis_id": "H1",
+                        "probability_term": "Likely",
+                        "probability_range": "66-100%",
+                        "reasoning": "Evidence chain",
+                    },
+                ],
+            },
+            # Plugin format: gaps as list
+            "gaps": ["gap one", "gap two"],
+        },
+    }
+    (run_dir / "synthesis.json").write_text(json.dumps(syn))
+
+    # Self-audit with robis_audit (plugin format: global)
+    sa = {
+        "robis_audit": {
+            "domain_1_eligibility": {"risk": "Low"},
+            "domain_2_identification": {"risk": "Moderate"},
+            "overall_risk_of_bias": "Low",
+        },
+        "C001": {
+            "id": "C001",
+            "process_audit": {
+                "eligibility_criteria": {"rating": "Pass", "notes": "OK"},
+                "search_comprehensiveness": {"rating": "Pass", "notes": "OK"},
+                "evaluation_consistency": {"rating": "Pass", "notes": "OK"},
+                "synthesis_fairness": {"rating": "Pass", "notes": "OK"},
+            },
+            "reading_list": [
+                {
+                    "title": "Paper A",
+                    "url": "https://a.com",
+                    "authors": "Author A",
+                    "relevance": "Primary",
+                    "priority": "high",
+                },
+            ],
+        },
+    }
+    (run_dir / "self-audit.json").write_text(json.dumps(sa))
+
+    # Reports with revisit_triggers, CLI-format gaps dict, and more optional fields
+    rp = {
+        "C001": {
+            "id": "C001",
+            "mode": "claim",
+            "topic": "Test topic",
+            "title": "Paper Title",
+            "verdict": "Supported",
+            "verdict_summary": "Evidence supports the claim",
+            "one_line": "Claim is supported",
+            "assessment_summary": {"verdict": "Supported", "answer": "Yes", "confidence": "High"},
+            "reasoning": "Reasoning text",
+            "reasoning_chain": "Chain of reasoning",
+            "methodology": "Method",
+            "evidence_quality": "Moderate",
+            "key_findings": ["Finding A"],
+            "gaps_and_limitations": ["Limit A"],
+            "assessment": {
+                "hypothesis_ratings": [
+                    {
+                        "hypothesis_id": "H1",
+                        "probability_term": "Likely",
+                        "probability_range": "66-100%",
+                    },
+                ],
+            },
+            "revisit_triggers": [
+                {"trigger": "New study published", "type": "event"},
+                {"trigger": "Quarterly review"},  # No type
+                "simple string trigger",  # Non-dict trigger
+            ],
+        },
+    }
+    (run_dir / "reports.json").write_text(json.dumps(rp))
+
+    # Pipeline events — minimal
+    pe = {"events": [], "summary": {"by_kind": {}, "coverage": {}}}
+    (run_dir / "pipeline-events.json").write_text(json.dumps(pe))
+
+
+class TestRenderRunRichCli:
+    """Tests for render_run with rich optional fields in CLI format."""
+
+    def test_rich_cli_run(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-rich"
+        run_dir.mkdir()
+        _create_rich_cli_run(run_dir)
+        output_dir = tmp_path / "md-rich"
+        render_run(run_dir, output_dir)
+        # Verify it produced files
+        md_files = list(output_dir.rglob("*.md"))
+        assert len(md_files) >= 3
+        # Verify rich synthesis fields rendered
+        assessment = (output_dir / "C001-test-claim-clarified" / "assessment.md").read_text()
+        assert "IPCC assessment" in assessment
+        assert "Summary of evidence" in assessment
+
+
+class TestCollectHypothesisRatingsEdgeCases:
+    """Cover branches in _collect_hypothesis_ratings."""
+
+    def test_non_dict_report(self) -> None:
+        """Covers 322->333: isinstance(report, dict) is False."""
+        result = _collect_hypothesis_ratings("not a dict", {})
+        assert result == {}
+
+    def test_non_dict_synthesis(self) -> None:
+        """Covers the False path for synthesis being non-dict."""
+        result = _collect_hypothesis_ratings({}, "not a dict")
+        assert result == {}
+
+    def test_non_dict_assessment_in_report(self) -> None:
+        """Covers 324->333: assessment is not a dict."""
+        result = _collect_hypothesis_ratings({"assessment": "not a dict"}, {})
+        assert result == {}
+
+    def test_disposition_non_dict(self) -> None:
+        """Covers the False path when hypothesis_disposition is not a dict."""
+        synthesis = {"assessment": {"hypothesis_disposition": "not a dict"}}
+        result = _collect_hypothesis_ratings({}, synthesis)
+        assert result == {}
+
+    def test_rating_without_probability_term(self) -> None:
+        """Covers the else branch: no probability_term, just range."""
+        report = {
+            "assessment": {
+                "hypothesis_ratings": [
+                    {"hypothesis_id": "H1", "probability_range": "50-75%"},
+                ],
+            }
+        }
+        result = _collect_hypothesis_ratings(report, {})
+        assert result["H1"] == "50-75%"
+
+    def test_rating_without_hypothesis_id(self) -> None:
+        """Covers the False branch when hyp_id is empty/missing."""
+        report = {
+            "assessment": {
+                "hypothesis_ratings": [
+                    {"probability_term": "Likely"},  # Missing hypothesis_id
+                ],
+            }
+        }
+        result = _collect_hypothesis_ratings(report, {})
+        assert result == {}
+
+    def test_plugin_disposition_preserves_cli(self) -> None:
+        """Covers the 'hyp_id not in ratings' check — CLI rating wins over plugin."""
+        report = {
+            "assessment": {
+                "hypothesis_ratings": [
+                    {"hypothesis_id": "H1", "probability_term": "Certain", "probability_range": "95-100%"},
+                ],
+            }
+        }
+        synthesis = {"assessment": {"hypothesis_disposition": {"H1": "Overridden"}}}
+        result = _collect_hypothesis_ratings(report, synthesis)
+        assert "Certain" in result["H1"]
+
+
+class TestExtractSourcesForItemExtra:
+    """Additional edge cases for _extract_sources_for_item."""
+
+    def test_empty_sources_list(self) -> None:
+        """Covers the branch where sources_list exists but no matches."""
+        scorecards = {"sources": []}
+        result = _extract_sources_for_item(scorecards, "C001")
+        assert result == []
+
+    def test_cli_item_not_dict(self) -> None:
+        """Covers False branch: item_data is not a dict."""
+        scorecards = {"C001": "not a dict"}
+        result = _extract_sources_for_item(scorecards, "C001")
+        assert result == []
+
+
+class TestWriteHypothesesEmpty:
+    """Cover the early-return path in _write_hypotheses."""
+
+    def test_empty_hypotheses(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers line 1021: `return` when hyps is empty."""
+        from diogenes.renderer import _write_hypotheses
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        # Empty hypotheses list
+        _write_hypotheses(item_dir, {"id": "C001", "approach": "hypotheses", "hypotheses": []}, {}, {})
+        # No hypotheses/ directory should have been created
+        assert not (item_dir / "hypotheses").exists()
+
+
+class TestWriteSearchesEmpty:
+    """Cover the early-return path in _write_searches."""
+
+    def test_empty_searches(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers line 1417: `return` when searches is empty."""
+        from diogenes.renderer import _write_searches
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        _write_searches(item_dir, "C001", {"searches": []}, {}, {})
+        assert not (item_dir / "searches").exists()
+
+    def test_no_item_plan(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers `if not item_plan` branch."""
+        from diogenes.renderer import _write_searches
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        _write_searches(item_dir, "C001", {}, {}, {})
+        assert not (item_dir / "searches").exists()
