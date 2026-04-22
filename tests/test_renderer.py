@@ -196,6 +196,7 @@ def _create_realistic_run(run_dir: Path) -> None:
         "claims": [
             {
                 "id": "C001",
+                "type": "claim",
                 "text": "RLHF reduces sycophancy",
                 "clarified_text": "RLHF training reduces sycophantic behavior in LLMs",
                 "original_text": "RLHF reduces sycophancy",
@@ -206,11 +207,12 @@ def _create_realistic_run(run_dir: Path) -> None:
         "queries": [
             {
                 "id": "Q001",
+                "type": "query",
                 "text": "AI watermarking techniques",
                 "clarified_text": "What techniques exist for embedding watermarks in AI-generated text?",
             },
         ],
-        "axioms": [{"text": "Peer-reviewed sources preferred"}],
+        "axioms": [{"id": "A001", "type": "axiom", "text": "Peer-reviewed sources preferred"}],
     }
     (run_dir / "research-input-clarified.json").write_text(json.dumps(ri, indent=2))
 
@@ -548,3 +550,64 @@ class TestRenderRunGroup:
         assert (output_dir / "index.md").exists()
         md_files = list(output_dir.rglob("*.md"))
         assert len(md_files) >= 2
+
+    def test_renders_group_with_group_level_files(self, tmp_path: pytest.TempPathFactory) -> None:
+        group_dir = tmp_path / "group"  # type: ignore[operator]
+        group_dir.mkdir()
+
+        run1 = group_dir / "run-1"
+        run1.mkdir()
+        _create_realistic_run(run1)
+
+        # Group-level research input
+        ri_path = run1 / "research-input-clarified.json"
+        (group_dir / "research-input-clarified.json").write_text(ri_path.read_text())
+
+        # Group-level synthesis
+        group_syn = {
+            "cross_run_summary": "Findings consistent across runs.",
+            "items": [
+                {
+                    "id": "Q001",
+                    "consensus": "Strong consensus on statistical watermarking",
+                    "divergence": "Minor disagreements on robustness claims",
+                },
+            ],
+        }
+        (group_dir / "group-synthesis.json").write_text(json.dumps(group_syn))
+
+        # Group-level consistency
+        group_con = {
+            "consistency_score": 0.85,
+            "metrics": {
+                "verdict_agreement": 1.0,
+                "source_overlap": 0.8,
+                "confidence_variance": 0.1,
+            },
+            "items": [
+                {"id": "Q001", "agreement_rate": 0.9},
+            ],
+        }
+        (group_dir / "group-consistency.json").write_text(json.dumps(group_con))
+
+        # Group-level reading list
+        group_rl = {
+            "sources": [
+                {
+                    "title": "Consolidated Paper",
+                    "url": "https://example.com/paper",
+                    "authors": "Smith et al.",
+                    "runs_appearing_in": 1,
+                    "relevance": "Key source across runs",
+                },
+            ],
+        }
+        (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
+
+        output_dir = tmp_path / "md"  # type: ignore[operator]
+        render_run_group(group_dir, output_dir)
+
+        assert (output_dir / "index.md").exists()
+        assert (output_dir / "synthesis.md").exists()
+        assert (output_dir / "consistency.md").exists()
+        assert (output_dir / "reading-list.md").exists()
