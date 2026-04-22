@@ -3,6 +3,7 @@
 Usage:
     dio run <input-file> --output <dir>
     dio rerun --output <dir>
+    dio resume <instance-dir>
     dio fact-check <document> --output <dir>
     dio render <run-dir> --output <dir>
 """
@@ -45,6 +46,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output",
         required=True,
         help="Parent output directory previously populated by 'dio run'",
+    )
+
+    # --- dio resume ---
+    resume_parser = subparsers.add_parser(
+        "resume",
+        help="Finish a previously interrupted instance from where it left off",
+    )
+    resume_parser.add_argument(
+        "instance_dir",
+        help="Path to the timestamped instance directory to resume",
     )
 
     # --- dio fact-check ---
@@ -94,6 +105,11 @@ def main() -> int:
         from diogenes.commands.run import execute_rerun
 
         return execute_rerun(args.output)
+
+    if args.command == "resume":
+        from diogenes.commands.run import execute_resume
+
+        return execute_resume(args.instance_dir)
 
     if args.command == "fact-check":
         print(f"dio fact-check: doc={args.document} output={args.output}")
