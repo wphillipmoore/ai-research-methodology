@@ -2938,3 +2938,124 @@ class TestRenderRunItemWithoutIdInCards:
         # Only C001 should render as a card
         index = (output_dir / "index.md").read_text()
         assert "C001" in index
+
+
+def _create_group_with_full_reading_list(group_dir: Path) -> None:
+    """Group reading list with various priority values and optional fields."""
+    run1 = group_dir / "run-1"
+    run1.mkdir()
+    _create_minimal_run(run1)
+    (group_dir / "research-input-clarified.json").write_text((run1 / "research-input-clarified.json").read_text())
+
+    # Group reading list with reading_list key (not sources) and multiple priority values
+    group_rl = {
+        "reading_list": [
+            {
+                "title": "Must Read Paper",
+                "url": "https://a.com",
+                "priority": "must read",
+                "summary": "Key finding",
+                "items": ["C001"],
+                "found_in_runs": ["run-1"],
+            },
+            {"title": "Should Read", "url": "https://b.com", "priority": "should read"},  # No summary, items, runs
+            {"title": "Reference", "url": "https://c.com", "priority": "reference"},
+            {"title": "Unknown Priority", "url": "https://d.com", "priority": "tertiary"},  # Not in by_priority
+        ],
+    }
+    (group_dir / "group-reading-list.json").write_text(json.dumps(group_rl))
+
+
+class TestGroupReadingListVariants:
+    """Cover _write_group_reading_list branches (1763, 1778)."""
+
+    def test_full_reading_list(self, tmp_path: pytest.TempPathFactory) -> None:
+        group_dir = tmp_path / "group"
+        group_dir.mkdir()
+        _create_group_with_full_reading_list(group_dir)
+        output_dir = tmp_path / "md"
+        render_run_group(group_dir, output_dir)
+        rl = (output_dir / "reading-list.md").read_text()
+        assert "Must Read" in rl
+        assert "Should Read" in rl
+        assert "Reference" in rl
+        # Unknown priority should NOT appear (branch 1763->1761 False: not in by_priority)
+        assert "Unknown Priority" not in rl
+
+
+def _create_run_with_robis_no_overall(run_dir: Path) -> None:
+    """Self-audit with robis_audit missing overall_risk_of_bias to hit 699->703 False."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": []}}))
+
+    # Global robis_audit with no overall_risk_of_bias, with a non-dict domain value
+    sa = {
+        "robis_audit": {
+            "domain_1_eligibility": {"risk": "Low"},
+            "domain_2_bad": "not a dict",  # Hits 694->692 False
+            # No overall_risk_of_bias — hits 699->703 False
+        },
+        "C001": {"id": "C001", "process_audit": {}, "reading_list": []},
+    }
+    (run_dir / "self-audit.json").write_text(json.dumps(sa))
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestRobisAuditBranches:
+    """Cover robis_audit rendering branches."""
+
+    def test_robis_no_overall_and_bad_domain(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_robis_no_overall(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        index = (output_dir / "index.md").read_text()
+        # Should render the domain_1 rating but not the overall risk line
+        assert "Domain 1 Eligibility" in index
+        assert "Overall risk of bias" not in index
+
+
+class TestRenderRunGroupNoRuns:
+    """Cover 1657->1663: group_dir has no run-N subdirs."""
+
+    def test_no_runs(self, tmp_path: pytest.TempPathFactory) -> None:
+        group_dir = tmp_path / "group"
+        group_dir.mkdir()
+        # No run subdirs
+        output_dir = tmp_path / "md"
+        render_run_group(group_dir, output_dir)
+        index = (output_dir / "index.md").read_text()
+        # Should not have a Runs section
+        assert "Runs: 0" in index
+        assert "## Runs" not in index
