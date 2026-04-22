@@ -3517,3 +3517,138 @@ class TestItemWithoutSynthesis:
         # Results table in index should not include Assessment link
         index = (c001_dirs[0] / "index.md").read_text()
         assert "[Assessment](assessment.md)" not in index
+
+
+class TestRendererDefensiveGuards:
+    """Cover isinstance defensive branches by direct function calls with malformed data.
+
+    These branches exist as defensive guards and normally cannot be triggered
+    from well-formed pipeline output. We exercise them by calling the writer
+    functions directly with deliberately-malformed dict values.
+    """
+
+    # Note: 811->813 and 818->820 (isinstance(report, dict) False) cannot be
+    # exercised via direct call because _card_heading_for is called earlier
+    # in _write_item_index and would crash on non-dict report. Those branches
+    # are legitimately unreachable defensive guards.
+
+    def test_write_assessment_synthesis_non_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 633->637, 635->637 inside _write_run_index.
+
+        Similar defensive isinstance guards in run-index card rendering.
+        """
+        from diogenes.renderer import _write_run_index
+
+        items = [{"id": "C001", "type": "claim", "clarified_text": "Test", "original_text": "Test"}]
+        # synthesis for C001 is a non-dict — guards should short-circuit
+        _write_run_index(tmp_path, items, [], {}, {}, {}, {}, {"C001": "not a dict"}, {})
+        assert (tmp_path / "index.md").exists()
+
+    def test_collect_ratings_non_dict_synthesis_param(self) -> None:
+        """Cover outer isinstance(synthesis, dict) False via direct call."""
+        from diogenes.renderer import _collect_hypothesis_ratings
+
+        result = _collect_hypothesis_ratings({}, None)  # type: ignore[arg-type]
+        assert result == {}
+
+    def test_collect_ratings_synthesis_assessment_non_dict(self) -> None:
+        """Cover 335->342: synthesis is dict but assessment is not a dict."""
+        from diogenes.renderer import _collect_hypothesis_ratings
+
+        # synthesis is dict (passes outer isinstance) but "assessment" value is a string
+        result = _collect_hypothesis_ratings({}, {"assessment": "not a dict"})
+        assert result == {}
+
+    def test_write_self_audit_process_non_dict_domain(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1240->1233: process_audit domain value is not a dict."""
+        from diogenes.renderer import _write_self_audit
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        audit = {
+            "id": "C001",
+            "process_audit": {
+                "eligibility_criteria": "not a dict",  # Skip this one
+                "search_comprehensiveness": {"rating": "Pass"},  # Include this one
+            },
+        }
+        _write_self_audit(item_dir, audit, {})
+        content = (item_dir / "self-audit.md").read_text()
+        assert "Search Comprehensiveness" in content
+
+    def test_write_assessment_gaps_non_list_non_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1190->1208: gaps is truthy but neither list nor dict.
+
+        A string "gaps" value would trigger this defensive else-skip.
+        """
+        from diogenes.renderer import _write_assessment
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        synthesis = {"id": "C001", "gaps": "a string not a list or dict"}
+        _write_assessment(item_dir, synthesis, {})
+        content = (item_dir / "assessment.md").read_text()
+        # Evidence Gaps header may render but no list/dict content
+        assert "Evidence Gaps" in content
+
+    def test_write_assessment_gaps_dict_no_impact(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1204->1208: gaps dict with expected but no impact_on_confidence."""
+        from diogenes.renderer import _write_assessment
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        synthesis = {
+            "id": "C001",
+            "gaps": {"expected_not_found": ["A"], "unanswered_questions": ["Q"]},  # No impact
+        }
+        _write_assessment(item_dir, synthesis, {})
+        content = (item_dir / "assessment.md").read_text()
+        assert "Expected but not found" in content
+        assert "Impact on confidence" not in content
+
+
+class TestMoreDefensiveBranches:
+    """Additional targeted tests for remaining branches."""
+
+    def test_reading_list_unusual_priority(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1353->1351: reading_list entry with priority outside the standard set."""
+        from diogenes.renderer import _write_reading_list
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        audit = {
+            "reading_list": [
+                {"title": "Primary", "url": "https://a.com", "priority": "must read"},
+                {"title": "Unknown", "url": "https://b.com", "priority": "archival"},  # Not in by_priority
+            ],
+        }
+        _write_reading_list(item_dir, audit, "C001", {}, {})
+        content = (item_dir / "reading-list.md").read_text()
+        assert "Primary" in content
+        # "Unknown" with non-standard priority should not appear
+        assert "Unknown" not in content
+
+    def test_extract_sources_non_list_sources_value(self) -> None:
+        """Cover 1387->1392: scorecards.sources is not a list (malformed)."""
+        from diogenes.renderer import _extract_sources_for_item
+
+        # "sources" key exists but value is not a list — falls through to CLI path
+        scorecards = {"sources": "not a list", "C001": {"scorecards": [{"url": "https://a.com"}]}}
+        result = _extract_sources_for_item(scorecards, "C001")
+        assert len(result) == 1
+
+    def test_assessment_confidence_without_verdict(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1174->1176: assessment has confidence but no verdict.
+
+        (1174 is `if assessment.get("verdict"):` — False path skips verdict, still
+        processes confidence at 1176.)
+        """
+        from diogenes.renderer import _write_assessment
+
+        item_dir = tmp_path / "item"
+        item_dir.mkdir()
+        synthesis = {"id": "C001", "assessment": {"confidence": "High", "hypothesis_ratings": []}}
+        _write_assessment(item_dir, synthesis, {})
+        content = (item_dir / "assessment.md").read_text()
+        assert "Confidence" in content
+        assert "Verdict**:" not in content
