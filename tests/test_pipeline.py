@@ -79,7 +79,7 @@ class TestFilterAndDeduplicate:
             {"url": "https://a.com", "relevance_score": 8},
             {"url": "https://b.com", "relevance_score": 3},
         ]
-        selected, rejected = _filter_and_deduplicate(results)
+        selected, rejected = _filter_and_deduplicate(results, threshold=5)
         assert len(selected) == 1
         assert selected[0]["url"] == "https://a.com"
         assert len(rejected) == 1
@@ -89,7 +89,7 @@ class TestFilterAndDeduplicate:
             {"url": "https://a.com", "relevance_score": 8},
             {"url": "https://a.com", "relevance_score": 7},
         ]
-        selected, rejected = _filter_and_deduplicate(results)
+        selected, rejected = _filter_and_deduplicate(results, threshold=5)
         assert len(selected) == 1
 
     def test_sorted_by_score(self) -> None:
@@ -97,13 +97,28 @@ class TestFilterAndDeduplicate:
             {"url": "https://a.com", "relevance_score": 5},
             {"url": "https://b.com", "relevance_score": 9},
         ]
-        selected, _ = _filter_and_deduplicate(results)
+        selected, _ = _filter_and_deduplicate(results, threshold=5)
         assert selected[0]["url"] == "https://b.com"
 
     def test_empty_input(self) -> None:
-        selected, rejected = _filter_and_deduplicate([])
+        selected, rejected = _filter_and_deduplicate([], threshold=5)
         assert selected == []
         assert rejected == []
+
+    def test_threshold_is_parameterized(self) -> None:
+        """Raising the threshold changes which sources clear the bar."""
+        results = [
+            {"url": "https://a.com", "relevance_score": 8},
+            {"url": "https://b.com", "relevance_score": 6},
+        ]
+        # Threshold 7: only the 8-scorer selected
+        selected_hi, rejected_hi = _filter_and_deduplicate(list(results), threshold=7)
+        assert len(selected_hi) == 1
+        assert len(rejected_hi) == 1
+        # Threshold 6: both pass
+        selected_lo, rejected_lo = _filter_and_deduplicate(list(results), threshold=6)
+        assert len(selected_lo) == 2
+        assert rejected_lo == []
 
 
 class TestScorecardsWithoutContent:
@@ -509,6 +524,15 @@ class TestStep5bExtractEvidence:
 class TestStep4ExecuteSearches:
     """Tests for step4_execute_searches."""
 
+    def _client_with_defaults(self) -> MagicMock:
+        """Mock APIClient whose .pipeline uses the real dataclass defaults."""
+        from diogenes.config import PipelineConfig
+
+        client = MagicMock()
+        client.pipeline = PipelineConfig()
+        client.model_for.return_value = "claude-sonnet-4-6"
+        return client
+
     @patch("diogenes.pipeline.execute_search_plan")
     def test_executes_searches(self, mock_exec: MagicMock) -> None:
         from diogenes.search import SearchExecution, SearchResult
@@ -523,7 +547,7 @@ class TestStep4ExecuteSearches:
                 total_results_available=1,
             )
         ]
-        mock_client = MagicMock()
+        mock_client = self._client_with_defaults()
         mock_client.call_sub_agent.return_value = {
             "scores": [{"url": "https://a.com", "relevance_score": 8}],
         }
@@ -551,7 +575,7 @@ class TestStep4ExecuteSearches:
                 total_results_available=1,
             )
         ]
-        mock_client = MagicMock()
+        mock_client = self._client_with_defaults()
         mock_client.call_sub_agent.return_value = {
             "scores": [{"url": "https://a.com", "relevance_score": 2}],  # Below threshold
         }

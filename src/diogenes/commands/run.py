@@ -229,6 +229,7 @@ def _parse_and_clarify(
             prompt_path=clarifier_prompt,
             user_input=raw_input,
             output_schema="research-input-clarified.schema.json",
+            model=client.model_for("clarifier"),
         )
     except SubAgentError as e:
         print(f"ERROR: {e}")

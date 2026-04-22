@@ -270,7 +270,6 @@ class APIClient:
     """
 
     DEFAULT_MODEL = DEFAULT_MODEL  # From config.py — single source of truth
-    DEFAULT_MAX_TOKENS = 8192
     _PROMPTS_DIR = Path(__file__).parent / "prompts"
     _COMMON_GUIDELINES_PATH = _PROMPTS_DIR / "common-guidelines.md"
     _SCHEMAS_DIR = Path(__file__).parent / "schemas"
@@ -289,7 +288,7 @@ class APIClient:
             config: Pre-loaded configuration. If omitted, loads from all config sources
                 (environment variable, .diorc files, .env file).
             model: Anthropic model ID. Overrides the value in config.
-            max_tokens: Maximum response tokens. Defaults to 8192.
+            max_tokens: Maximum response tokens. Overrides config.pipeline.max_output_tokens.
             guidelines_path: Path to common guidelines file. Defaults to
                 prompts/common-guidelines.md in the repo root.
 
@@ -304,9 +303,10 @@ class APIClient:
             msg = str(e)
             raise SubAgentError(agent_name, msg) from e
 
+        self.config = cfg
         self._client = anthropic.Anthropic(api_key=cfg.api_key, base_url=cfg.base_url)
         self._model = model or cfg.model or self.DEFAULT_MODEL
-        self._max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
+        self._max_tokens = max_tokens or cfg.pipeline.max_output_tokens
 
         gp = Path(guidelines_path) if guidelines_path is not None else self._COMMON_GUIDELINES_PATH
         if gp.exists():
@@ -320,6 +320,26 @@ class APIClient:
     def model(self) -> str:
         """The model ID configured for this client."""
         return self._model
+
+    @property
+    def pipeline(self) -> Any:
+        """Shortcut to the tunable pipeline config block."""
+        return self.config.pipeline
+
+    def model_for(self, agent_name: str) -> str:
+        """Return the Anthropic model ID for a named sub-agent.
+
+        Falls back to the client's default model when no override is
+        configured. Intended for use inside pipeline step functions
+        that call :meth:`call_sub_agent`, e.g.:
+
+            response = client.call_sub_agent(
+                prompt_path=...,
+                user_input=...,
+                model=client.model_for("relevance_scorer"),
+            )
+        """
+        return self.config.pipeline.model_overrides.get(agent_name, self._model)
 
     def _compose_system_prompt(
         self,
