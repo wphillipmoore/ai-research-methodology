@@ -32,19 +32,12 @@
   "$defs": {
     "process_audit": {
       "type": "object",
+      "description": "LLM judgment on the two ROBIS domains that require cross-source analytical comparison. The other two classical domains (eligibility criteria, search comprehensiveness) are enforced deterministically by the pipeline and no longer sourced from the LLM.",
       "required": [
-        "eligibility_criteria",
-        "search_comprehensiveness",
         "evaluation_consistency",
         "synthesis_fairness"
       ],
       "properties": {
-        "eligibility_criteria": {
-          "$ref": "#/$defs/audit_domain"
-        },
-        "search_comprehensiveness": {
-          "$ref": "#/$defs/audit_domain"
-        },
         "evaluation_consistency": {
           "$ref": "#/$defs/audit_domain"
         },

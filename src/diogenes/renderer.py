@@ -1199,23 +1199,21 @@ def _write_self_audit(item_dir: Path, audit: dict[str, Any], report: dict[str, A
     item_for_title = {"id": audit.get("id", "?")}
     lines = [f"# {_subpage_title(item_for_title, report, 'Self-Audit')}", ""]
 
-    # CLI format: process_audit with named domains
+    # CLI format: process_audit with named domains. Eligibility and
+    # search comprehensiveness are enforced deterministically by the
+    # pipeline (not rated here); only the cross-source analytical
+    # domains appear.
     process = audit.get("process_audit", {})
     if isinstance(process, dict) and process:
         lines.extend(
             [
-                "## Process Audit (ROBIS 4 Domains)",
+                "## Process Audit (Analytical Domains)",
                 "",
                 "| Domain | Rating | Rationale |",
                 "|--------|--------|-----------|",
             ]
         )
-        for domain_key in (
-            "eligibility_criteria",
-            "search_comprehensiveness",
-            "evaluation_consistency",
-            "synthesis_fairness",
-        ):
+        for domain_key in ("evaluation_consistency", "synthesis_fairness"):
             d = process.get(domain_key, {})
             if isinstance(d, dict):
                 rating = d.get("rating", "—")

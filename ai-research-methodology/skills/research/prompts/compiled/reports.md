@@ -606,13 +606,8 @@ Your output MUST conform to this JSON Schema. This is the canonical specificatio
         },
         "domains": {
           "type": "object",
+          "description": "Per-domain rollup for the self-audit section. Eligibility criteria and search comprehensiveness are enforced deterministically by the pipeline (no LLM judgment captured here); only the cross-source analytical domains appear.",
           "properties": {
-            "eligibility_criteria": {
-              "type": "string"
-            },
-            "search_comprehensiveness": {
-              "type": "string"
-            },
             "evaluation_consistency": {
               "type": "string"
             },

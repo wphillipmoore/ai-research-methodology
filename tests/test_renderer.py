@@ -3235,7 +3235,7 @@ class TestRendererDefensiveGuards:
         assert result == {}
 
     def test_write_self_audit_process_non_dict_domain(self, tmp_path: pytest.TempPathFactory) -> None:
-        """Cover 1240->1233: process_audit domain value is not a dict."""
+        """Cover the `not a dict` skip branch in the process_audit domain loop."""
         from diogenes.renderer import _write_self_audit
 
         item_dir = tmp_path / "item"
@@ -3243,13 +3243,13 @@ class TestRendererDefensiveGuards:
         audit = {
             "id": "C001",
             "process_audit": {
-                "eligibility_criteria": "not a dict",  # Skip this one
-                "search_comprehensiveness": {"rating": "Pass"},  # Include this one
+                "evaluation_consistency": "not a dict",  # Skip this one
+                "synthesis_fairness": {"rating": "Pass"},  # Include this one
             },
         }
         _write_self_audit(item_dir, audit, {})
         content = (item_dir / "self-audit.md").read_text()
-        assert "Search Comprehensiveness" in content
+        assert "Synthesis Fairness" in content
 
     def test_write_assessment_gaps_non_list_non_dict(self, tmp_path: pytest.TempPathFactory) -> None:
         """Cover 1190->1208: gaps is truthy but neither list nor dict.
