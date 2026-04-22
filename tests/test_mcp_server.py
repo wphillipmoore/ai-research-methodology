@@ -102,6 +102,30 @@ class TestDioNextStep:
         assert result["step"] == "step_06_evidence_packets"
         assert "post_step" in result
 
+    def test_step_without_prompt_non_python(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers line 142: step with category != python_only and no prompt field."""
+        from diogenes.mcp_server import dio_next_step
+        from diogenes.state_machine import StepDefinition
+
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+
+        # Create a custom step with category="hybrid" but no prompt
+        fake_step = StepDefinition(
+            name="step_99_custom",
+            display_name="Custom Step",
+            output_file="custom.json",
+            category="hybrid",
+            prompt=None,
+        )
+        with patch("diogenes.mcp_server.PipelineState") as mock_state_cls:
+            mock_state = MagicMock()
+            mock_state.next_step.return_value = fake_step
+            mock_state.summary.return_value = {"total_steps": 1, "completed": 0, "failed": 0, "remaining": 1}
+            mock_state_cls.return_value = mock_state
+            result = json.loads(dio_next_step(str(run_dir)))
+        assert "dio_execute_step" in result["instructions"]
+
     def test_step_with_mcp_tools(self, tmp_path: pytest.TempPathFactory) -> None:
         from diogenes.mcp_server import dio_next_step
         from diogenes.state_machine import PIPELINE_STEPS, PipelineState
@@ -373,6 +397,92 @@ class TestDioValidatePackets:
         result = json.loads(dio_validate_packets(str(tmp_path)))
         assert result["validated"] is True
         assert result["packets_kept"] == 1
+
+    def test_non_dict_item_skipped(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers line 486: non-dict value in packets_data is skipped."""
+        from diogenes.mcp_server import dio_validate_packets
+
+        # CLI format with a non-dict value mixed in
+        packets = {
+            "Q001": {"id": "Q001", "packets": []},
+            "metadata": "not a dict",
+        }
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
+        (tmp_path / "scorecards.json").write_text("{}")  # type: ignore[operator]
+
+        result = json.loads(dio_validate_packets(str(tmp_path)))
+        assert result["validated"] is True
+        assert result["packets_claimed"] == 0
+
+    def test_cache_url_already_in_content(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers branch 468->467: cache URL already has content from scorecards."""
+        from diogenes.content_cache import get_content_cache
+        from diogenes.mcp_server import dio_validate_packets
+
+        cache = get_content_cache()
+        cache.put("https://a.com", "cached content that is not needed")
+
+        # Scorecards already provide content for the same URL
+        packets = {"Q001": {"id": "Q001", "packets": []}}
+        scorecards = {
+            "Q001": {
+                "scorecards": [
+                    {"url": "https://a.com", "content_extract": "scorecard content"},
+                ],
+            }
+        }
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+
+        result = json.loads(dio_validate_packets(str(tmp_path)))
+        assert result["validated"] is True
+
+    def test_cache_url_returns_empty(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers branch 470->467: cache.get returns empty/None for a URL."""
+        from diogenes.content_cache import get_content_cache
+        from diogenes.mcp_server import dio_validate_packets
+
+        cache = get_content_cache()
+        cache.put("https://empty.com", "")
+
+        packets = {"Q001": {"id": "Q001", "packets": []}}
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
+        (tmp_path / "scorecards.json").write_text("{}")  # type: ignore[operator]
+
+        result = json.loads(dio_validate_packets(str(tmp_path)))
+        assert result["validated"] is True
+
+    def test_scorecard_skill_format_empty_url(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers branch 546->543: skill-format scorecard with empty url."""
+        from diogenes.mcp_server import dio_validate_packets
+
+        packets = {"id": "Q001", "packets": []}
+        scorecards = {
+            "scorecards": [
+                {"url": "", "content_extract": "content"},
+                {"url": "https://a.com", "content_extract": ""},
+            ],
+        }
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+
+        result = json.loads(dio_validate_packets(str(tmp_path)))
+        assert result["validated"] is True
+
+    def test_scorecard_cli_format_non_dict_values(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers branch 550->549: CLI-format scorecards with non-dict items."""
+        from diogenes.mcp_server import dio_validate_packets
+
+        packets = {"Q001": {"id": "Q001", "packets": []}}
+        scorecards = {
+            "Q001": {"scorecards": [{"url": "", "content_extract": "content"}]},
+            "metadata": "string value",
+        }
+        (tmp_path / "evidence-packets.json").write_text(json.dumps(packets))  # type: ignore[operator]
+        (tmp_path / "scorecards.json").write_text(json.dumps(scorecards))  # type: ignore[operator]
+
+        result = json.loads(dio_validate_packets(str(tmp_path)))
+        assert result["validated"] is True
 
     def test_uses_content_cache(self, tmp_path: pytest.TempPathFactory) -> None:
         from diogenes.content_cache import get_content_cache

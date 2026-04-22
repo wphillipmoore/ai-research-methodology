@@ -97,6 +97,47 @@ class TestExtractPdf:
         with pytest.raises(FetchError):
             _extract_pdf("https://example.com/doc.pdf", b"")
 
+    def test_pdf_with_extractable_text(self) -> None:
+        """Covers line 132: successful return path of _extract_pdf."""
+        import io
+
+        from pypdf import PageObject, PdfWriter
+        from pypdf.generic import (
+            DecodedStreamObject,
+            DictionaryObject,
+            NameObject,
+        )
+
+        writer = PdfWriter()
+        page = PageObject.create_blank_page(width=200, height=200)
+        # Inject a text content stream with a font resource
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {
+                        NameObject("/F1"): DictionaryObject(
+                            {
+                                NameObject("/Type"): NameObject("/Font"),
+                                NameObject("/Subtype"): NameObject("/Type1"),
+                                NameObject("/BaseFont"): NameObject("/Helvetica"),
+                            }
+                        )
+                    }
+                )
+            }
+        )
+        stream = DecodedStreamObject()
+        stream.set_data(b"BT /F1 12 Tf 72 720 Td (Hello extractable text) Tj ET")
+        page[NameObject("/Contents")] = stream
+        writer.add_page(page)
+
+        buf = io.BytesIO()
+        writer.write(buf)
+        pdf_bytes = buf.getvalue()
+
+        result = _extract_pdf("https://example.com/doc.pdf", pdf_bytes)
+        assert "extractable text" in result
+
 
 class TestExtractHtml:
     """Tests for _extract_html."""

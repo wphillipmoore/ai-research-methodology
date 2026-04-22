@@ -245,6 +245,36 @@ class TestReconcileRun:
         assert coverage["packets_claimed"] == 0
         assert coverage["verbatim_adherence_pct"] is None
 
+    def test_items_without_verbatim_stats(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers the branch where item_data has no verbatim_stats (208->206)."""
+        run_dir = tmp_path / "run-nostats"  # type: ignore[operator]
+        run_dir.mkdir()
+
+        search_results = {
+            "Q001": {
+                "id": "Q001",
+                "selected_sources": [{"url": "https://a.com"}],
+            }
+        }
+        (run_dir / "search-results.json").write_text(json.dumps(search_results))
+
+        scorecards = {"Q001": {"id": "Q001", "scorecards": [{"url": "https://a.com", "score": 8}]}}
+        (run_dir / "scorecards.json").write_text(json.dumps(scorecards))
+
+        # Evidence packets with NO verbatim_stats on the item
+        evidence = {"Q001": {"id": "Q001", "packets": []}}
+        (run_dir / "evidence-packets.json").write_text(json.dumps(evidence))
+
+        for fname in ("hypotheses.json", "search-plans.json", "synthesis.json", "self-audit.json", "reports.json"):
+            (run_dir / fname).write_text("{}")
+
+        logger = EventLogger(run_id="test")
+        coverage = reconcile_run(run_dir, logger)  # type: ignore[arg-type]
+        # With no verbatim_stats, packets_claimed should be 0
+        assert coverage["packets_claimed"] == 0
+        assert coverage["packets_verified"] == 0
+        assert coverage["verbatim_adherence_pct"] is None
+
     def test_fetch_failures_counted(self, tmp_path: pytest.TempPathFactory) -> None:
         run_dir = self._create_run_dir(tmp_path)
         logger = EventLogger(run_id="test")

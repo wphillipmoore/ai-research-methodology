@@ -307,6 +307,20 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
+    def test_step_11_events_with_events_logged(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Covers line 186: n_events is nonzero so the print fires."""
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        # Add events to the logger so n_events > 0
+        el.log(step="step5", kind="fetch_failed", detail="timeout", layer="pipeline")
+        el.log(step="step5", kind="source_capped", detail="capped", layer="pipeline")
+        step = PIPELINE_STEPS[10]  # step_11_pipeline_events
+        with patch(
+            "diogenes.commands.run.reconcile_run",
+            return_value={"verbatim_adherence_pct": 80.0, "sources_scored": 5, "sources_attempted": 6},
+        ):
+            result = _dispatch_step(step, outputs, client, sp, el, rd)
+        assert result == {"_self_written": True}
+
     def test_step_11_no_adherence(self, tmp_path: pytest.TempPathFactory) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         step = PIPELINE_STEPS[10]
@@ -350,3 +364,121 @@ class TestExecute:
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = None
         assert execute("input.json", "/tmp/out", 1) == 1
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._parse_and_clarify")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_full_pipeline_success(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_parse: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """Integration test covering lines 320-402: full pipeline loop."""
+        # Setup APIClient mock
+        mock_client = MagicMock()
+        mock_client.model = "test-model"
+        mock_client.usage.to_dict.return_value = {
+            "totals": {
+                "api_calls": 10,
+                "input_tokens": 5000,
+                "output_tokens": 2000,
+                "total_tokens": 7000,
+                "estimated_cost_usd": 0.05,
+                "web_search_requests": 3,
+                "web_fetch_requests": 5,
+            },
+            "per_call": [],
+        }
+        mock_api_cls.return_value = mock_client
+
+        mock_sp.return_value = MagicMock()
+        mock_parse.return_value = {"claims": [{"text": "test"}], "queries": [], "axioms": []}
+
+        # _dispatch_step returns a result dict for most steps, and
+        # {"_self_written": True} for archive/events steps
+        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+            if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
+                return {"_self_written": True}
+            return {"result": "ok"}
+
+        mock_dispatch.side_effect = dispatch_side_effect
+
+        output_dir = str(tmp_path / "output")  # type: ignore[operator]
+        result = execute("input.json", output_dir, 1)
+        assert result == 0
+
+        # Verify dispatch was called for steps 2-11 (step 1 is pre-done)
+        assert mock_dispatch.call_count == 10
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._parse_and_clarify")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_pipeline_step_failure(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_parse: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """Test that a failing step returns exit code 1."""
+        mock_client = MagicMock()
+        mock_client.model = "test-model"
+        mock_api_cls.return_value = mock_client
+
+        mock_sp.return_value = MagicMock()
+        mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
+
+        # First dispatch returns None (failure)
+        mock_dispatch.return_value = None
+
+        output_dir = str(tmp_path / "output")  # type: ignore[operator]
+        result = execute("input.json", output_dir, 1)
+        assert result == 1
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._parse_and_clarify")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_pipeline_no_web_searches(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_parse: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """Test execute with zero web searches (branch in usage report)."""
+        mock_client = MagicMock()
+        mock_client.model = "test-model"
+        mock_client.usage.to_dict.return_value = {
+            "totals": {
+                "api_calls": 5,
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "total_tokens": 1500,
+                "estimated_cost_usd": 0.01,
+                "web_search_requests": 0,
+                "web_fetch_requests": 0,
+            },
+            "per_call": [],
+        }
+        mock_api_cls.return_value = mock_client
+        mock_sp.return_value = MagicMock()
+        mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
+
+        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+            if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
+                return {"_self_written": True}
+            return {"result": "ok"}
+
+        mock_dispatch.side_effect = dispatch_side_effect
+
+        output_dir = str(tmp_path / "output")  # type: ignore[operator]
+        result = execute("input.json", output_dir, 1)
+        assert result == 0

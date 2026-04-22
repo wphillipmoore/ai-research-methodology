@@ -105,12 +105,18 @@ docstring-quotes = "double"
     "PLR2004", # Magic values in test assertions are readable as-is.
     "PLC0415", # Deferred imports in tests are intentional (avoid circular imports).
     "SLF001",  # Tests may access private members for verification.
+    "ARG001",  # Unused args in side_effect callables that must match signatures.
     "ARG002",  # Unused method args from fixtures (monkeypatch, tmp_path).
     "PT019",   # Fixture without value is fine (setup/teardown patterns).
     "PT017",   # Asserting on exception attributes is clearer than nested raises.
     "F841",    # Unused local assigned for side-effect verification.
     "RUF059",  # Unused unpacked variables from tuple returns (e.g., _, rejected).
     "RUF043",  # Regex metacharacters in match= are intentional.
+    "PLR0913", # Side-effect callables must match production function signatures.
+    "PLR0915", # Comprehensive fixture-based tests may have many statements.
+    "ANN001",  # Side-effect callables inherit types from target function.
+    "ANN202",  # Nested test helper functions do not need return annotations.
+    "E741",    # Single-letter loop vars are fine in short test comprehensions.
 ]
 "scripts/**/*.py" = [
     "D1",    # Scripts do not require docstrings.
@@ -183,4 +189,20 @@ testpaths = ["tests"]
 addopts = "-v"
 markers = [
     "integration: integration tests requiring AI API access",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["diogenes"]
+
+[tool.coverage.report]
+# Explicit exceptions to 100% coverage rule:
+# - Entry-point guards (`if __name__ == "__main__":`) are standard Python idiom,
+#   unreachable via import, and don't need testing.
+# - MCP server main() invokes FastMCP's server.run() which blocks forever on a
+#   network socket; testing it requires starting/stopping a real server process.
+exclude_also = [
+    'if __name__ == "__main__":',
+    "def main\\(\\) -> None:\\s*\"\"\"Run the MCP server\\.\"\"\"",
+    "server\\.run\\(\\)",
 ]

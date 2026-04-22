@@ -150,6 +150,17 @@ class TestParseJsonResponse:
         result = _parse_json_response(text, "test")
         assert result == {"a": 1}
 
+    def test_unbalanced_braces_raises(self) -> None:
+        """Covers branch 160->173: for-loop exhaustion when braces never balance."""
+        with pytest.raises(SubAgentError, match="Could not extract"):
+            _parse_json_response("{unclosed", "test")
+
+    def test_nested_braces_with_prefix(self) -> None:
+        """Covers branch 165->160: depth != 0 at inner '}'."""
+        text = 'Here is JSON: {"a": {"b": 1}} done'
+        result = _parse_json_response(text, "test")
+        assert result == {"a": {"b": 1}}
+
 
 class TestStripToSchema:
     """Tests for _strip_to_schema."""
@@ -652,3 +663,37 @@ class TestAPIClient:
         )
         # extra_field should have been stripped
         assert "extra_field" not in result
+
+    @patch("diogenes.api_client.anthropic.Anthropic")
+    def test_call_sub_agent_skips_non_text_blocks(
+        self, mock_anthropic_cls: MagicMock, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        """Covers branch 485->484: response contains non-text blocks."""
+        mock_client = MagicMock()
+        mock_anthropic_cls.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.model = "m"
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 5
+        mock_response.usage.cache_creation_input_tokens = 0
+        mock_response.usage.cache_read_input_tokens = 0
+        mock_response.usage.server_tool_use = None
+        mock_response.usage.service_tier = None
+
+        # First block is tool_use (non-text), second is text
+        tool_block = MagicMock()
+        tool_block.type = "tool_use"
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = '{"result": "ok"}'
+        mock_response.content = [tool_block, text_block]
+        mock_client.messages.create.return_value = mock_response
+
+        prompt = tmp_path / "prompt.md"  # type: ignore[operator]
+        prompt.write_text("Prompt")
+
+        cfg = self._make_config()
+        client = APIClient(config=cfg, guidelines_path="/dev/null")
+        result = client.call_sub_agent(prompt_path=prompt, user_input="test")
+        assert result == {"result": "ok"}
