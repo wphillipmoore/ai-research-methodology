@@ -318,12 +318,11 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
     clarified_path = write_step_output(instance_dir, "research-input-clarified.json", research_input)
     print(f"  Wrote: {clarified_path}")
 
-    # Save methodology snapshot (common guidelines from the package)
-    guidelines_src = _PACKAGE_DIR / "prompts" / "common-guidelines.md"
-    if guidelines_src.exists():
-        snapshot_dest = instance_dir / "prompt-snapshot.md"
-        snapshot_dest.write_text(guidelines_src.read_text())
-        print("  Saved: prompt-snapshot.md")
+    # Methodology provenance now lives in pipeline-state.json's 'version'
+    # block (package_version + git commit/branch/dirty). The previous
+    # prompt-snapshot.md copy of common-guidelines.md is redundant — the
+    # prompts are in the git repo, and the version stamp identifies which
+    # revision produced this run.
 
     # --- Pipeline execution (state-machine-driven) ---
     print()

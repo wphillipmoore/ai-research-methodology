@@ -1,10 +1,18 @@
 """Tests for state_machine module."""
 
 import json
+import subprocess
 
 import pytest
 
-from diogenes.state_machine import PIPELINE_STEPS, PipelineState, StepDefinition, StepStatus
+from diogenes.state_machine import (
+    PIPELINE_STEPS,
+    PipelineState,
+    StepDefinition,
+    StepStatus,
+    _compute_version,
+    _git_metadata,
+)
 
 
 class TestStepDefinition:
@@ -316,3 +324,94 @@ class TestPipelineState:
         step = data["steps"][0]
         assert step["status"] == "failed"
         assert step["elapsed_seconds"] is None
+
+
+class TestGitMetadata:
+    """Tests for _git_metadata helper."""
+
+    def test_returns_dict_in_git_checkout(self) -> None:
+        """Return real commit/branch/dirty when run inside the source checkout."""
+        meta = _git_metadata()
+        assert meta is not None
+        assert isinstance(meta["commit"], str)
+        # Commit is 40-char SHA
+        assert len(meta["commit"]) == 40
+        assert isinstance(meta["branch"], str)
+        assert isinstance(meta["dirty"], bool)
+
+    def test_returns_none_when_git_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """If the git CLI is missing (e.g., installed from a wheel), fall back cleanly."""
+
+        def boom(*_args: object, **_kwargs: object) -> None:
+            raise FileNotFoundError
+
+        monkeypatch.setattr("diogenes.state_machine.subprocess.check_output", boom)
+        assert _git_metadata() is None
+
+    def test_returns_none_when_git_exits_nonzero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """If git returns non-zero (e.g., run outside a repo), fall back cleanly."""
+
+        def boom(*_args: object, **_kwargs: object) -> None:
+            raise subprocess.CalledProcessError(128, "git")
+
+        monkeypatch.setattr("diogenes.state_machine.subprocess.check_output", boom)
+        assert _git_metadata() is None
+
+
+class TestComputeVersion:
+    """Tests for _compute_version."""
+
+    def test_always_includes_package_version(self) -> None:
+        version = _compute_version()
+        assert "package_version" in version
+
+    def test_includes_git_fields_when_available(self) -> None:
+        version = _compute_version()
+        # When run in the source checkout (normal test environment), git fields
+        # are present
+        assert "git_commit" in version
+        assert "git_branch" in version
+        assert "git_dirty" in version
+
+    def test_omits_git_fields_when_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("diogenes.state_machine._git_metadata", lambda: None)
+        version = _compute_version()
+        assert set(version.keys()) == {"package_version"}
+
+
+class TestVersionInPipelineState:
+    """Version metadata persisted in pipeline-state.json."""
+
+    def test_version_written_on_fresh_state(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert "version" in data
+        assert "package_version" in data["version"]
+
+    def test_version_preserved_across_reload(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Resuming a run keeps the version from when the run was created.
+
+        The version stamp identifies which code produced the outputs, not
+        which process most recently touched the state. Preserving it on
+        reload means resuming on a different commit doesn't overwrite the
+        provenance trail.
+        """
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        # Pre-populate with a specific version block that differs from
+        # whatever _compute_version would produce here
+        preload = {
+            "created_at": "2026-01-01T00:00:00Z",
+            "version": {"package_version": "0.0.1-pinned", "git_commit": "abc123"},
+            "steps": [],
+        }
+        (run_dir / "pipeline-state.json").write_text(json.dumps(preload))
+
+        state = PipelineState(run_dir)
+        state.mark_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert data["version"]["package_version"] == "0.0.1-pinned"
+        assert data["version"]["git_commit"] == "abc123"
