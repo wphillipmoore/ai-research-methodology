@@ -185,6 +185,22 @@ class TestPipelineState:
         assert data["elapsed_seconds"] is not None
         assert data["elapsed_seconds"] >= 0
 
+    def test_pid_captured_on_save(self, tmp_path: pytest.TempPathFactory) -> None:
+        """pipeline-state.json includes the PID of the writing process.
+
+        Used to correlate OS-level crash reports (e.g., macOS SIGABRT)
+        with a specific research run. Captured on every save so the value
+        always reflects the currently-executing process.
+        """
+        import os
+
+        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_complete("step_01_research_input_clarified")
+        data = json.loads((run_dir / "pipeline-state.json").read_text())
+        assert data["pid"] == os.getpid()
+
     def test_completed_at_set_when_all_done(self, tmp_path: pytest.TempPathFactory) -> None:
         run_dir = tmp_path / "run-1"  # type: ignore[operator]
         run_dir.mkdir()
