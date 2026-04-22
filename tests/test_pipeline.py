@@ -250,17 +250,20 @@ class TestFetchSourcesForScoring:
 class TestPrintHypothesisSummary:
     """Tests for _print_hypothesis_summary."""
 
-    def test_hypotheses_approach(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_hypothesis_summary("Q001", {"approach": "hypotheses", "hypotheses": [1, 2, 3]})
-        assert "3 hypotheses" in capsys.readouterr().out
+    def test_hypotheses_approach(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("INFO", logger="diogenes.pipeline"):
+            _print_hypothesis_summary("Q001", {"approach": "hypotheses", "hypotheses": [1, 2, 3]})
+        assert "3 hypotheses" in caplog.text
 
-    def test_open_ended_approach(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_hypothesis_summary("Q001", {"approach": "open-ended", "search_themes": [1, 2]})
-        assert "2 search themes" in capsys.readouterr().out
+    def test_open_ended_approach(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("INFO", logger="diogenes.pipeline"):
+            _print_hypothesis_summary("Q001", {"approach": "open-ended", "search_themes": [1, 2]})
+        assert "2 search themes" in caplog.text
 
-    def test_unknown_approach(self, capsys: pytest.CaptureFixture[str]) -> None:
-        _print_hypothesis_summary("Q001", {"approach": "custom"})
-        assert "approach=custom" in capsys.readouterr().out
+    def test_unknown_approach(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("INFO", logger="diogenes.pipeline"):
+            _print_hypothesis_summary("Q001", {"approach": "custom"})
+        assert "approach=custom" in caplog.text
 
 
 class TestStep2GenerateHypotheses:
