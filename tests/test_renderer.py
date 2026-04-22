@@ -2141,3 +2141,387 @@ class TestWriteSearchesEmpty:
         item_dir.mkdir()
         _write_searches(item_dir, "C001", {}, {}, {})
         assert not (item_dir / "searches").exists()
+
+
+def _create_minimal_run(run_dir: Path) -> None:
+    """Create a run with minimal/absent optional fields to flip conditionals to False.
+
+    Exercises branches where optional data is missing: no gaps, no outliers,
+    no revisit_triggers, no ipcc, no evidence_quality rating, no scale, etc.
+    Also uses plugin-style flat output for items.
+    """
+    ri = {
+        "claims": [
+            {
+                "id": "C001",
+                "type": "claim",
+                "text": "Minimal claim",
+                "clarified_text": "Minimal claim clarified",
+                "original_text": "Minimal claim",
+            },
+        ],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+
+    # Hypotheses with no optional fields
+    hyp = {
+        "C001": {
+            "id": "C001",
+            "approach": "hypotheses",
+            "hypotheses": [
+                {"id": "H1", "text": "H1 text"},  # No direction, no label
+            ],
+        },
+    }
+    (run_dir / "hypotheses.json").write_text(json.dumps(hyp))
+
+    sp = {"C001": {"id": "C001", "searches": []}}
+    (run_dir / "search-plans.json").write_text(json.dumps(sp))
+
+    sr = {
+        "C001": {
+            "id": "C001",
+            "searches_executed": [],
+            "selected_sources": [],
+            "rejected_sources": [],
+            "summary": {
+                "total_searches": 0,
+                "total_results_found": 0,
+                "total_selected": 0,
+                "total_rejected": 0,
+                "relevance_threshold": 5,
+            },
+        },
+    }
+    (run_dir / "search-results.json").write_text(json.dumps(sr))
+
+    sc = {"C001": {"id": "C001", "scorecards": []}}
+    (run_dir / "scorecards.json").write_text(json.dumps(sc))
+
+    ep = {
+        "C001": {
+            "id": "C001",
+            "packets": [],
+        },
+    }
+    (run_dir / "evidence-packets.json").write_text(json.dumps(ep))
+
+    # Synthesis: evidence_quality/source_agreement have NO rating
+    syn = {
+        "C001": {
+            "id": "C001",
+            "synthesis": {
+                "evidence_quality": {"rationale": "no rating here"},
+                "source_agreement": {"rationale": "no rating here"},
+                "independence": {},
+                "outliers": [],
+            },
+            "assessment": {
+                "verdict": "Inconclusive",
+                "confidence": "Low",
+            },
+            # Empty gaps list
+            "gaps": [],
+        },
+    }
+    (run_dir / "synthesis.json").write_text(json.dumps(syn))
+
+    sa = {
+        "C001": {
+            "id": "C001",
+            "process_audit": {},
+            "reading_list": [],
+        },
+    }
+    (run_dir / "self-audit.json").write_text(json.dumps(sa))
+
+    # Reports with no verdict, no summary, no reasoning, no key findings
+    rp = {
+        "C001": {
+            "id": "C001",
+            "mode": "claim",
+            "assessment_summary": {},
+            "revisit_triggers": [],
+        },
+    }
+    (run_dir / "reports.json").write_text(json.dumps(rp))
+
+
+def _create_cli_dict_gaps_run(run_dir: Path) -> None:
+    """Create a run with CLI-style gaps as dict (expected_not_found, unanswered_questions)."""
+    ri = {
+        "claims": [
+            {
+                "id": "C001",
+                "type": "claim",
+                "text": "Gap test",
+                "clarified_text": "Gap test",
+                "original_text": "Gap test",
+            },
+        ],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+
+    # CLI-format gaps as dict
+    syn = {
+        "C001": {
+            "id": "C001",
+            "synthesis": "synthesis as string",
+            "gaps": {
+                "expected_not_found": ["study A", "study B"],
+                "unanswered_questions": ["question 1"],
+                "impact_on_confidence": "Moderate impact",
+            },
+            "assessment": {"verdict": "Unclear"},
+        },
+    }
+    (run_dir / "synthesis.json").write_text(json.dumps(syn))
+
+    sa = {"C001": {"id": "C001", "process_audit": {}, "reading_list": []}}
+    (run_dir / "self-audit.json").write_text(json.dumps(sa))
+    rp = {"C001": {"id": "C001", "mode": "claim", "assessment_summary": {}}}
+    (run_dir / "reports.json").write_text(json.dumps(rp))
+
+
+class TestRenderRunMinimal:
+    """Tests for render_run with minimal optional fields (False branches)."""
+
+    def test_minimal_run_renders(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-min"
+        run_dir.mkdir()
+        _create_minimal_run(run_dir)
+        output_dir = tmp_path / "md-min"
+        render_run(run_dir, output_dir)
+        # Should produce at least index.md
+        assert (output_dir / "index.md").exists()
+
+
+class TestRenderRunCliDictGaps:
+    """Tests for render_run with CLI-format dict gaps."""
+
+    def test_cli_dict_gaps(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run-gaps"
+        run_dir.mkdir()
+        _create_cli_dict_gaps_run(run_dir)
+        output_dir = tmp_path / "md-gaps"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        assessment = (c001_dirs[0] / "assessment.md").read_text()
+        assert "Expected but not found" in assessment
+        assert "Unanswered questions" in assessment
+        assert "Impact on confidence" in assessment
+
+
+class TestAddTocEdgeCases:
+    """Target remaining branches in _add_toc."""
+
+    def test_anchor_from_preceding_line(self) -> None:
+        """Cover 257->267: anchor found in preceding line (no new anchor needed)."""
+        lines = [
+            "# Title",
+            "",
+            '<a id="custom-anchor"></a>',
+            "## Section One",
+            "",
+            "text",
+            "",
+            "## Section Two",
+            "",
+            "more text",
+        ]
+        result = _add_toc(lines)
+        # Should include the custom anchor in TOC
+        assert any("custom-anchor" in l for l in result)
+
+    def test_no_blank_after_title(self) -> None:
+        """Cover 291->294: result[insert_at].strip() is truthy (no blank line)."""
+        lines = ["# Title", "## Section One", "", "## Section Two", "", "text"]
+        result = _add_toc(lines)
+        assert "<!-- TOC START -->" in "\n".join(result)
+
+
+class TestCollectHypothesisRatingsCompletion:
+    """Cover remaining _collect_hypothesis_ratings branches."""
+
+    def test_hyp_id_already_in_ratings_from_cli(self) -> None:
+        """Cover 335->342: plugin disposition skipped because hyp_id already in ratings."""
+        report = {
+            "assessment": {
+                "hypothesis_ratings": [
+                    {"hypothesis_id": "H1", "probability_term": "Likely", "probability_range": "66%"},
+                ],
+            },
+        }
+        synthesis = {"assessment": {"hypothesis_disposition": {"H1": "overridden", "H2": "only-plugin"}}}
+        result = _collect_hypothesis_ratings(report, synthesis)
+        # H1 comes from CLI, H2 comes from plugin
+        assert "Likely" in result["H1"]
+        assert result["H2"] == "only-plugin"
+
+
+def _create_run_with_assessment_variants(
+    run_dir: Path,
+    *,
+    include_report: bool = True,
+    include_verdict_chain: bool = False,
+    assessment_empty: bool = False,
+    gaps_dict_empty: bool = False,
+) -> None:
+    """Build a configurable fixture for assessment rendering variants."""
+    from typing import Any
+
+    ri = {
+        "claims": [
+            {
+                "id": "C001",
+                "type": "claim",
+                "text": "Test",
+                "clarified_text": "Test",
+                "original_text": "Test",
+            },
+        ],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+
+    syn_data: dict[str, Any] = {"id": "C001"}
+    if assessment_empty:
+        syn_data["assessment"] = {}
+    else:
+        syn_data["assessment"] = {"verdict": "V", "confidence": "C"}
+    if gaps_dict_empty:
+        syn_data["gaps"] = {}
+    else:
+        syn_data["gaps"] = []
+
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": syn_data}))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+
+    if include_report:
+        rp_item = {"id": "C001", "mode": "claim", "assessment_summary": {}}
+        if include_verdict_chain:
+            rp_item["verdict"] = "verdict string"
+            rp_item["reasoning_chain"] = "chain of reasoning"
+        (run_dir / "reports.json").write_text(json.dumps({"C001": rp_item}))
+    else:
+        (run_dir / "reports.json").write_text(json.dumps({}))
+
+
+class TestAssessmentRenderingVariants:
+    """Cover branches in _write_assessment for various data shapes."""
+
+    def test_no_report(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1100->1112: report is falsy, skip verdict section."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_assessment_variants(run_dir, include_report=False)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        # Should still render assessment.md without report-based sections
+        assert (c001_dirs[0] / "assessment.md").exists()
+
+    def test_verdict_chain_reasoning(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover reasoning_chain branch (vs just `reasoning`)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_assessment_variants(run_dir, include_verdict_chain=True)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        assessment = (c001_dirs[0] / "assessment.md").read_text()
+        assert "verdict string" in assessment
+        assert "chain of reasoning" in assessment
+
+    def test_empty_assessment_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1151->1181: assessment dict exists but is empty."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_assessment_variants(run_dir, assessment_empty=True)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        # Should render but without Probability Assessment section
+        assessment = (c001_dirs[0] / "assessment.md").read_text()
+        assert "Probability Assessment" not in assessment
+
+    def test_empty_gaps_dict(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover 1190->1208: gaps is dict but empty (no expected/unanswered/impact)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_with_assessment_variants(run_dir, gaps_dict_empty=True)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        # Should render without crashing
+
+
+class TestGroupRenderingBranches:
+    """Cover branches in group-level rendering."""
+
+    def test_group_without_synthesis(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Cover branches when group has no group-synthesis.json."""
+        group_dir = tmp_path / "group"
+        group_dir.mkdir()
+        run1 = group_dir / "run-1"
+        run1.mkdir()
+        _create_minimal_run(run1)
+        output_dir = tmp_path / "md"
+        render_run_group(group_dir, output_dir)
+        assert (output_dir / "index.md").exists()
