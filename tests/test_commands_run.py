@@ -240,6 +240,83 @@ class TestDispatchStep:
         result = _dispatch_step(step, outputs, client, sp, el, rd)
         assert result is None
 
+    def test_step_03_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        outputs["hypotheses"] = {}
+        step = PIPELINE_STEPS[2]  # step_03
+        with patch("diogenes.commands.run.step3_design_searches", return_value={}) as mock:
+            _dispatch_step(step, outputs, client, sp, el, rd)
+        mock.assert_called_once()
+
+    def test_step_04_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        outputs["search_plans"] = {}
+        step = PIPELINE_STEPS[3]  # step_04
+        with patch("diogenes.commands.run.step4_execute_searches", return_value={}) as mock:
+            _dispatch_step(step, outputs, client, sp, el, rd)
+        mock.assert_called_once()
+
+    def test_step_05_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        outputs["search_results"] = {}
+        step = PIPELINE_STEPS[4]  # step_05
+        with patch("diogenes.commands.run.step5_score_sources", return_value={}) as mock:
+            _dispatch_step(step, outputs, client, sp, el, rd)
+        mock.assert_called_once()
+
+    def test_step_06_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        outputs["hypotheses"] = {}
+        outputs["scorecards"] = {}
+        step = PIPELINE_STEPS[5]  # step_06
+        with patch("diogenes.commands.run.step5b_extract_evidence", return_value={}) as mock:
+            _dispatch_step(step, outputs, client, sp, el, rd)
+        mock.assert_called_once()
+
+    def test_step_07_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        outputs["hypotheses"] = {}
+        outputs["scorecards"] = {}
+        outputs["evidence_packets"] = {}
+        step = PIPELINE_STEPS[6]  # step_07
+        with patch("diogenes.commands.run.steps678_synthesize_and_assess", return_value={}) as mock:
+            _dispatch_step(step, outputs, client, sp, el, rd)
+        mock.assert_called_once()
+
+    def test_step_08_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        outputs["hypotheses"] = {}
+        outputs["search_results"] = {}
+        outputs["scorecards"] = {}
+        outputs["evidence_packets"] = {}
+        outputs["synthesis"] = {}
+        step = PIPELINE_STEPS[7]  # step_08
+        with patch("diogenes.commands.run.step9_self_audit", return_value={}) as mock:
+            _dispatch_step(step, outputs, client, sp, el, rd)
+        mock.assert_called_once()
+
+    def test_step_09_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        outputs["hypotheses"] = {}
+        outputs["search_results"] = {}
+        outputs["scorecards"] = {}
+        outputs["synthesis"] = {}
+        outputs["self_audit"] = {}
+        step = PIPELINE_STEPS[8]  # step_09
+        with patch("diogenes.commands.run.step10_report", return_value={}) as mock:
+            _dispatch_step(step, outputs, client, sp, el, rd)
+        mock.assert_called_once()
+
+    def test_step_11_no_adherence(self, tmp_path: pytest.TempPathFactory) -> None:
+        outputs, client, sp, el, rd = self._make_context(tmp_path)
+        step = PIPELINE_STEPS[10]
+        with patch(
+            "diogenes.commands.run.reconcile_run",
+            return_value={"verbatim_adherence_pct": None, "sources_scored": 0, "sources_attempted": 0},
+        ):
+            result = _dispatch_step(step, outputs, client, sp, el, rd)
+        assert result == {"_self_written": True}
+
     def test_subagent_error_returns_none(self, tmp_path: pytest.TempPathFactory) -> None:
         from diogenes.api_client import SubAgentError
 

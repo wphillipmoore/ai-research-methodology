@@ -18,9 +18,13 @@ from diogenes.pipeline import (
     _verify_packet_verbatim,
     step2_generate_hypotheses,
     step3_design_searches,
+    step4_execute_searches,
     step5_score_sources,
     step5b_extract_evidence,
+    step9_self_audit,
+    step10_report,
     step11_archive,
+    steps678_synthesize_and_assess,
     write_step_output,
 )
 
@@ -500,3 +504,137 @@ class TestStep5bExtractEvidence:
         assert "skipped" in notes.lower()
         assert "Extractor failed" in notes
         assert "Verbatim validator dropped" in notes
+
+
+class TestStep4ExecuteSearches:
+    """Tests for step4_execute_searches."""
+
+    @patch("diogenes.pipeline.execute_search_plan")
+    def test_executes_searches(self, mock_exec: MagicMock) -> None:
+        from diogenes.search import SearchExecution, SearchResult
+
+        mock_exec.return_value = [
+            SearchExecution(
+                search_id="S01",
+                terms=["test"],
+                provider="mock",
+                date="2026-01-01",
+                results=[SearchResult(title="T", url="https://a.com", snippet="S")],
+                total_results_available=1,
+            )
+        ]
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "scores": [{"url": "https://a.com", "relevance_score": 8}],
+        }
+        mock_provider = MagicMock()
+        mock_provider.name = "mock"
+
+        research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
+        search_plans = {"C001": {"searches": [{"id": "S01", "terms": ["test"]}]}}
+
+        result = step4_execute_searches(research_input, search_plans, mock_client, mock_provider)
+        assert "C001" in result
+        assert len(result["C001"]["selected_sources"]) == 1
+
+    @patch("diogenes.pipeline.execute_search_plan")
+    def test_logs_rejected_sources(self, mock_exec: MagicMock) -> None:
+        from diogenes.search import SearchExecution, SearchResult
+
+        mock_exec.return_value = [
+            SearchExecution(
+                search_id="S01",
+                terms=["test"],
+                provider="mock",
+                date="2026-01-01",
+                results=[SearchResult(title="T", url="https://a.com", snippet="S")],
+                total_results_available=1,
+            )
+        ]
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "scores": [{"url": "https://a.com", "relevance_score": 2}],  # Below threshold
+        }
+        mock_provider = MagicMock()
+        mock_provider.name = "mock"
+        mock_logger = MagicMock()
+
+        research_input = {"claims": [], "queries": [{"id": "Q001", "clarified_text": "Test"}]}
+        search_plans = {"Q001": {"searches": [{"id": "S01", "terms": ["test"]}]}}
+
+        result = step4_execute_searches(research_input, search_plans, mock_client, mock_provider, mock_logger)
+        assert len(result["Q001"]["rejected_sources"]) == 1
+        mock_logger.log.assert_called()
+
+
+class TestSteps678SynthesizeAndAssess:
+    """Tests for steps678_synthesize_and_assess."""
+
+    def test_synthesizes_items(self) -> None:
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "assessment": {"verdict": "Supported", "confidence": "High"},
+            "synthesis": "Evidence supports the claim.",
+        }
+
+        research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
+        hypotheses = {"C001": {}}
+        scorecards = {"C001": {"scorecards": [{"url": "https://a.com"}]}}
+        evidence = {"C001": {"packets": [{"excerpt": "test"}]}}
+
+        result = steps678_synthesize_and_assess(research_input, hypotheses, scorecards, evidence, mock_client)
+        assert "C001" in result
+        assert result["C001"]["assessment"]["verdict"] == "Supported"
+
+
+class TestStep9SelfAudit:
+    """Tests for step9_self_audit."""
+
+    def test_audits_items(self) -> None:
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "process_audit": {
+                "eligibility_criteria": {"rating": "Pass"},
+                "search_comprehensiveness": {"rating": "Pass"},
+                "evaluation_consistency": {"rating": "Pass"},
+                "synthesis_fairness": {"rating": "Pass"},
+            },
+        }
+
+        research_input = {"claims": [], "queries": [{"id": "Q001", "clarified_text": "Test"}]}
+        result = step9_self_audit(
+            research_input,
+            {"Q001": {}},
+            {"Q001": {}},
+            {"Q001": {"scorecards": []}},
+            {"Q001": {"packets": []}},
+            {"Q001": {}},
+            mock_client,
+        )
+        assert "Q001" in result
+
+
+class TestStep10Report:
+    """Tests for step10_report."""
+
+    def test_generates_report(self) -> None:
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "assessment_summary": {"verdict": "Supported", "answer": "Yes"},
+        }
+
+        research_input = {
+            "claims": [{"id": "C001", "clarified_text": "Test claim"}],
+            "queries": [{"id": "Q001", "clarified_text": "Test query"}],
+        }
+        result = step10_report(
+            research_input,
+            {"C001": {}, "Q001": {}},
+            {"C001": {}, "Q001": {}},
+            {"C001": {"scorecards": []}, "Q001": {"scorecards": []}},
+            {"C001": {}, "Q001": {}},
+            {"C001": {}, "Q001": {}},
+            mock_client,
+        )
+        assert "C001" in result
+        assert "Q001" in result
