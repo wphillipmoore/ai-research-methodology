@@ -3059,3 +3059,195 @@ class TestRenderRunGroupNoRuns:
         # Should not have a Runs section
         assert "Runs: 0" in index
         assert "## Runs" not in index
+
+
+def _create_run_report_no_bluf_no_verdict(run_dir: Path) -> None:
+    """Report dict exists but has no verdict_summary/answer_summary/one_line AND no verdict/confidence.
+
+    Hits 811->813 and 818->820 False branches.
+    """
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": []}}))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+    # Report dict exists but missing verdict/summary fields
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim", "topic": "T"}}))
+
+
+class TestReportWithoutBlufOrVerdict:
+    """Cover 811->813 and 818->820: report dict without bluf/verdict fields."""
+
+    def test_no_bluf_no_verdict(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_report_no_bluf_no_verdict(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        index = (c001_dirs[0] / "index.md").read_text()
+        # Should not have Bottom Line or Verdict lines
+        assert "Bottom Line:" not in index
+        # Verdict may or may not appear depending on other sources
+
+
+def _create_run_assessment_verdict_no_confidence(run_dir: Path) -> None:
+    """Synthesis assessment has verdict but no confidence to hit 1174->1176 False."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+    (run_dir / "scorecards.json").write_text(json.dumps({"C001": {"id": "C001", "scorecards": []}}))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+
+    # Synthesis with verdict but NO confidence
+    syn = {
+        "C001": {
+            "id": "C001",
+            "assessment": {"verdict": "Supported"},  # No confidence key
+            "gaps": [],
+        },
+    }
+    (run_dir / "synthesis.json").write_text(json.dumps(syn))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestAssessmentVerdictNoConfidence:
+    """Cover 1174->1176: verdict present, confidence absent."""
+
+    def test_verdict_no_confidence(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_assessment_verdict_no_confidence(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        assessment = (c001_dirs[0] / "assessment.md").read_text()
+        assert "Verdict**: Supported" in assessment
+        assert "Confidence**" not in assessment
+
+
+def _create_run_source_no_url_no_metadata(run_dir: Path) -> None:
+    """Source with no URL and no other metadata to hit 1577->1579, 1586->1590 False."""
+    ri = {
+        "claims": [{"id": "C001", "type": "claim", "text": "T", "clarified_text": "T", "original_text": "T"}],
+        "queries": [],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(ri))
+    (run_dir / "hypotheses.json").write_text(
+        json.dumps({"C001": {"id": "C001", "approach": "hypotheses", "hypotheses": []}})
+    )
+    (run_dir / "search-plans.json").write_text(json.dumps({"C001": {"id": "C001", "searches": []}}))
+    (run_dir / "search-results.json").write_text(
+        json.dumps(
+            {
+                "C001": {
+                    "id": "C001",
+                    "searches_executed": [],
+                    "selected_sources": [],
+                    "rejected_sources": [],
+                    "summary": {
+                        "total_searches": 0,
+                        "total_results_found": 0,
+                        "total_selected": 0,
+                        "total_rejected": 0,
+                        "relevance_threshold": 5,
+                    },
+                }
+            }
+        )
+    )
+
+    # Scorecard with no URL, no authors, no date, no items
+    sc = {
+        "C001": {
+            "id": "C001",
+            "scorecards": [
+                {"title": "Bare source"},  # No URL, no metadata
+            ],
+        },
+    }
+    (run_dir / "scorecards.json").write_text(json.dumps(sc))
+    (run_dir / "evidence-packets.json").write_text(json.dumps({"C001": {"id": "C001", "packets": []}}))
+    (run_dir / "synthesis.json").write_text(json.dumps({"C001": {"id": "C001", "gaps": []}}))
+    (run_dir / "self-audit.json").write_text(
+        json.dumps({"C001": {"id": "C001", "process_audit": {}, "reading_list": []}})
+    )
+    (run_dir / "reports.json").write_text(json.dumps({"C001": {"id": "C001", "mode": "claim"}}))
+
+
+class TestSourceBareMinimum:
+    """Cover 1577->1579 and 1586->1590: source with no metadata fields."""
+
+    def test_bare_source(self, tmp_path: pytest.TempPathFactory) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_run_source_no_url_no_metadata(run_dir)
+        output_dir = tmp_path / "md"
+        render_run(run_dir, output_dir)
+        # Should still produce a scorecard without crashing
+        c001_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name.startswith("C001")]
+        scorecards = list((c001_dirs[0] / "sources").rglob("scorecard.md"))
+        assert len(scorecards) == 1
+        content = scorecards[0].read_text()
+        # No metadata table since all fields absent
+        assert "## Metadata" not in content
