@@ -81,7 +81,8 @@ jobs:
           uv run pytest \
             --cov=diogenes \
             --cov-report=term-missing \
-            --cov-branch
+            --cov-branch \
+            --cov-fail-under=100
 
   type-check:
     name: "ci: type-check"
