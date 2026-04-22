@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,10 +12,12 @@ from diogenes.commands.run import (
     _create_search_provider,
     _dispatch_step,
     _find_saved_input,
+    _load_prior_outputs,
     _parse_and_clarify,
     _timestamp,
     execute,
     execute_rerun,
+    execute_resume,
 )
 from diogenes.events import EventLogger
 from diogenes.state_machine import PIPELINE_STEPS, StepDefinition
@@ -674,3 +677,291 @@ class TestExecuteRerun:
         # Each instance has its own clarified JSON
         new_instance = next(d for d in instance_dirs if d.name != "2026-04-22-100000")
         assert (new_instance / "research-input-clarified.json").exists()
+
+
+def _seed_instance(
+    instance_dir: Path,
+    *,
+    completed_step_files: dict[str, dict[str, Any]],
+    running_step: str | None = None,
+) -> None:
+    """Seed a timestamped instance directory with prior step outputs + state.
+
+    ``completed_step_files`` maps output_file names to the JSON content
+    to write; each such step is marked ``complete`` in pipeline-state.json.
+    ``running_step`` optionally marks one step as still in ``running``
+    status to simulate an interrupted run.
+    """
+    from diogenes.state_machine import PIPELINE_STEPS, PipelineState
+
+    instance_dir.mkdir(parents=True, exist_ok=True)
+    for filename, payload in completed_step_files.items():
+        (instance_dir / filename).write_text(json.dumps(payload))
+
+    state = PipelineState(instance_dir)
+    for step_def in PIPELINE_STEPS:
+        if step_def.output_file and step_def.output_file in completed_step_files:
+            state.mark_complete(step_def.name, output_file=step_def.output_file)
+    if running_step:
+        state.mark_started(running_step)
+
+
+class TestLoadPriorOutputs:
+    """Tests for _load_prior_outputs."""
+
+    def test_loads_completed_outputs(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Each completed step's JSON is loaded under the pipeline's internal key."""
+        from diogenes.state_machine import PipelineState
+
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={
+                "research-input-clarified.json": {"claims": [], "queries": [{"text": "t"}]},
+                "hypotheses.json": {"Q001": {"approach": "hypotheses"}},
+            },
+        )
+        state = PipelineState(instance_dir)
+        outputs = _load_prior_outputs(instance_dir, state)
+        assert outputs is not None
+        assert "research_input" in outputs
+        assert "hypotheses" in outputs
+        assert outputs["research_input"]["queries"][0]["text"] == "t"
+
+    def test_skips_self_written_steps(self, tmp_path: pytest.TempPathFactory) -> None:
+        """archive.json and pipeline-events.json are not hoisted into outputs."""
+        from diogenes.state_machine import PipelineState
+
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={
+                "research-input-clarified.json": {"claims": [], "queries": []},
+                "archive.json": {"all": "steps"},
+                "pipeline-events.json": {"events": []},
+            },
+        )
+        state = PipelineState(instance_dir)
+        outputs = _load_prior_outputs(instance_dir, state)
+        assert outputs is not None
+        assert "archive" not in outputs
+        assert "pipeline_events" not in outputs
+
+    def test_missing_output_file_is_inconsistent(self, tmp_path: pytest.TempPathFactory) -> None:
+        """State says complete but file is gone → refuse to guess, return None."""
+        from diogenes.state_machine import PipelineState
+
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
+        )
+        (instance_dir / "research-input-clarified.json").unlink()
+        state = PipelineState(instance_dir)
+        assert _load_prior_outputs(instance_dir, state) is None
+
+    def test_skips_step_without_output_file(
+        self,
+        tmp_path: pytest.TempPathFactory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Defensive: a completed step with output_file=None is skipped, not a crash.
+
+        PIPELINE_STEPS today has no such step, but StepDefinition permits it
+        and this branch guards against a future step that mutates existing
+        artifacts without creating a new file.
+        """
+        from diogenes.state_machine import PipelineState, StepDefinition
+
+        fake_step = StepDefinition(
+            name="step_fake_no_output",
+            display_name="Fake",
+            output_file=None,
+            category="python_only",
+        )
+        monkeypatch.setattr("diogenes.commands.run.PIPELINE_STEPS", [fake_step])
+
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir.mkdir()
+        state = PipelineState(instance_dir)
+        state.mark_complete("step_fake_no_output")
+
+        # _load_prior_outputs walks the patched steps and must skip the
+        # output_file=None step without erroring out.
+        outputs = _load_prior_outputs(instance_dir, state)
+        assert outputs == {}
+
+
+class TestExecuteResume:
+    """Tests for execute_resume."""
+
+    def test_missing_instance_dir(self) -> None:
+        assert execute_resume("/nonexistent/path") == 1
+
+    def test_missing_state_file(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Instance dir exists but no pipeline-state.json → exit 1."""
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir.mkdir()
+        assert execute_resume(str(instance_dir)) == 1
+
+    def test_all_steps_complete_is_noop(self, tmp_path: pytest.TempPathFactory) -> None:
+        """Fully complete instance → exit 0 without dispatching anything."""
+        from diogenes.state_machine import PIPELINE_STEPS, PipelineState
+
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir.mkdir()
+        state = PipelineState(instance_dir)
+        for step_def in PIPELINE_STEPS:
+            state.mark_complete(step_def.name, output_file=step_def.output_file)
+
+        with patch("diogenes.commands.run._dispatch_step") as mock_dispatch:
+            assert execute_resume(str(instance_dir)) == 0
+            mock_dispatch.assert_not_called()
+
+    def test_inconsistent_state_missing_output(self, tmp_path: pytest.TempPathFactory) -> None:
+        """State says step complete but its output file is missing → exit 1."""
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
+        )
+        (instance_dir / "research-input-clarified.json").unlink()
+        assert execute_resume(str(instance_dir)) == 1
+
+    @patch("diogenes.commands.run.APIClient")
+    def test_api_client_failure(self, mock_cls: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+        from diogenes.api_client import SubAgentError
+
+        mock_cls.side_effect = SubAgentError("config", "No API key")
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
+        )
+        assert execute_resume(str(instance_dir)) == 1
+
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_search_provider_failure(
+        self,
+        mock_api: MagicMock,
+        mock_sp: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        mock_api.return_value = MagicMock(model="m")
+        mock_sp.return_value = None
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
+        )
+        assert execute_resume(str(instance_dir)) == 1
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._parse_and_clarify")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_resumes_from_first_incomplete_step(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_parse: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """Completed steps are skipped; clarifier is NOT called (no re-parsing)."""
+        mock_client = MagicMock(model="m")
+        mock_client.usage.to_dict.return_value = {
+            "totals": {
+                "api_calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "estimated_cost_usd": 0.0,
+                "web_search_requests": 0,
+                "web_fetch_requests": 0,
+            },
+            "per_call": [],
+        }
+        mock_api_cls.return_value = mock_client
+        mock_sp.return_value = MagicMock()
+
+        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+            if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
+                return {"_self_written": True}
+            return {"result": "ok"}
+
+        mock_dispatch.side_effect = dispatch_side_effect
+
+        # Seed: steps 1-3 complete on disk; 4-11 remain.
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={
+                "research-input-clarified.json": {"claims": [], "queries": [{"text": "t"}], "axioms": []},
+                "hypotheses.json": {"Q001": {"approach": "hypotheses"}},
+                "search-plans.json": {"Q001": {"plan": "x"}},
+            },
+        )
+
+        assert execute_resume(str(instance_dir)) == 0
+
+        # Clarifier was NOT called — we read from disk instead.
+        mock_parse.assert_not_called()
+
+        # Dispatch fired only for the 8 remaining steps (step_04 through step_11).
+        dispatched = [c.args[0].name for c in mock_dispatch.call_args_list]
+        assert "step_02_hypotheses" not in dispatched
+        assert "step_03_search_plans" not in dispatched
+        assert dispatched[0] == "step_04_search_results"
+        assert len(dispatched) == 8
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_retries_running_step(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: pytest.TempPathFactory,
+    ) -> None:
+        """A step left in 'running' status (interrupted) is re-executed."""
+        mock_client = MagicMock(model="m")
+        mock_client.usage.to_dict.return_value = {
+            "totals": {
+                "api_calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "estimated_cost_usd": 0.0,
+                "web_search_requests": 0,
+                "web_fetch_requests": 0,
+            },
+            "per_call": [],
+        }
+        mock_api_cls.return_value = mock_client
+        mock_sp.return_value = MagicMock()
+
+        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+            if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
+                return {"_self_written": True}
+            return {"result": "ok"}
+
+        mock_dispatch.side_effect = dispatch_side_effect
+
+        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        _seed_instance(
+            instance_dir,
+            completed_step_files={
+                "research-input-clarified.json": {"claims": [], "queries": [], "axioms": []},
+                "hypotheses.json": {"Q001": {}},
+            },
+            running_step="step_03_search_plans",
+        )
+
+        assert execute_resume(str(instance_dir)) == 0
+
+        # The interrupted step is the first one re-dispatched.
+        dispatched = [c.args[0].name for c in mock_dispatch.call_args_list]
+        assert dispatched[0] == "step_03_search_plans"

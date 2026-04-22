@@ -23,6 +23,12 @@ class TestBuildParser:
         assert args.command == "rerun"
         assert args.output == "/path/to/research"
 
+    def test_resume_subcommand(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["resume", "/path/to/research/2026-04-22-120000"])
+        assert args.command == "resume"
+        assert args.instance_dir == "/path/to/research/2026-04-22-120000"
+
     def test_factcheck_subcommand(self) -> None:
         parser = _build_parser()
         args = parser.parse_args(["fact-check", "doc.md", "--output", "out/"])
@@ -51,6 +57,14 @@ class TestMain:
         mock_rerun.return_value = 0
         assert main() == 0
         mock_rerun.assert_called_once_with("/dir")
+
+    @patch("diogenes.commands.run.execute_resume")
+    @patch("diogenes.cli.argparse.ArgumentParser.parse_args")
+    def test_resume_delegates(self, mock_parse: MagicMock, mock_resume: MagicMock) -> None:
+        mock_parse.return_value = MagicMock(command="resume", instance_dir="/dir/2026-04-22-120000")
+        mock_resume.return_value = 0
+        assert main() == 0
+        mock_resume.assert_called_once_with("/dir/2026-04-22-120000")
 
     @patch("diogenes.cli.argparse.ArgumentParser.parse_args")
     def test_factcheck_not_implemented(self, mock_parse: MagicMock) -> None:

@@ -1,7 +1,8 @@
-"""Implementations of the 'dio run' and 'dio rerun' commands."""
+"""Implementations of the 'dio run', 'dio rerun', and 'dio resume' commands."""
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import time
@@ -333,7 +334,118 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
     # prompts are in the git repo, and the version stamp identifies which
     # revision produced this run.
 
-    # --- Pipeline execution (state-machine-driven) ---
+    state = PipelineState(instance_dir)
+
+    # Accumulated step outputs — keyed by output filename stem.
+    # Step 1 (clarify) is done before the loop; seed the outputs.
+    outputs: dict[str, Any] = {"research_input": research_input}
+    state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
+
+    return _execute_pipeline_loop(instance_dir, state, outputs, client, search_provider)
+
+
+# Steps whose output files are written by the step itself and not consumed by
+# any downstream handler. These do not need to be loaded back into the
+# `outputs` dict when resuming.
+_SELF_WRITTEN_STEP_NAMES = frozenset({"step_10_archive", "step_11_pipeline_events"})
+
+
+def _load_prior_outputs(instance_dir: Path, state: PipelineState) -> dict[str, Any] | None:
+    """Load step outputs from disk for steps already marked complete.
+
+    Keyed identically to the live pipeline (``research_input``,
+    ``hypotheses``, ``search_plans``, …) so the resumed loop's dispatcher
+    can read prior work without re-executing. Returns None if a step is
+    marked complete in state but its output file is missing — the state
+    file is inconsistent with the directory contents and we refuse to
+    guess which is authoritative.
+    """
+    outputs: dict[str, Any] = {}
+    for step_def in PIPELINE_STEPS:
+        if not state.is_complete(step_def.name):
+            continue
+        if step_def.name in _SELF_WRITTEN_STEP_NAMES:
+            continue
+        if not step_def.output_file:
+            continue
+        out_path = instance_dir / step_def.output_file
+        if not out_path.exists():
+            logger.info(
+                f"ERROR: State claims {step_def.name} complete "
+                f"but {step_def.output_file} is missing from {instance_dir}."
+            )
+            return None
+        key = step_def.output_file.replace(".json", "").replace("-", "_")
+        # research-input-clarified.json → research_input_clarified; the
+        # pipeline's internal key for Step 1 is `research_input`. Normalize.
+        if key == "research_input_clarified":
+            key = "research_input"
+        outputs[key] = json.loads(out_path.read_text())
+    return outputs
+
+
+def _resume_pipeline(instance_dir: Path) -> int:
+    """Execute the pipeline loop against an existing instance directory.
+
+    Reads pipeline-state.json to determine which steps are already complete,
+    hydrates the ``outputs`` dict from their persisted JSON files, and
+    runs the remainder of the state-machine loop. Any step in ``running``
+    or ``failed`` status is retried — partial output files from the prior
+    attempt, if any, are overwritten when the step completes.
+
+    Assumes the previous process for this instance is no longer running.
+    No PID or heartbeat check — if the user resumes over a live run, that
+    is user error.
+    """
+    if not instance_dir.exists():
+        logger.info(f"ERROR: Instance directory {instance_dir} does not exist.")
+        return 1
+
+    state_file = instance_dir / "pipeline-state.json"
+    if not state_file.exists():
+        logger.info(f"ERROR: {state_file} not found.")
+        logger.info("  'dio resume' requires an instance directory produced by a prior 'dio run' or 'dio rerun'.")
+        return 1
+
+    configure_progress_logger(instance_dir / "progress.log")
+    logger.info(f"Resuming: {instance_dir}")
+
+    state = PipelineState(instance_dir)
+    if state.all_complete():
+        logger.info("All steps already complete. Nothing to do.")
+        return 0
+
+    outputs = _load_prior_outputs(instance_dir, state)
+    if outputs is None:
+        return 1
+
+    try:
+        client = APIClient()
+    except SubAgentError as e:
+        logger.info(f"ERROR: {e}")
+        return 1
+
+    search_provider = _create_search_provider()
+    if search_provider is None:
+        return 1
+
+    return _execute_pipeline_loop(instance_dir, state, outputs, client, search_provider)
+
+
+def _execute_pipeline_loop(
+    instance_dir: Path,
+    state: PipelineState,
+    outputs: dict[str, Any],
+    client: APIClient,
+    search_provider: SerperSearchProvider | BraveSearchProvider | GoogleSearchProvider,
+) -> int:
+    """Iterate the canonical step sequence, skipping already-complete steps.
+
+    Shared by ``dio run``, ``dio rerun``, and ``dio resume``. Takes a
+    pre-hydrated ``outputs`` dict and ``PipelineState`` so each caller can
+    decide how to seed state (fresh clarification vs disk-loaded prior
+    outputs).
+    """
     logger.info("")
     logger.info(f"=== {instance_dir.name} ===")
 
@@ -344,14 +456,6 @@ def _run_pipeline(parent_dir: Path, input_path: Path) -> int:
         execution_path="cli",
     )
 
-    state = PipelineState(instance_dir)
-
-    # Accumulated step outputs — keyed by output filename stem.
-    # Step 1 (clarify) is done before the loop; seed the outputs.
-    outputs: dict[str, Any] = {"research_input": research_input}
-    state.mark_complete("step_01_research_input_clarified", output_file="research-input-clarified.json")
-
-    # Iterate the canonical step sequence from the state machine.
     for step_def in PIPELINE_STEPS:
         if state.is_complete(step_def.name):
             continue
@@ -481,3 +585,27 @@ def execute_rerun(output: str) -> int:
     logger.info(f"  Using saved source input: {input_path}")
 
     return _run_pipeline(parent_dir, input_path)
+
+
+def execute_resume(instance_dir: str) -> int:
+    """Execute the ``dio resume`` command — finish a previously interrupted instance.
+
+    Points at a specific timestamped instance directory (not the parent
+    container) and picks up from the first non-complete step as recorded
+    in pipeline-state.json. Prior steps' outputs are read from disk;
+    interrupted (``running``) and ``failed`` steps are re-executed.
+
+    Assumes the prior process driving this instance is no longer alive —
+    there is no PID or heartbeat check. Resuming over a concurrently
+    running instance is user error.
+
+    Args:
+        instance_dir: Path to an instance directory (the timestamped
+            subdirectory under the research container) containing a
+            pipeline-state.json from a prior run.
+
+    Returns:
+        Exit code (0 for success, non-zero for failure).
+
+    """
+    return _resume_pipeline(Path(instance_dir))
