@@ -4045,7 +4045,7 @@ class TestSchemaHelpersDefensiveBranches:
         from diogenes.renderer import _resolve_search_theme
 
         search = {"target_theme": "T1", "target_hypothesis": "H-fallback"}
-        hypotheses = {"search_themes": []}
+        hypotheses: dict[str, Any] = {"search_themes": []}
         assert _resolve_search_theme(search, hypotheses) == "H-fallback"
 
     def test_resolve_search_theme_matching_id_but_no_label_continues(self) -> None:
