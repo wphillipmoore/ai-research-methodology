@@ -1,6 +1,7 @@
 """Tests for events module."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -81,20 +82,20 @@ class TestEventLogger:
         assert len(d["events"]) == 1
         assert "summary" in d
 
-    def test_write_to_path(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_write_to_path(self, tmp_path: Path) -> None:
         logger = EventLogger(run_id="test-run")
         logger.log(step="s", kind="k", detail="d", layer="l")
-        path = tmp_path / "events.json"  # type: ignore[operator]
+        path = tmp_path / "events.json"
         result = logger.write(path)
         assert result == path
         data = json.loads(path.read_text())
         assert data["run_id"] == "test-run"
 
-    def test_write_to_output_dir(self, tmp_path: pytest.TempPathFactory) -> None:
-        logger = EventLogger(run_id="test-run", output_dir=tmp_path)  # type: ignore[arg-type]
+    def test_write_to_output_dir(self, tmp_path: Path) -> None:
+        logger = EventLogger(run_id="test-run", output_dir=tmp_path)
         logger.log(step="s", kind="k", detail="d", layer="l")
         result = logger.write()
-        assert result == tmp_path / "pipeline-events.json"  # type: ignore[operator]
+        assert result == tmp_path / "pipeline-events.json"
         assert result.exists()
 
     def test_write_no_path_raises(self) -> None:
@@ -102,31 +103,31 @@ class TestEventLogger:
         with pytest.raises(ValueError, match="No output directory"):
             logger.write()
 
-    def test_set_output_dir(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_set_output_dir(self, tmp_path: Path) -> None:
         logger = EventLogger(run_id="test-run")
-        logger.set_output_dir(tmp_path)  # type: ignore[arg-type]
+        logger.set_output_dir(tmp_path)
         assert logger.output_dir == tmp_path
 
 
 class TestLoadRunJson:
     """Tests for _load_run_json."""
 
-    def test_valid_json(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "data.json"  # type: ignore[operator]
+    def test_valid_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "data.json"
         path.write_text('{"key": "value"}')
         assert _load_run_json(path) == {"key": "value"}
 
-    def test_missing_file(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "missing.json"  # type: ignore[operator]
+    def test_missing_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "missing.json"
         assert _load_run_json(path) == {}
 
-    def test_invalid_json(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "bad.json"  # type: ignore[operator]
+    def test_invalid_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
         path.write_text("not json")
         assert _load_run_json(path) == {}
 
-    def test_non_dict_json(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "array.json"  # type: ignore[operator]
+    def test_non_dict_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "array.json"
         path.write_text("[1, 2, 3]")
         assert _load_run_json(path) == {}
 
@@ -162,9 +163,9 @@ class TestIterItems:
 class TestReconcileRun:
     """Tests for reconcile_run."""
 
-    def _create_run_dir(self, tmp_path: pytest.TempPathFactory) -> pytest.TempPathFactory:
+    def _create_run_dir(self, tmp_path: Path) -> pytest.TempPathFactory:
         """Create a minimal run directory with expected files."""
-        run_dir = tmp_path / "run-1"  # type: ignore[operator]
+        run_dir = tmp_path / "run-1"
         run_dir.mkdir()
 
         # Search results with selected sources
@@ -214,7 +215,7 @@ class TestReconcileRun:
 
         return run_dir  # type: ignore[return-value]
 
-    def test_basic_reconciliation(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_basic_reconciliation(self, tmp_path: Path) -> None:
         run_dir = self._create_run_dir(tmp_path)
         logger = EventLogger(run_id="test")
         coverage = reconcile_run(run_dir, logger)  # type: ignore[arg-type]
@@ -225,29 +226,29 @@ class TestReconcileRun:
         assert coverage["packets_dropped"] == 3
         assert coverage["verbatim_adherence_pct"] == 70.0
 
-    def test_missing_step_outputs(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-empty"  # type: ignore[operator]
+    def test_missing_step_outputs(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-empty"
         run_dir.mkdir()
         for fname in ("search-results.json", "scorecards.json", "evidence-packets.json"):
             (run_dir / fname).write_text("{}")
         logger = EventLogger(run_id="test")
-        reconcile_run(run_dir, logger)  # type: ignore[arg-type]
+        reconcile_run(run_dir, logger)
         missing_events = [e for e in logger.events if e["kind"] == "missing_step_output"]
         assert len(missing_events) == 5  # hypotheses, search-plans, synthesis, self-audit, reports
 
-    def test_zero_packets(self, tmp_path: pytest.TempPathFactory) -> None:
-        run_dir = tmp_path / "run-zero"  # type: ignore[operator]
+    def test_zero_packets(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-zero"
         run_dir.mkdir()
         for fname in ("search-results.json", "scorecards.json", "evidence-packets.json"):
             (run_dir / fname).write_text("{}")
         logger = EventLogger(run_id="test")
-        coverage = reconcile_run(run_dir, logger)  # type: ignore[arg-type]
+        coverage = reconcile_run(run_dir, logger)
         assert coverage["packets_claimed"] == 0
         assert coverage["verbatim_adherence_pct"] is None
 
-    def test_items_without_verbatim_stats(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_items_without_verbatim_stats(self, tmp_path: Path) -> None:
         """Covers the branch where item_data has no verbatim_stats (208->206)."""
-        run_dir = tmp_path / "run-nostats"  # type: ignore[operator]
+        run_dir = tmp_path / "run-nostats"
         run_dir.mkdir()
 
         search_results = {
@@ -269,13 +270,13 @@ class TestReconcileRun:
             (run_dir / fname).write_text("{}")
 
         logger = EventLogger(run_id="test")
-        coverage = reconcile_run(run_dir, logger)  # type: ignore[arg-type]
+        coverage = reconcile_run(run_dir, logger)
         # With no verbatim_stats, packets_claimed should be 0
         assert coverage["packets_claimed"] == 0
         assert coverage["packets_verified"] == 0
         assert coverage["verbatim_adherence_pct"] is None
 
-    def test_fetch_failures_counted(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_fetch_failures_counted(self, tmp_path: Path) -> None:
         run_dir = self._create_run_dir(tmp_path)
         logger = EventLogger(run_id="test")
         # Pre-log a fetch failure
@@ -285,7 +286,7 @@ class TestReconcileRun:
         assert coverage["sources_attempted"] == 3
         assert coverage["sources_capped"] == 0
 
-    def test_source_capping_logged(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_source_capping_logged(self, tmp_path: Path) -> None:
         run_dir = self._create_run_dir(tmp_path)
         logger = EventLogger(run_id="test")
         # No fetch failures logged, so attempted = scored = 2, but selected = 3

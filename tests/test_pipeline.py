@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -63,7 +64,7 @@ class TestVerifyPacketVerbatim:
         assert _verify_packet_verbatim(packet, "source content") is False
 
     def test_missing_excerpt(self) -> None:
-        packet = {}
+        packet: dict[str, Any] = {}
         assert _verify_packet_verbatim(packet, "source content") is False
 
     def test_whitespace_only_excerpt(self) -> None:
@@ -141,24 +142,24 @@ class TestScorecardsWithoutContent:
 class TestWriteStepOutput:
     """Tests for write_step_output."""
 
-    def test_writes_json(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_writes_json(self, tmp_path: Path) -> None:
         data = {"key": "value"}
-        path = write_step_output(tmp_path, "output.json", data)  # type: ignore[arg-type]
+        path = write_step_output(tmp_path, "output.json", data)
         assert path.exists()
         assert json.loads(path.read_text()) == data
 
-    def test_writes_list(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_writes_list(self, tmp_path: Path) -> None:
         data = [1, 2, 3]
-        path = write_step_output(tmp_path, "output.json", data)  # type: ignore[arg-type]
+        path = write_step_output(tmp_path, "output.json", data)
         assert json.loads(path.read_text()) == data
 
 
 class TestStep11Archive:
     """Tests for step11_archive."""
 
-    def test_creates_archive(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_creates_archive(self, tmp_path: Path) -> None:
         outputs = {"research_input": {"claims": []}, "hypotheses": {"Q001": {}}}
-        path = step11_archive(tmp_path, outputs)  # type: ignore[arg-type]
+        path = step11_archive(tmp_path, outputs)
         assert path.exists()
         data = json.loads(path.read_text())
         assert "archived_at" in data
@@ -467,7 +468,7 @@ class TestStep5bExtractEvidence:
         )
 
         research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
-        hypotheses = {"C001": {}}
+        hypotheses: dict[str, Any] = {"C001": {}}
         scorecards = {
             "C001": {
                 "scorecards": [{"url": "https://a.com", "content_extract": "x" * 200}],
@@ -487,7 +488,7 @@ class TestStep5bExtractEvidence:
         mock_extract.return_value = ([], [], {"claimed": 0, "kept": 0, "dropped": 0})
 
         research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
-        hypotheses = {"C001": {}}
+        hypotheses: dict[str, Any] = {"C001": {}}
         # All sources have short content_extract
         scorecards = {
             "C001": {
@@ -508,7 +509,7 @@ class TestStep5bExtractEvidence:
         )
 
         research_input = {"claims": [], "queries": [{"id": "Q001", "clarified_text": "Test"}]}
-        hypotheses = {"Q001": {}}
+        hypotheses: dict[str, Any] = {"Q001": {}}
         scorecards = {
             "Q001": {
                 "scorecards": [
@@ -605,7 +606,7 @@ class TestSteps678SynthesizeAndAssess:
         }
 
         research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
-        hypotheses = {"C001": {}}
+        hypotheses: dict[str, Any] = {"C001": {}}
         scorecards = {"C001": {"scorecards": [{"url": "https://a.com"}]}}
         evidence = {"C001": {"packets": [{"excerpt": "test"}]}}
 

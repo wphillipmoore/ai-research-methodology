@@ -38,96 +38,96 @@ class TestTimestamp:
 class TestCreateInstanceDir:
     """Tests for _create_instance_dir."""
 
-    def test_creates_unique_dir(self, tmp_path: pytest.TempPathFactory) -> None:
-        parent = tmp_path  # type: ignore[assignment]
-        instance = _create_instance_dir(parent)  # type: ignore[arg-type]
+    def test_creates_unique_dir(self, tmp_path: Path) -> None:
+        parent = tmp_path
+        instance = _create_instance_dir(parent)
         assert instance.exists()
         assert instance.parent == parent
         # Directory name is a timestamp
         assert len(instance.name) == 17
 
-    def test_collision_retry(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_collision_retry(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """If the first timestamp collides, sleep and retry with a later stamp."""
         # Pre-create a collision at the first timestamp we'll generate
         from diogenes.commands import run as run_mod
 
         ts1 = "2026-04-22-120000"
         ts2 = "2026-04-22-120001"
-        (tmp_path / ts1).mkdir()  # type: ignore[operator]
+        (tmp_path / ts1).mkdir()
 
         stamps = iter([ts1, ts2])
         monkeypatch.setattr(run_mod, "_timestamp", lambda: next(stamps))
         # Patch sleep so the test runs fast
-        monkeypatch.setattr(run_mod.time, "sleep", lambda _s: None)
+        monkeypatch.setattr("time.sleep", lambda _s: None)
 
-        instance = _create_instance_dir(tmp_path)  # type: ignore[arg-type]
+        instance = _create_instance_dir(tmp_path)
         assert instance.name == ts2
 
-    def test_exhausts_retries_raises(self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_exhausts_retries_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """If every retry hits a collision, raise RuntimeError."""
         from diogenes.commands import run as run_mod
 
         ts = "2026-04-22-120000"
-        (tmp_path / ts).mkdir()  # type: ignore[operator]
+        (tmp_path / ts).mkdir()
 
         monkeypatch.setattr(run_mod, "_timestamp", lambda: ts)
-        monkeypatch.setattr(run_mod.time, "sleep", lambda _s: None)
+        monkeypatch.setattr("time.sleep", lambda _s: None)
 
         with pytest.raises(RuntimeError, match="unique instance dir"):
-            _create_instance_dir(tmp_path)  # type: ignore[arg-type]
+            _create_instance_dir(tmp_path)
 
 
 class TestFindSavedInput:
     """Tests for _find_saved_input."""
 
-    def test_single_file_found(self, tmp_path: pytest.TempPathFactory) -> None:
-        (tmp_path / "input.md").write_text("content")  # type: ignore[operator]
-        result = _find_saved_input(tmp_path)  # type: ignore[arg-type]
+    def test_single_file_found(self, tmp_path: Path) -> None:
+        (tmp_path / "input.md").write_text("content")
+        result = _find_saved_input(tmp_path)
         assert result is not None
         assert result.name == "input.md"
 
-    def test_ignores_subdirectories(self, tmp_path: pytest.TempPathFactory) -> None:
-        (tmp_path / "input.md").write_text("content")  # type: ignore[operator]
-        (tmp_path / "2026-04-22-120000").mkdir()  # type: ignore[operator]
-        result = _find_saved_input(tmp_path)  # type: ignore[arg-type]
+    def test_ignores_subdirectories(self, tmp_path: Path) -> None:
+        (tmp_path / "input.md").write_text("content")
+        (tmp_path / "2026-04-22-120000").mkdir()
+        result = _find_saved_input(tmp_path)
         assert result is not None
         assert result.name == "input.md"
 
-    def test_ignores_hidden_files(self, tmp_path: pytest.TempPathFactory) -> None:
-        (tmp_path / "input.md").write_text("content")  # type: ignore[operator]
-        (tmp_path / ".DS_Store").write_text("")  # type: ignore[operator]
-        result = _find_saved_input(tmp_path)  # type: ignore[arg-type]
+    def test_ignores_hidden_files(self, tmp_path: Path) -> None:
+        (tmp_path / "input.md").write_text("content")
+        (tmp_path / ".DS_Store").write_text("")
+        result = _find_saved_input(tmp_path)
         assert result is not None
         assert result.name == "input.md"
 
-    def test_zero_candidates_returns_none(self, tmp_path: pytest.TempPathFactory) -> None:
-        (tmp_path / "2026-04-22-120000").mkdir()  # type: ignore[operator]
-        assert _find_saved_input(tmp_path) is None  # type: ignore[arg-type]
+    def test_zero_candidates_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "2026-04-22-120000").mkdir()
+        assert _find_saved_input(tmp_path) is None
 
-    def test_multiple_candidates_returns_none(self, tmp_path: pytest.TempPathFactory) -> None:
-        (tmp_path / "a.md").write_text("content")  # type: ignore[operator]
-        (tmp_path / "b.md").write_text("content")  # type: ignore[operator]
-        assert _find_saved_input(tmp_path) is None  # type: ignore[arg-type]
+    def test_multiple_candidates_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "a.md").write_text("content")
+        (tmp_path / "b.md").write_text("content")
+        assert _find_saved_input(tmp_path) is None
 
 
 class TestParseAndClarify:
     """Tests for _parse_and_clarify."""
 
-    def test_json_input(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "input.json"  # type: ignore[operator]
+    def test_json_input(self, tmp_path: Path) -> None:
+        path = tmp_path / "input.json"
         path.write_text(json.dumps({"claims": [{"text": "Test"}], "queries": []}))
         result = _parse_and_clarify(path, MagicMock())
         assert result is not None
         assert "claims" in result
 
-    def test_json_invalid_schema(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "input.json"  # type: ignore[operator]
+    def test_json_invalid_schema(self, tmp_path: Path) -> None:
+        path = tmp_path / "input.json"
         path.write_text(json.dumps({"bad": "schema"}))
         result = _parse_and_clarify(path, MagicMock())
         assert result is None
 
-    def test_text_input(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "input.md"  # type: ignore[operator]
+    def test_text_input(self, tmp_path: Path) -> None:
+        path = tmp_path / "input.md"
         path.write_text("Is AI reliable?")
 
         mock_client = MagicMock()
@@ -139,8 +139,8 @@ class TestParseAndClarify:
         assert result is not None
         assert "queries" in result
 
-    def test_text_input_clarifier_error(self, tmp_path: pytest.TempPathFactory) -> None:
-        path = tmp_path / "input.md"  # type: ignore[operator]
+    def test_text_input_clarifier_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "input.md"
         path.write_text("bad input")
 
         mock_client = MagicMock()
@@ -148,10 +148,10 @@ class TestParseAndClarify:
         result = _parse_and_clarify(path, mock_client)
         assert result is None
 
-    def test_text_input_api_failure(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_text_input_api_failure(self, tmp_path: Path) -> None:
         from diogenes.api_client import SubAgentError
 
-        path = tmp_path / "input.md"  # type: ignore[operator]
+        path = tmp_path / "input.md"
         path.write_text("test")
 
         mock_client = MagicMock()
@@ -174,7 +174,7 @@ class TestCreateSearchProvider:
         mock_config.return_value = DioConfig(api_key="key", serper_api_key="skey")
         provider = _create_search_provider()
         assert provider is not None
-        assert provider.name == "serper"  # type: ignore[union-attr]
+        assert provider.name == "serper"
 
     @patch("diogenes.commands.run.load_config")
     def test_brave(self, mock_config: MagicMock) -> None:
@@ -183,7 +183,7 @@ class TestCreateSearchProvider:
         mock_config.return_value = DioConfig(api_key="key", search_provider="brave", brave_api_key="bkey")
         provider = _create_search_provider()
         assert provider is not None
-        assert provider.name == "brave"  # type: ignore[union-attr]
+        assert provider.name == "brave"
 
     @patch("diogenes.commands.run.load_config")
     def test_google(self, mock_config: MagicMock) -> None:
@@ -197,7 +197,7 @@ class TestCreateSearchProvider:
         )
         provider = _create_search_provider()
         assert provider is not None
-        assert provider.name == "google"  # type: ignore[union-attr]
+        assert provider.name == "google"
 
     @patch("diogenes.commands.run.load_config")
     def test_serper_missing_key(self, mock_config: MagicMock) -> None:
@@ -235,22 +235,25 @@ class TestCreateSearchProvider:
 class TestDispatchStep:
     """Tests for _dispatch_step."""
 
-    def _make_context(self, tmp_path: pytest.TempPathFactory) -> tuple:
-        outputs = {"research_input": {"claims": [], "queries": []}}
+    def _make_context(
+        self,
+        tmp_path: Path,
+    ) -> tuple[dict[str, Any], MagicMock, MagicMock, EventLogger, Path]:
+        outputs: dict[str, Any] = {"research_input": {"claims": [], "queries": []}}
         client = MagicMock()
         client.model = "test-model"
         search_provider = MagicMock()
-        event_logger = EventLogger(run_id="test", output_dir=tmp_path)  # type: ignore[arg-type]
-        run_dir = tmp_path  # type: ignore[assignment]
+        event_logger = EventLogger(run_id="test", output_dir=tmp_path)
+        run_dir = tmp_path
         return outputs, client, search_provider, event_logger, run_dir
 
-    def test_step_01_returns_research_input(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_01_returns_research_input(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         step = PIPELINE_STEPS[0]  # step_01
         result = _dispatch_step(step, outputs, client, sp, el, rd)
         assert result == outputs["research_input"]
 
-    def test_step_02_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_02_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         client.call_sub_agent = MagicMock(return_value={"approach": "hypotheses", "hypotheses": []})
         step = PIPELINE_STEPS[1]  # step_02
@@ -258,14 +261,14 @@ class TestDispatchStep:
             result = _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_10_archive(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_10_archive(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         step = PIPELINE_STEPS[9]  # step_10_archive
         with patch("diogenes.commands.run.step11_archive") as mock:
             result = _dispatch_step(step, outputs, client, sp, el, rd)
         assert result == {"_self_written": True}
 
-    def test_step_11_events(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_11_events(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         step = PIPELINE_STEPS[10]  # step_11_pipeline_events
         with patch(
@@ -275,13 +278,13 @@ class TestDispatchStep:
             result = _dispatch_step(step, outputs, client, sp, el, rd)
         assert result == {"_self_written": True}
 
-    def test_unknown_step(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_unknown_step(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         step = StepDefinition(name="unknown_step", display_name="Unknown", output_file="x.json", category="llm")
         result = _dispatch_step(step, outputs, client, sp, el, rd)
         assert result is None
 
-    def test_step_03_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_03_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         outputs["hypotheses"] = {}
         step = PIPELINE_STEPS[2]  # step_03
@@ -289,7 +292,7 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_04_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_04_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         outputs["search_plans"] = {}
         step = PIPELINE_STEPS[3]  # step_04
@@ -297,7 +300,7 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_05_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_05_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         outputs["search_results"] = {}
         step = PIPELINE_STEPS[4]  # step_05
@@ -305,7 +308,7 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_06_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_06_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         outputs["hypotheses"] = {}
         outputs["scorecards"] = {}
@@ -314,7 +317,7 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_07_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_07_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         outputs["hypotheses"] = {}
         outputs["scorecards"] = {}
@@ -324,7 +327,7 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_08_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_08_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         outputs["hypotheses"] = {}
         outputs["search_results"] = {}
@@ -336,7 +339,7 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_09_calls_handler(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_09_calls_handler(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         outputs["hypotheses"] = {}
         outputs["search_results"] = {}
@@ -348,7 +351,7 @@ class TestDispatchStep:
             _dispatch_step(step, outputs, client, sp, el, rd)
         mock.assert_called_once()
 
-    def test_step_11_events_with_events_logged(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_11_events_with_events_logged(self, tmp_path: Path) -> None:
         """Covers line 186: n_events is nonzero so the print fires."""
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         # Add events to the logger so n_events > 0
@@ -362,7 +365,7 @@ class TestDispatchStep:
             result = _dispatch_step(step, outputs, client, sp, el, rd)
         assert result == {"_self_written": True}
 
-    def test_step_11_no_adherence(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_step_11_no_adherence(self, tmp_path: Path) -> None:
         outputs, client, sp, el, rd = self._make_context(tmp_path)
         step = PIPELINE_STEPS[10]
         with patch(
@@ -372,7 +375,7 @@ class TestDispatchStep:
             result = _dispatch_step(step, outputs, client, sp, el, rd)
         assert result == {"_self_written": True}
 
-    def test_subagent_error_returns_none(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_subagent_error_returns_none(self, tmp_path: Path) -> None:
         from diogenes.api_client import SubAgentError
 
         outputs, client, sp, el, rd = self._make_context(tmp_path)
@@ -386,13 +389,13 @@ class TestExecute:
     """Tests for execute function."""
 
     @patch("diogenes.commands.run.APIClient")
-    def test_api_client_failure(self, mock_cls: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+    def test_api_client_failure(self, mock_cls: MagicMock, tmp_path: Path) -> None:
         from diogenes.api_client import SubAgentError
 
         mock_cls.side_effect = SubAgentError("config", "No API key")
-        input_path = tmp_path / "input.json"  # type: ignore[operator]
+        input_path = tmp_path / "input.json"
         input_path.write_text(json.dumps({"claims": [], "queries": [{"text": "t"}]}))
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir = tmp_path / "output"
         assert execute(str(input_path), str(output_dir)) == 1
 
     @patch("diogenes.commands.run._create_search_provider")
@@ -401,12 +404,12 @@ class TestExecute:
         self,
         mock_api: MagicMock,
         mock_sp: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         mock_sp.return_value = None
-        input_path = tmp_path / "input.json"  # type: ignore[operator]
+        input_path = tmp_path / "input.json"
         input_path.write_text(json.dumps({"claims": [], "queries": [{"text": "t"}]}))
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir = tmp_path / "output"
         assert execute(str(input_path), str(output_dir)) == 1
 
     def _make_input_file(self, tmp_path: Path, name: str = "input.json") -> Path:
@@ -415,7 +418,7 @@ class TestExecute:
         p.write_text(json.dumps({"claims": [], "queries": [{"text": "test"}]}))
         return p
 
-    def _usage_stub(self, *, with_web: bool = False) -> dict:
+    def _usage_stub(self, *, with_web: bool = False) -> dict[str, Any]:
         return {
             "totals": {
                 "api_calls": 1,
@@ -429,20 +432,20 @@ class TestExecute:
             "per_call": [],
         }
 
-    def test_missing_input_file(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_missing_input_file(self, tmp_path: Path) -> None:
         """Refuse to run if --input doesn't exist."""
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir = tmp_path / "output"
         result = execute("/nonexistent/input.md", str(output_dir))
         assert result == 1
         # Must not have created the output directory
         assert not output_dir.exists()
 
-    def test_refuses_nonempty_output(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_refuses_nonempty_output(self, tmp_path: Path) -> None:
         """Refuses to silently reuse an existing research container."""
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir = tmp_path / "output"
         output_dir.mkdir()
         (output_dir / "existing.txt").write_text("leftover")
-        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
+        input_path = self._make_input_file(tmp_path)
         result = execute(str(input_path), str(output_dir))
         assert result == 1
 
@@ -456,7 +459,7 @@ class TestExecute:
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """Happy path: run completes, creates instance dir, copies source, writes clarified in instance."""
         mock_client = MagicMock()
@@ -466,15 +469,22 @@ class TestExecute:
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = {"claims": [], "queries": [{"text": "test"}], "axioms": []}
 
-        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+        def dispatch_side_effect(
+            step_def: StepDefinition,
+            outputs: dict[str, Any],
+            client: object,
+            sp: object,
+            el: object,
+            rd: Path,
+        ) -> dict[str, Any]:
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
                 return {"_self_written": True}
             return {"result": "ok"}
 
         mock_dispatch.side_effect = dispatch_side_effect
 
-        input_path = self._make_input_file(tmp_path, "input.md")  # type: ignore[arg-type]
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        input_path = self._make_input_file(tmp_path, "input.md")
+        output_dir = tmp_path / "output"
         result = execute(str(input_path), str(output_dir))
         assert result == 0
 
@@ -499,15 +509,15 @@ class TestExecute:
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """If _parse_and_clarify returns None, execute aborts with exit 1."""
         mock_api_cls.return_value = MagicMock(model="m")
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = None
 
-        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        input_path = self._make_input_file(tmp_path)
+        output_dir = tmp_path / "output"
         result = execute(str(input_path), str(output_dir))
         assert result == 1
 
@@ -521,7 +531,7 @@ class TestExecute:
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """A dispatch failure causes execute to return 1."""
         mock_api_cls.return_value = MagicMock(model="m")
@@ -529,8 +539,8 @@ class TestExecute:
         mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
         mock_dispatch.return_value = None
 
-        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        input_path = self._make_input_file(tmp_path)
+        output_dir = tmp_path / "output"
         result = execute(str(input_path), str(output_dir))
         assert result == 1
 
@@ -544,7 +554,7 @@ class TestExecute:
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """Exercises the False branch of the web-search totals print."""
         mock_client = MagicMock(model="m")
@@ -553,15 +563,22 @@ class TestExecute:
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
 
-        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+        def dispatch_side_effect(
+            step_def: StepDefinition,
+            outputs: dict[str, Any],
+            client: object,
+            sp: object,
+            el: object,
+            rd: Path,
+        ) -> dict[str, Any]:
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
                 return {"_self_written": True}
             return {"result": "ok"}
 
         mock_dispatch.side_effect = dispatch_side_effect
 
-        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        input_path = self._make_input_file(tmp_path)
+        output_dir = tmp_path / "output"
         result = execute(str(input_path), str(output_dir))
         assert result == 0
 
@@ -575,7 +592,7 @@ class TestExecute:
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """Regression guard: prompt-snapshot.md is never written.
 
@@ -587,15 +604,22 @@ class TestExecute:
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = {"claims": [], "queries": [], "axioms": []}
 
-        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+        def dispatch_side_effect(
+            step_def: StepDefinition,
+            outputs: dict[str, Any],
+            client: object,
+            sp: object,
+            el: object,
+            rd: Path,
+        ) -> dict[str, Any]:
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
                 return {"_self_written": True}
             return {"result": "ok"}
 
         mock_dispatch.side_effect = dispatch_side_effect
 
-        input_path = self._make_input_file(tmp_path)  # type: ignore[arg-type]
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        input_path = self._make_input_file(tmp_path)
+        output_dir = tmp_path / "output"
         result = execute(str(input_path), str(output_dir))
         assert result == 0
         instance_dirs = [d for d in output_dir.iterdir() if d.is_dir()]
@@ -610,9 +634,9 @@ class TestExecuteRerun:
         result = execute_rerun("/nonexistent/path")
         assert result == 1
 
-    def test_missing_source_input(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_missing_source_input(self, tmp_path: Path) -> None:
         """If the parent has no saved source input, rerun aborts."""
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir = tmp_path / "output"
         output_dir.mkdir()
         # Only a subdirectory, no regular file
         (output_dir / "2026-04-22-120000").mkdir()
@@ -630,7 +654,7 @@ class TestExecuteRerun:
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """Rerun finds the saved input, runs a fresh instance, re-clarifies."""
         mock_client = MagicMock(model="m")
@@ -650,7 +674,14 @@ class TestExecuteRerun:
         mock_sp.return_value = MagicMock()
         mock_parse.return_value = {"claims": [], "queries": [{"text": "t"}], "axioms": []}
 
-        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+        def dispatch_side_effect(
+            step_def: StepDefinition,
+            outputs: dict[str, Any],
+            client: object,
+            sp: object,
+            el: object,
+            rd: Path,
+        ) -> dict[str, Any]:
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
                 return {"_self_written": True}
             return {"result": "ok"}
@@ -658,7 +689,7 @@ class TestExecuteRerun:
         mock_dispatch.side_effect = dispatch_side_effect
 
         # Simulate a previous `dio run` having populated the parent.
-        output_dir = tmp_path / "output"  # type: ignore[operator]
+        output_dir = tmp_path / "output"
         output_dir.mkdir()
         saved_input = output_dir / "input.md"
         saved_input.write_text("previous research input")
@@ -709,11 +740,11 @@ def _seed_instance(
 class TestLoadPriorOutputs:
     """Tests for _load_prior_outputs."""
 
-    def test_loads_completed_outputs(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_loads_completed_outputs(self, tmp_path: Path) -> None:
         """Each completed step's JSON is loaded under the pipeline's internal key."""
         from diogenes.state_machine import PipelineState
 
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={
@@ -728,11 +759,11 @@ class TestLoadPriorOutputs:
         assert "hypotheses" in outputs
         assert outputs["research_input"]["queries"][0]["text"] == "t"
 
-    def test_skips_self_written_steps(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_skips_self_written_steps(self, tmp_path: Path) -> None:
         """archive.json and pipeline-events.json are not hoisted into outputs."""
         from diogenes.state_machine import PipelineState
 
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={
@@ -747,11 +778,11 @@ class TestLoadPriorOutputs:
         assert "archive" not in outputs
         assert "pipeline_events" not in outputs
 
-    def test_missing_output_file_is_inconsistent(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_missing_output_file_is_inconsistent(self, tmp_path: Path) -> None:
         """State says complete but file is gone → refuse to guess, return None."""
         from diogenes.state_machine import PipelineState
 
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
@@ -762,7 +793,7 @@ class TestLoadPriorOutputs:
 
     def test_skips_step_without_output_file(
         self,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Defensive: a completed step with output_file=None is skipped, not a crash.
@@ -781,7 +812,7 @@ class TestLoadPriorOutputs:
         )
         monkeypatch.setattr("diogenes.commands.run.PIPELINE_STEPS", [fake_step])
 
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         instance_dir.mkdir()
         state = PipelineState(instance_dir)
         state.mark_complete("step_fake_no_output")
@@ -798,17 +829,17 @@ class TestExecuteResume:
     def test_missing_instance_dir(self) -> None:
         assert execute_resume("/nonexistent/path") == 1
 
-    def test_missing_state_file(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_missing_state_file(self, tmp_path: Path) -> None:
         """Instance dir exists but no pipeline-state.json → exit 1."""
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         instance_dir.mkdir()
         assert execute_resume(str(instance_dir)) == 1
 
-    def test_all_steps_complete_is_noop(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_all_steps_complete_is_noop(self, tmp_path: Path) -> None:
         """Fully complete instance → exit 0 without dispatching anything."""
         from diogenes.state_machine import PIPELINE_STEPS, PipelineState
 
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         instance_dir.mkdir()
         state = PipelineState(instance_dir)
         for step_def in PIPELINE_STEPS:
@@ -818,9 +849,9 @@ class TestExecuteResume:
             assert execute_resume(str(instance_dir)) == 0
             mock_dispatch.assert_not_called()
 
-    def test_inconsistent_state_missing_output(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_inconsistent_state_missing_output(self, tmp_path: Path) -> None:
         """State says step complete but its output file is missing → exit 1."""
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
@@ -829,11 +860,11 @@ class TestExecuteResume:
         assert execute_resume(str(instance_dir)) == 1
 
     @patch("diogenes.commands.run.APIClient")
-    def test_api_client_failure(self, mock_cls: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+    def test_api_client_failure(self, mock_cls: MagicMock, tmp_path: Path) -> None:
         from diogenes.api_client import SubAgentError
 
         mock_cls.side_effect = SubAgentError("config", "No API key")
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
@@ -846,11 +877,11 @@ class TestExecuteResume:
         self,
         mock_api: MagicMock,
         mock_sp: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         mock_api.return_value = MagicMock(model="m")
         mock_sp.return_value = None
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={"research-input-clarified.json": {"claims": [], "queries": []}},
@@ -867,7 +898,7 @@ class TestExecuteResume:
         mock_sp: MagicMock,
         mock_parse: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """Completed steps are skipped; clarifier is NOT called (no re-parsing)."""
         mock_client = MagicMock(model="m")
@@ -886,7 +917,14 @@ class TestExecuteResume:
         mock_api_cls.return_value = mock_client
         mock_sp.return_value = MagicMock()
 
-        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+        def dispatch_side_effect(
+            step_def: StepDefinition,
+            outputs: dict[str, Any],
+            client: object,
+            sp: object,
+            el: object,
+            rd: Path,
+        ) -> dict[str, Any]:
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
                 return {"_self_written": True}
             return {"result": "ok"}
@@ -894,7 +932,7 @@ class TestExecuteResume:
         mock_dispatch.side_effect = dispatch_side_effect
 
         # Seed: steps 1-3 complete on disk; 4-11 remain.
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={
@@ -924,7 +962,7 @@ class TestExecuteResume:
         mock_api_cls: MagicMock,
         mock_sp: MagicMock,
         mock_dispatch: MagicMock,
-        tmp_path: pytest.TempPathFactory,
+        tmp_path: Path,
     ) -> None:
         """A step left in 'running' status (interrupted) is re-executed."""
         mock_client = MagicMock(model="m")
@@ -943,14 +981,21 @@ class TestExecuteResume:
         mock_api_cls.return_value = mock_client
         mock_sp.return_value = MagicMock()
 
-        def dispatch_side_effect(step_def, outputs, client, sp, el, rd):
+        def dispatch_side_effect(
+            step_def: StepDefinition,
+            outputs: dict[str, Any],
+            client: object,
+            sp: object,
+            el: object,
+            rd: Path,
+        ) -> dict[str, Any]:
             if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
                 return {"_self_written": True}
             return {"result": "ok"}
 
         mock_dispatch.side_effect = dispatch_side_effect
 
-        instance_dir = tmp_path / "instance"  # type: ignore[operator]
+        instance_dir = tmp_path / "instance"
         _seed_instance(
             instance_dir,
             completed_step_files={
