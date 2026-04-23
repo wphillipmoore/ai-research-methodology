@@ -3697,8 +3697,7 @@ def _searches_table_rows(index_content: str, search_id_prefix: str) -> list[str]
 
 
 class TestItemIndexSearchesTableCliFormat:
-    """Content tests for the `## Searches` summary table in per-item `index.md`
-    under CLI-format runs.
+    """Content tests for the per-item `## Searches` summary table (CLI format).
 
     The observable bug (#157 round 1): every row emitted as
     `| [SNN](...) |  | ? | ? |` — empty Target, literal `?` in Returned and
@@ -3736,9 +3735,8 @@ class TestItemIndexSearchesTableCliFormat:
             assert len(rows) == 1, f"expected 1 {prefix} row, got {len(rows)}"
             cells = [c.strip() for c in rows[0].strip().strip("|").split("|")]
             returned = cells[-2]
-            assert returned.isdigit() and int(returned) > 0, (
-                f"{prefix} Returned cell is not a positive integer: {returned!r}"
-            )
+            assert returned.isdigit(), f"{prefix} Returned cell is not numeric: {returned!r}"
+            assert int(returned) > 0, f"{prefix} Returned cell is not positive: {returned!r}"
 
     def test_selected_column_has_numeric_count_not_placeholder(self, tmp_path: Path) -> None:
         """Selected column contains an integer, never the `?` placeholder."""
@@ -3774,8 +3772,7 @@ class TestItemIndexSearchesTableCliFormat:
 
 
 class TestItemIndexSourcesTableCliFormat:
-    """Content tests for the `## Sources` summary table in per-item `index.md`
-    under CLI-format runs.
+    """Content tests for the per-item `## Sources` summary table (CLI format).
 
     Not a regression fix — this table was already correct in R0063 — but part
     of #157 round 1 to lock the behavior with a strong assertion, so future
