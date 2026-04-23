@@ -1913,7 +1913,7 @@ class TestWriteSearchesEmpty:
 
         item_dir = tmp_path / "item"
         item_dir.mkdir()
-        _write_searches(item_dir, "C001", {"searches": []}, {}, {})
+        _write_searches(item_dir, "C001", {"searches": []}, {}, {}, {})
         assert not (item_dir / "searches").exists()
 
     def test_no_item_plan(self, tmp_path: Path) -> None:
@@ -1922,7 +1922,7 @@ class TestWriteSearchesEmpty:
 
         item_dir = tmp_path / "item"
         item_dir.mkdir()
-        _write_searches(item_dir, "C001", {}, {}, {})
+        _write_searches(item_dir, "C001", {}, {}, {}, {})
         assert not (item_dir / "searches").exists()
 
 
@@ -3469,3 +3469,611 @@ class TestRunIndexCliFormatRegression:
         assert "Items investigated | 3" in index, (
             "Collection Statistics row missing or undercounting — expected 'Items investigated | 3'"
         )
+
+
+def _create_cli_format_realistic_run(run_dir: Path) -> None:
+    """Fixture matching what the real CLI pipeline writes (as of R0063).
+
+    Schema differences from `_create_rich_cli_run`:
+
+    - Items in `research-input-clarified.json` do NOT carry `type` fields;
+      the top-level grouping key conveys type. (See #156 / 91bbc9c3.)
+    - Each search-plan entry uses `target_theme` (a theme id, e.g. `"T1"`),
+      not `theme` (free text) — the theme text must be dereferenced from
+      `hypotheses[item_id].search_themes[]`.
+    - `search-results.json` stores execution records per-item under
+      `search_results[item_id].searches_executed`, NOT at top-level
+      `search_execution_log`.
+    - Individual result records inside `searches_executed[N].results`
+      have no `disposition` field — disposition lives in the item-level
+      `selected_sources` / `rejected_sources` arrays keyed by `search_id`.
+    - `scorecards.json` is CLI-keyed (`scorecards[item_id].scorecards`).
+
+    Counts picked to allow unambiguous assertions:
+    - S01 targets T1, returns 5, 2 selected, 3 rejected.
+    - S02 targets T2, returns 3, 1 selected, 2 rejected.
+    """
+    clarified = {
+        "claims": [],
+        "queries": [
+            {
+                "id": "Q001",
+                "original_text": "Sample query",
+                "clarified_text": "Sample query clarified for testability",
+            },
+        ],
+        "axioms": [],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(clarified))
+
+    hypotheses = {
+        "Q001": {
+            "id": "Q001",
+            "approach": "open-ended",
+            "search_themes": [
+                {"id": "T1", "theme": "Statistical watermarking", "description": "Token distribution"},
+                {"id": "T2", "theme": "Embedding-based watermarking", "description": "Semantic perturbation"},
+            ],
+        },
+    }
+    (run_dir / "hypotheses.json").write_text(json.dumps(hypotheses))
+
+    search_plans = {
+        "Q001": {
+            "id": "Q001",
+            "searches": [
+                {
+                    "id": "S01",
+                    "target_theme": "T1",
+                    "perspective": "academic",
+                    "terms": ["watermarking", "LLM"],
+                    "sources": ["arXiv"],
+                },
+                {
+                    "id": "S02",
+                    "target_theme": "T2",
+                    "perspective": "industry",
+                    "terms": ["watermark embedding"],
+                    "sources": ["ACM"],
+                },
+            ],
+        },
+    }
+    (run_dir / "search-plans.json").write_text(json.dumps(search_plans))
+
+    search_results = {
+        "Q001": {
+            "id": "Q001",
+            "searches_executed": [
+                {
+                    "search_id": "S01",
+                    "terms_used": ["watermarking", "LLM"],
+                    "provider": "serper",
+                    "date": "2026-04-23T13:18:41Z",
+                    "results_found": 5,
+                    "total_available": 5,
+                    "results": [
+                        {"title": f"S1 Paper {i}", "url": f"https://ex.com/s1/{i}", "snippet": ""} for i in range(5)
+                    ],
+                },
+                {
+                    "search_id": "S02",
+                    "terms_used": ["watermark embedding"],
+                    "provider": "serper",
+                    "date": "2026-04-23T13:18:45Z",
+                    "results_found": 3,
+                    "total_available": 3,
+                    "results": [
+                        {"title": f"S2 Paper {i}", "url": f"https://ex.com/s2/{i}", "snippet": ""} for i in range(3)
+                    ],
+                },
+            ],
+            "selected_sources": [
+                {
+                    "url": "https://ex.com/s1/0",
+                    "search_id": "S01",
+                    "title": "S1 Paper 0",
+                    "snippet": "",
+                    "relevance_score": 8,
+                    "rationale": "directly relevant",
+                },
+                {
+                    "url": "https://ex.com/s1/1",
+                    "search_id": "S01",
+                    "title": "S1 Paper 1",
+                    "snippet": "",
+                    "relevance_score": 7,
+                    "rationale": "supporting evidence",
+                },
+                {
+                    "url": "https://ex.com/s2/0",
+                    "search_id": "S02",
+                    "title": "S2 Paper 0",
+                    "snippet": "",
+                    "relevance_score": 9,
+                    "rationale": "strong match",
+                },
+            ],
+            "rejected_sources": [
+                {
+                    "url": "https://ex.com/s1/2",
+                    "search_id": "S01",
+                    "title": "S1 Paper 2",
+                    "relevance_score": 2,
+                    "rationale": "off-topic",
+                },
+                {
+                    "url": "https://ex.com/s1/3",
+                    "search_id": "S01",
+                    "title": "S1 Paper 3",
+                    "relevance_score": 3,
+                    "rationale": "tangential",
+                },
+                {
+                    "url": "https://ex.com/s1/4",
+                    "search_id": "S01",
+                    "title": "S1 Paper 4",
+                    "relevance_score": 1,
+                    "rationale": "irrelevant",
+                },
+                {
+                    "url": "https://ex.com/s2/1",
+                    "search_id": "S02",
+                    "title": "S2 Paper 1",
+                    "relevance_score": 4,
+                    "rationale": "weak",
+                },
+                {
+                    "url": "https://ex.com/s2/2",
+                    "search_id": "S02",
+                    "title": "S2 Paper 2",
+                    "relevance_score": 3,
+                    "rationale": "unrelated",
+                },
+            ],
+            "summary": {
+                "total_searches": 2,
+                "total_results_found": 8,
+                "total_selected": 3,
+                "total_rejected": 5,
+                "relevance_threshold": 5,
+            },
+        },
+    }
+    (run_dir / "search-results.json").write_text(json.dumps(search_results))
+
+    scorecards = {
+        "Q001": {
+            "id": "Q001",
+            "scorecards": [
+                {
+                    "id": "SRC001",
+                    "url": "https://ex.com/s1/0",
+                    "title": "S1 Paper 0",
+                    "authors": "Smith, Jones",
+                    "date": "2025",
+                    "content_summary": "Peer-reviewed study on statistical watermarking.",
+                    "reliability": {"rating": "High", "rationale": "Peer-reviewed venue"},
+                    "relevance": {"rating": "Very High", "rationale": "Core methodology paper"},
+                    "bias_assessment": {
+                        "funding_source": {"rating": "Low risk", "rationale": "Publicly funded"},
+                    },
+                },
+            ],
+        },
+    }
+    (run_dir / "scorecards.json").write_text(json.dumps(scorecards))
+
+    reports = {
+        "Q001": {
+            "id": "Q001",
+            "assessment_summary": {
+                "answer": "Multiple watermarking techniques documented.",
+                "confidence": "Medium — surveyed only major vendors.",
+                "conclusion": "Several techniques exist; adoption varies by deployment.",
+                "reasoning": "Analysis of surveyed literature.",
+            },
+            "synthesis_summary": {
+                "evidence_quality": "Limited — small sample of surveyed papers.",
+                "source_agreement": "High on vocabulary, moderate on taxonomy.",
+            },
+        },
+    }
+    (run_dir / "reports.json").write_text(json.dumps(reports))
+
+
+def _q001_dir(run_dir: Path) -> Path:
+    """Return the slugged Q001 output directory under run_dir."""
+    return next(d for d in run_dir.iterdir() if d.is_dir() and d.name.startswith("Q001-"))
+
+
+def _searches_table_rows(index_content: str, search_id_prefix: str) -> list[str]:
+    """Extract `| [<search_id>...` rows from the `## Searches` table."""
+    after = index_content.split("## Searches", 1)[1]
+    table = after.split("##", 1)[0]
+    return [line for line in table.splitlines() if line.startswith(f"| [{search_id_prefix}")]
+
+
+class TestItemIndexSearchesTableCliFormat:
+    """Content tests for the per-item `## Searches` summary table (CLI format).
+
+    The observable bug (#157 round 1): every row emitted as
+    `| [SNN](...) |  | ? | ? |` — empty Target, literal `?` in Returned and
+    Selected — because the renderer's joins assumed plugin-format schema.
+    These tests assert the table carries real data, not placeholders.
+    """
+
+    def test_target_column_resolves_theme_id_to_theme_text(self, tmp_path: Path) -> None:
+        """Target column contains theme text (dereferenced from `target_theme` id)."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (_q001_dir(run_dir) / "index.md").read_text()
+        assert "Statistical watermarking" in index, (
+            "Searches table missing theme text for S01 (target_theme=T1 → 'Statistical watermarking')"
+        )
+        assert "Embedding-based watermarking" in index, (
+            "Searches table missing theme text for S02 (target_theme=T2 → 'Embedding-based watermarking')"
+        )
+
+    def test_returned_column_has_numeric_count_not_placeholder(self, tmp_path: Path) -> None:
+        """Returned column contains a non-zero integer, never the `?` placeholder."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (_q001_dir(run_dir) / "index.md").read_text()
+        for prefix in ("S01", "S02"):
+            rows = _searches_table_rows(index, prefix)
+            assert len(rows) == 1, f"expected 1 {prefix} row, got {len(rows)}"
+            cells = [c.strip() for c in rows[0].strip().strip("|").split("|")]
+            returned = cells[-2]
+            assert returned.isdigit(), f"{prefix} Returned cell is not numeric: {returned!r}"
+            assert int(returned) > 0, f"{prefix} Returned cell is not positive: {returned!r}"
+
+    def test_selected_column_has_numeric_count_not_placeholder(self, tmp_path: Path) -> None:
+        """Selected column contains an integer, never the `?` placeholder."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (_q001_dir(run_dir) / "index.md").read_text()
+        for prefix in ("S01", "S02"):
+            rows = _searches_table_rows(index, prefix)
+            assert len(rows) == 1, f"expected 1 {prefix} row, got {len(rows)}"
+            cells = [c.strip() for c in rows[0].strip().strip("|").split("|")]
+            selected = cells[-1]
+            assert selected.isdigit(), f"{prefix} Selected cell is not numeric: {selected!r}"
+
+    def test_returned_and_selected_counts_match_fixture(self, tmp_path: Path) -> None:
+        """Exact counts: S01 returns 5 / selects 2; S02 returns 3 / selects 1."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (_q001_dir(run_dir) / "index.md").read_text()
+        s01_cells = [c.strip() for c in _searches_table_rows(index, "S01")[0].strip().strip("|").split("|")]
+        s02_cells = [c.strip() for c in _searches_table_rows(index, "S02")[0].strip().strip("|").split("|")]
+        assert s01_cells[-2] == "5", f"S01 Returned: expected 5, got {s01_cells[-2]}"
+        assert s01_cells[-1] == "2", f"S01 Selected: expected 2, got {s01_cells[-1]}"
+        assert s02_cells[-2] == "3", f"S02 Returned: expected 3, got {s02_cells[-2]}"
+        assert s02_cells[-1] == "1", f"S02 Selected: expected 1, got {s02_cells[-1]}"
+
+
+class TestItemIndexSourcesTableCliFormat:
+    """Content tests for the per-item `## Sources` summary table (CLI format).
+
+    Not a regression fix — this table was already correct in R0063 — but part
+    of #157 round 1 to lock the behavior with a strong assertion, so future
+    schema shifts don't silently drop this column set the same way the
+    Searches table did.
+    """
+
+    def test_sources_table_has_id_title_reliability_relevance(self, tmp_path: Path) -> None:
+        """Every row carries id, title, and non-placeholder reliability/relevance."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (_q001_dir(run_dir) / "index.md").read_text()
+        assert "## Sources" in index
+        assert "[SRC001](sources/SRC001/scorecard.md)" in index
+        assert "S1 Paper 0" in index
+        # Row format: | [SRC001](...) | <title> | <reliability> | <relevance> |
+        sources_after = index.split("## Sources", 1)[1].split("##", 1)[0]
+        rows = [line for line in sources_after.splitlines() if line.startswith("| [SRC")]
+        assert len(rows) == 1
+        cells = [c.strip() for c in rows[0].strip().strip("|").split("|")]
+        assert cells[-2] == "High", f"Reliability: expected 'High', got {cells[-2]!r}"
+        assert cells[-1] == "Very High", f"Relevance: expected 'Very High', got {cells[-1]!r}"
+
+
+class TestSearchLogMdCliFormat:
+    """Content tests for per-search `search-log.md` under CLI-format runs.
+
+    The observable bug (#157 round 1): search-log.md for a CLI-format run
+    contained only Title/Terms/Planned sources — no Target, no Query, no
+    Execution Summary, no Selected/Rejected Results tables — because
+    `_write_searches` looked for execution records at top-level
+    `search_execution_log` (empty in CLI format) and for `theme` (not
+    `target_theme`) on the plan entry.
+    """
+
+    def test_search_log_has_target_theme_line(self, tmp_path: Path) -> None:
+        """`**Target**: <theme text>` line resolved from target_theme id."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        s01 = (_q001_dir(run_dir) / "searches" / "S01" / "search-log.md").read_text()
+        assert "**Target**: Statistical watermarking" in s01, "search-log.md missing Target line with theme text"
+
+    def test_search_log_has_execution_summary_block(self, tmp_path: Path) -> None:
+        """Execution Summary section with returned/selected/rejected counts."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        s01 = (_q001_dir(run_dir) / "searches" / "S01" / "search-log.md").read_text()
+        assert "## Execution Summary" in s01, "search-log.md missing ## Execution Summary"
+        assert "Results returned: 5" in s01, "Execution Summary missing returned count"
+        assert "Selected: 2" in s01, "Execution Summary missing selected count"
+        assert "Rejected: 3" in s01, "Execution Summary missing rejected count"
+
+    def test_search_log_has_selected_results_table(self, tmp_path: Path) -> None:
+        """`## Selected Results` section lists items with titles and scores."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        s01 = (_q001_dir(run_dir) / "searches" / "S01" / "search-log.md").read_text()
+        assert "## Selected Results" in s01
+        assert "S1 Paper 0" in s01
+        assert "S1 Paper 1" in s01
+        assert "directly relevant" in s01
+
+    def test_search_log_has_rejected_results_table(self, tmp_path: Path) -> None:
+        """`## Rejected Results` section lists rejected items with rationales."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        s01 = (_q001_dir(run_dir) / "searches" / "S01" / "search-log.md").read_text()
+        assert "## Rejected Results" in s01
+        assert "S1 Paper 2" in s01
+        assert "off-topic" in s01
+
+    def test_search_log_results_subdir_contains_per_result_files(self, tmp_path: Path) -> None:
+        """results/RNN.md per-result files written with Title / URL / Score / Disposition."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        results_dir = _q001_dir(run_dir) / "searches" / "S01" / "results"
+        assert results_dir.exists(), "per-search results/ subdir not created"
+        r_files = sorted(f for f in results_dir.iterdir() if f.suffix == ".md")
+        assert len(r_files) == 5, f"expected 5 per-result files for S01, got {len(r_files)}"
+        r01 = (results_dir / "R01.md").read_text()
+        assert "**Title**:" in r01
+        assert "**URL**:" in r01
+        assert "**Disposition**: selected" in r01 or "**Disposition**: rejected" in r01
+
+
+class TestSourcesScorecardMdCliFormat:
+    """Content tests for per-source `scorecard.md` under CLI-format runs.
+
+    Scorecard rendering was already largely correct for CLI format in R0063,
+    but prior tests asserted only directory existence. Lock the behavior so
+    schema shifts can't silently drop the substantive fields.
+    """
+
+    def test_scorecard_has_metadata_table(self, tmp_path: Path) -> None:
+        """Metadata table with URL, Authors, Date rows populated from scorecard fields."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        sc = (_q001_dir(run_dir) / "sources" / "SRC001" / "scorecard.md").read_text()
+        assert "## Metadata" in sc
+        assert "| URL | <https://ex.com/s1/0> |" in sc
+        assert "| Authors | Smith, Jones |" in sc
+        assert "| Date | 2025 |" in sc
+
+    def test_scorecard_has_reliability_section_with_rationale(self, tmp_path: Path) -> None:
+        """`## Reliability: High` heading plus rationale body."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        sc = (_q001_dir(run_dir) / "sources" / "SRC001" / "scorecard.md").read_text()
+        assert "## Reliability: High" in sc
+        assert "Peer-reviewed venue" in sc
+
+    def test_scorecard_has_relevance_section_with_rationale(self, tmp_path: Path) -> None:
+        """`## Relevance: Very High` heading plus rationale body."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        sc = (_q001_dir(run_dir) / "sources" / "SRC001" / "scorecard.md").read_text()
+        assert "## Relevance: Very High" in sc
+        assert "Core methodology paper" in sc
+
+    def test_scorecard_has_bias_assessment_row(self, tmp_path: Path) -> None:
+        """Bias Assessment table has at least one populated row."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        sc = (_q001_dir(run_dir) / "sources" / "SRC001" / "scorecard.md").read_text()
+        assert "## Bias Assessment" in sc
+        assert "Funding Source" in sc
+        assert "Low risk" in sc
+        assert "Publicly funded" in sc
+
+
+class TestAnswerSummaryCliFormat:
+    """Content tests for the per-query answer/verdict summary resolution.
+
+    Observed bug: the run-level index's per-item cards showed only
+    `**Query:**` and `**Confidence:**` with no Answer line between them.
+    R0063's `reports.json` stores the answer under
+    `assessment_summary.answer` (CLI format); the renderer only checked
+    the plugin-format `verdict_summary` / `answer_summary` / `one_line`
+    fields, so the lookup returned empty and the `**Answer:**` line
+    was silently dropped across every card and also from the per-item
+    index's Bottom Line.
+    """
+
+    def test_run_index_card_renders_answer_line_for_query(self, tmp_path: Path) -> None:
+        """`**Answer:** <text>` appears inside the query's card in run index."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        # Isolate Q001 card section (between card anchor and the next anchor / section)
+        card = index.split('<a id="card-Q001"></a>', 1)[1].split('<a id="', 1)[0]
+        assert "**Answer:** Multiple watermarking techniques documented." in card, (
+            "Q001 card is missing the **Answer:** line with assessment_summary.answer text"
+        )
+
+    def test_per_item_index_renders_bottom_line_from_assessment_summary(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Per-item `index.md` `**Bottom Line:**` falls back to `assessment_summary.answer`."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_realistic_run(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        per_item = (_q001_dir(run_dir) / "index.md").read_text()
+        assert "**Bottom Line:** Multiple watermarking techniques documented." in per_item, (
+            "Per-item index.md missing **Bottom Line:** from assessment_summary.answer"
+        )
+
+
+class TestSchemaHelpersDefensiveBranches:
+    """Direct unit tests for the #157 round-1 schema-resolution helpers.
+
+    Each helper has narrow defensive guards for malformed or unexpected
+    JSON shapes (non-dict item data, non-list themes, missing label
+    fields, etc.). Exercised here by unit-calling the helper with the
+    specific shape that triggers each branch. Keeping the assertions
+    behavioral — what the helper returns — rather than purely structural
+    (avoids the `# pragma: no branch` pattern called out in #157).
+    """
+
+    def test_execution_log_returns_empty_when_item_data_not_dict(self) -> None:
+        """CLI fallback returns [] when search_results[item_id] is non-dict."""
+        from diogenes.renderer import _get_item_execution_log
+
+        assert _get_item_execution_log({"Q001": "not a dict"}, "Q001") == []
+
+    def test_disposition_index_returns_empty_when_item_data_not_dict(self) -> None:
+        """CLI fallback returns {} when search_results[item_id] is non-dict."""
+        from diogenes.renderer import _get_item_disposition_index
+
+        assert _get_item_disposition_index({"Q001": 42}, "Q001") == {}
+
+    def test_disposition_index_skips_non_dict_entries_in_source_list(self) -> None:
+        """Non-dict entries inside selected_sources / rejected_sources are skipped."""
+        from diogenes.renderer import _get_item_disposition_index
+
+        search_results = {
+            "Q001": {
+                "selected_sources": [
+                    "not a dict",
+                    {"search_id": "S01", "url": "https://a"},
+                ],
+                "rejected_sources": [
+                    None,
+                    {"search_id": "S01", "url": "https://b"},
+                ],
+            },
+        }
+        index = _get_item_disposition_index(search_results, "Q001")
+        assert list(index.keys()) == ["S01"]
+        assert len(index["S01"]["selected"]) == 1
+        assert index["S01"]["selected"][0]["url"] == "https://a"
+        assert len(index["S01"]["rejected"]) == 1
+        assert index["S01"]["rejected"][0]["url"] == "https://b"
+
+    def test_resolve_search_theme_falls_through_when_themes_not_list(self) -> None:
+        """Non-list `search_themes` falls back to `target_hypothesis`."""
+        from diogenes.renderer import _resolve_search_theme
+
+        search = {"target_theme": "T1", "target_hypothesis": "H-fallback"}
+        hypotheses = {"search_themes": "not a list"}
+        assert _resolve_search_theme(search, hypotheses) == "H-fallback"
+
+    def test_resolve_search_theme_empty_themes_list_falls_through(self) -> None:
+        """Empty `search_themes` list never enters the loop, falls back."""
+        from diogenes.renderer import _resolve_search_theme
+
+        search = {"target_theme": "T1", "target_hypothesis": "H-fallback"}
+        hypotheses: dict[str, Any] = {"search_themes": []}
+        assert _resolve_search_theme(search, hypotheses) == "H-fallback"
+
+    def test_resolve_search_theme_matching_id_but_no_label_continues(self) -> None:
+        """Matching id with no label/description continues the loop."""
+        from diogenes.renderer import _resolve_search_theme
+
+        search = {"target_theme": "T1"}
+        hypotheses = {
+            "search_themes": [
+                {"id": "T1"},  # match, but no label or description
+                {"id": "T1", "theme": "Recovered theme"},  # match with label
+            ],
+        }
+        assert _resolve_search_theme(search, hypotheses) == "Recovered theme"
+
+    def test_resolve_confidence_label_synthesis_not_dict_uses_report(self) -> None:
+        """Non-dict synthesis falls through to report.assessment_summary.confidence."""
+        from diogenes.renderer import _resolve_confidence_label
+
+        report = {"assessment_summary": {"confidence": "Medium"}}
+        # Pass a non-dict synthesis — the helper's type is dict[str, Any] but
+        # the `isinstance` guard defends against real-world malformed JSON.
+        assert _resolve_confidence_label(report, None) == "Medium"  # type: ignore[arg-type]
+
+    def test_resolve_confidence_label_assessment_not_dict_uses_report(self) -> None:
+        """Dict synthesis with non-dict assessment falls through to report."""
+        from diogenes.renderer import _resolve_confidence_label
+
+        report = {"assessment_summary": {"confidence": "High"}}
+        synthesis = {"assessment": "not a dict"}
+        assert _resolve_confidence_label(report, synthesis) == "High"

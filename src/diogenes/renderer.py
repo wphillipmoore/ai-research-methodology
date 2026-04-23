@@ -336,6 +336,128 @@ def _collect_hypothesis_ratings(report: dict[str, Any], synthesis: dict[str, Any
     return ratings
 
 
+def _get_item_execution_log(search_results: dict[str, Any], item_id: str) -> list[dict[str, Any]]:
+    """Return the search execution records for an item.
+
+    Handles both schemas the renderer can receive:
+
+    - Plugin format: top-level ``search_execution_log`` list. Records
+      may carry an ``item_id`` field; only records matching ``item_id``
+      (or records with no ``item_id`` set, for backwards compatibility)
+      are returned.
+    - CLI format: per-item nested under
+      ``search_results[item_id].searches_executed``.
+    """
+    log = search_results.get("search_execution_log")
+    if isinstance(log, list):
+        matching = [e for e in log if isinstance(e, dict) and (not e.get("item_id") or e.get("item_id") == item_id)]
+        if matching:
+            return matching
+    item_data = search_results.get(item_id, {})
+    if isinstance(item_data, dict):
+        executed: list[dict[str, Any]] = item_data.get("searches_executed", []) or []
+        return executed
+    return []
+
+
+def _get_item_disposition_index(
+    search_results: dict[str, Any],
+    item_id: str,
+) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    """Index CLI-format ``selected_sources`` / ``rejected_sources`` by search id.
+
+    Returns a mapping ``{search_id: {"selected": [...], "rejected": [...]}}``
+    derived from the item-level ``selected_sources`` / ``rejected_sources``
+    arrays. Each entry's ``search_id`` field is used for bucketing.
+    Returns an empty dict for plugin format (where disposition lives
+    inline on individual result records instead).
+    """
+    index: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    item_data = search_results.get(item_id, {})
+    if not isinstance(item_data, dict):
+        return index
+    for disposition_key, source_list_key in (("selected", "selected_sources"), ("rejected", "rejected_sources")):
+        for entry in item_data.get(source_list_key, []) or []:
+            if not isinstance(entry, dict):
+                continue
+            sid = entry.get("search_id", "")
+            bucket = index.setdefault(sid, {"selected": [], "rejected": []})
+            bucket[disposition_key].append(entry)
+    return index
+
+
+def _resolve_answer_text(report: dict[str, Any]) -> str:
+    """Resolve the one-line answer/verdict text for a claim or query.
+
+    Tries, in order:
+
+    1. Plugin format: ``report.verdict_summary`` / ``answer_summary`` /
+       ``one_line``.
+    2. CLI format: ``report.assessment_summary.answer`` (preferred for
+       queries) or ``conclusion`` (preferred for claims). Either value
+       is an acceptable one-liner summary of the report's bottom line.
+
+    Returns the first non-empty string found, or an empty string if all
+    sources are missing.
+    """
+    for key in ("verdict_summary", "answer_summary", "one_line"):
+        val = report.get(key)
+        if isinstance(val, str) and val:
+            return val
+    assess = report.get("assessment_summary")
+    if isinstance(assess, dict):
+        for key in ("answer", "conclusion"):
+            val = assess.get(key)
+            if isinstance(val, str) and val:
+                return val
+    return ""
+
+
+def _resolve_confidence_label(report: dict[str, Any], synthesis: dict[str, Any]) -> str:
+    """Resolve a confidence label for the per-item card metadata line.
+
+    Plugin format: ``synthesis.assessment.probability_label`` /
+    ``confidence``.
+    CLI format: ``report.assessment_summary.confidence``.
+    """
+    if isinstance(synthesis, dict):
+        assessment = synthesis.get("assessment")
+        if isinstance(assessment, dict):
+            val = assessment.get("probability_label") or assessment.get("confidence")
+            if isinstance(val, str) and val:
+                return val
+    assess = report.get("assessment_summary")
+    if isinstance(assess, dict):
+        val = assess.get("confidence")
+        if isinstance(val, str) and val:
+            return val
+    return ""
+
+
+def _resolve_search_theme(search: dict[str, Any], item_hypotheses: dict[str, Any]) -> str:
+    """Resolve a search's target theme to human-readable text.
+
+    - Plugin format: ``theme`` holds the theme text directly.
+    - CLI format: ``target_theme`` is an id (e.g. ``"T1"``) that must be
+      looked up in ``item_hypotheses.search_themes[]`` by id.
+    - Legacy fallback: ``target_hypothesis`` for early plugin plans that
+      didn't carry a free-text theme.
+    """
+    theme = search.get("theme")
+    if theme:
+        return str(theme)
+    target_theme_id = search.get("target_theme")
+    if target_theme_id and isinstance(item_hypotheses, dict):
+        themes = item_hypotheses.get("search_themes", [])
+        if isinstance(themes, list):
+            for t in themes:
+                if isinstance(t, dict) and t.get("id") == target_theme_id:
+                    label = t.get("theme") or t.get("description")
+                    if label:
+                        return str(label)
+    return str(search.get("target_hypothesis") or "")
+
+
 def render_run(run_dir: Path, output_dir: Path) -> None:
     """Render a single run's JSON output to a markdown tree.
 
@@ -402,7 +524,7 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
         if audit_to_render:
             _write_self_audit(item_dir, audit_to_render, item_report)
 
-        _write_searches(item_dir, item_id, item_search_plan, search_results, item_report)
+        _write_searches(item_dir, item_id, item_search_plan, search_results, item_hypotheses, item_report)
         _write_sources(item_dir, item_id, scorecards, search_results, item_report)
         _write_reading_list(item_dir, audit_to_render, item_id, scorecards, item_report)
 
@@ -577,7 +699,7 @@ def _write_run_index(
             lines.extend([f"**{text_label}:** {item_text}", ""])
 
             # Answer / verdict summary
-            answer = report.get("verdict_summary") or report.get("answer_summary") or report.get("one_line") or ""
+            answer = _resolve_answer_text(report)
             if answer:
                 answer_label = "Verdict" if item_type == "claim" else "Answer"
                 lines.extend([f"**{answer_label}:** {answer}", ""])
@@ -598,15 +720,7 @@ def _write_run_index(
             # Confidence · Sources · Searches metadata line
             source_count = len(_extract_sources_for_item(scorecards, item_id))
             search_count = len(item_search_plan.get("searches", [])) if isinstance(item_search_plan, dict) else 0
-            confidence = ""
-            # item_synthesis comes from _item_by_id which always returns a dict
-            # (empty {} if not found). Guard kept for defense in depth.
-            if isinstance(item_synthesis, dict):  # pragma: no branch
-                assessment = item_synthesis.get("assessment", {})
-                # assessment defaults to {} via .get, always a dict unless the
-                # synthesis JSON is structurally malformed.
-                if isinstance(assessment, dict):  # pragma: no branch
-                    confidence = assessment.get("probability_label") or assessment.get("confidence", "")
+            confidence = _resolve_confidence_label(report, item_synthesis)
             meta_parts: list[str] = []
             if confidence:
                 meta_parts.append(f"**Confidence:** {confidence}")
@@ -783,12 +897,7 @@ def _write_item_index(
             lines.extend([f"**{label}:** {original or clarified}", ""])
 
         # Bottom Line (BLUF) from report
-        bluf = ""
-        # report comes from reports_by_id.get(item_id, {}) which always
-        # returns a dict. _card_heading_for at line 741 would crash earlier
-        # on non-dict report, so this guard is unreachable in practice.
-        if isinstance(report, dict):  # pragma: no branch
-            bluf = report.get("verdict_summary") or report.get("answer_summary") or report.get("one_line") or ""
+        bluf = _resolve_answer_text(report) if isinstance(report, dict) else ""
         if bluf:
             lines.extend([f"**Bottom Line:** {bluf}", ""])
 
@@ -845,7 +954,8 @@ def _write_item_index(
 
     # Searches summary table
     if has_searches_table:
-        execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
+        execution_log = _get_item_execution_log(search_results, item_id)
+        disposition_index = _get_item_disposition_index(search_results, item_id)
         lines.extend(
             [
                 '<a id="sec-searches"></a>',
@@ -858,7 +968,7 @@ def _write_item_index(
         )
         for s in search_plan_searches:
             search_id = s.get("id", "S??")
-            theme = s.get("theme") or s.get("target_hypothesis") or ""
+            theme = _resolve_search_theme(s, hypotheses)
             exec_record = next(
                 (e for e in execution_log if e.get("search_id") == search_id or e.get("id") == search_id),
                 None,
@@ -867,8 +977,16 @@ def _write_item_index(
             selected_str = "?"
             if exec_record:
                 results_list = exec_record.get("results", [])
-                returned_str = str(exec_record.get("total_returned") or len(results_list))
-                selected_str = str(sum(1 for r in results_list if r.get("disposition") == "selected"))
+                returned_str = str(
+                    exec_record.get("total_returned") or exec_record.get("total_available") or len(results_list)
+                )
+                # Prefer inline disposition (plugin format). Fall back to
+                # the CLI-format selected/rejected index when the results
+                # list carries no disposition field.
+                if any(isinstance(r, dict) and r.get("disposition") for r in results_list):
+                    selected_str = str(sum(1 for r in results_list if r.get("disposition") == "selected"))
+                else:
+                    selected_str = str(len(disposition_index.get(search_id, {}).get("selected", [])))
             lines.append(
                 f"| [{search_id}](searches/{search_id}/search-log.md) | {theme[:60]} | "
                 f"{returned_str} | {selected_str} |"
@@ -1084,7 +1202,7 @@ def _write_assessment(item_dir: Path, synthesis: dict[str, Any], report: dict[st
     # Verdict from report
     if report:
         verdict = report.get("verdict", "")
-        summary = report.get("verdict_summary") or report.get("one_line") or ""
+        summary = _resolve_answer_text(report)
         if verdict:
             lines.extend([f"**Verdict:** {verdict}", ""])
         if summary:
@@ -1379,11 +1497,40 @@ def _extract_sources_for_item(scorecards: dict[str, Any], item_id: str) -> list[
     return []
 
 
+def _enriched_results_for_search(
+    exec_record: dict[str, Any],
+    disposition_index: dict[str, dict[str, list[dict[str, Any]]]],
+    search_id: str,
+) -> list[dict[str, Any]]:
+    """Return a unified result list with `disposition` set on each entry.
+
+    - Plugin format: exec_record's ``results`` already has ``disposition``
+      on each entry; return it as-is.
+    - CLI format: exec_record's ``results`` is bare (no disposition). Build
+      the list from the CLI-format ``selected_sources`` / ``rejected_sources``
+      entries matched to this ``search_id``, tagging each with the
+      appropriate disposition. These entries also carry ``relevance_score``
+      and ``rationale``, which the bare execution results do not.
+    """
+    results_list = exec_record.get("results", []) or []
+    if any(isinstance(r, dict) and r.get("disposition") for r in results_list):
+        return [r for r in results_list if isinstance(r, dict)]
+
+    bucket = disposition_index.get(search_id, {"selected": [], "rejected": []})
+    enriched: list[dict[str, Any]] = []
+    for entry in bucket.get("selected", []):
+        enriched.append({**entry, "disposition": "selected"})
+    for entry in bucket.get("rejected", []):
+        enriched.append({**entry, "disposition": "rejected"})
+    return enriched
+
+
 def _write_searches(
     item_dir: Path,
     item_id: str,
     item_plan: dict[str, Any],
     search_results: dict[str, Any],
+    item_hypotheses: dict[str, Any],
     report: dict[str, Any],  # noqa: ARG001 - accepted for symmetry with other artifact writers
 ) -> None:
     """Write searches/ subdirectory with per-search logs.
@@ -1401,7 +1548,8 @@ def _write_searches(
     searches_dir = item_dir / "searches"
     searches_dir.mkdir(parents=True, exist_ok=True)
 
-    execution_log = search_results.get("search_execution_log", []) if isinstance(search_results, dict) else []
+    execution_log = _get_item_execution_log(search_results, item_id)
+    disposition_index = _get_item_disposition_index(search_results, item_id)
 
     for s in searches:
         search_id = s.get("id", "S??")
@@ -1409,7 +1557,7 @@ def _write_searches(
         search_subdir.mkdir(parents=True, exist_ok=True)
 
         lines = [f"# {item_id} — {search_id}", ""]
-        theme = s.get("theme") or s.get("target_hypothesis") or ""
+        theme = _resolve_search_theme(s, item_hypotheses)
         if theme:
             lines.append(f"**Target**: {theme}")
             lines.append("")
@@ -1427,19 +1575,20 @@ def _write_searches(
             (e for e in execution_log if e.get("search_id") == search_id or e.get("id") == search_id),
             None,
         )
-        # Write per-result files and build selected/rejected tables
-        selected_count = 0
-        rejected_count = 0
-        total_returned = 0
         if exec_record:
             query_str = exec_record.get("query", "")
             if query_str:
                 lines.extend([f"**Query**: `{query_str}`", ""])
 
-            results_list = exec_record.get("results", [])
-            total_returned = exec_record.get("total_returned") or len(results_list)
-            selected_count = sum(1 for r in results_list if r.get("disposition") == "selected")
-            rejected_count = sum(1 for r in results_list if r.get("disposition") != "selected")
+            enriched_results = _enriched_results_for_search(exec_record, disposition_index, search_id)
+            total_returned = (
+                exec_record.get("total_returned")
+                or exec_record.get("total_available")
+                or exec_record.get("results_found")
+                or len(exec_record.get("results", []) or [])
+            )
+            selected_count = sum(1 for r in enriched_results if r.get("disposition") == "selected")
+            rejected_count = sum(1 for r in enriched_results if r.get("disposition") == "rejected")
 
             lines.extend(
                 [
@@ -1454,18 +1603,18 @@ def _write_searches(
 
             # Per-result files + tables
             results_subdir = search_subdir / "results"
-            if results_list:
+            if enriched_results:
                 results_subdir.mkdir(parents=True, exist_ok=True)
 
             selected_rows: list[str] = []
             rejected_rows: list[str] = []
-            for idx, r in enumerate(results_list, 1):
+            for idx, r in enumerate(enriched_results, 1):
                 result_id = f"R{idx:02d}"
                 disposition = r.get("disposition", "rejected")
                 title = r.get("title") or r.get("url", "")
                 url = r.get("url", "")
                 score = r.get("relevance_score", "?")
-                reason = r.get("reason", "")
+                reason = r.get("rationale") or r.get("reason", "")
 
                 # Write detail file
                 rlines = [
