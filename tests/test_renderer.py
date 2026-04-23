@@ -3326,3 +3326,146 @@ class TestMoreDefensiveBranches:
         content = (item_dir / "assessment.md").read_text()
         assert "Confidence" in content
         assert "Verdict**:" not in content
+
+
+def _create_cli_format_regression_fixture(run_dir: Path) -> None:
+    """Regression fixture for #156 — CLI-format clarified JSON, no `type` fields.
+
+    The real CLI pipeline writes `research-input-clarified.json` as
+    `{claims: [...], queries: [...], axioms: [...]}` with items that do
+    NOT carry a `type` field. Commit 91bbc9c3 added a fallback in
+    `render_run` that handles this shape for the per-item render loop
+    but forgot to (a) attach `type` to each item and (b) include axioms.
+    `_write_run_index` filters items by `type` to build its card
+    sections, so under this shape every filter matches nothing and the
+    entire per-item card section is silently dropped from the rendered
+    run-level `index.md`.
+
+    This fixture reproduces the shape. `reports.json` is populated so
+    tests can assert substantive card-body content (verdicts and
+    answers), not just section headings. Other pipeline-step files are
+    omitted — `_load_json` returns `{}` for missing files and the
+    downstream `_write_*` calls are guarded.
+    """
+    clarified = {
+        "claims": [
+            {
+                "id": "C001",
+                "original_text": "Sample claim text",
+                "clarified_text": "Sample claim clarified for testability",
+            },
+        ],
+        "queries": [
+            {
+                "id": "Q001",
+                "original_text": "Sample query text",
+                "clarified_text": "Sample query clarified",
+            },
+        ],
+        "axioms": [
+            {
+                "id": "A001",
+                "original_text": "Sample axiom statement",
+                "text": "Sample axiom statement",
+            },
+        ],
+    }
+    (run_dir / "research-input-clarified.json").write_text(json.dumps(clarified))
+
+    reports = {
+        "C001": {"id": "C001", "verdict_summary": "Claim supported by evidence"},
+        "Q001": {"id": "Q001", "answer_summary": "Query answered with caveats"},
+    }
+    (run_dir / "reports.json").write_text(json.dumps(reports))
+
+
+class TestRunIndexCliFormatRegression:
+    """Regression tests for issue #156.
+
+    Pre-fix behavior: `_write_run_index` silently emits a run-level
+    `index.md` with no per-item card section whenever the clarified
+    input uses the `{claims, queries, axioms}` top-level grouping
+    (items lack `type` fields) — which is what the CLI pipeline
+    actually produces.
+
+    These tests MUST fail against the buggy code and pass after the
+    fix. Together they assert on substantive content of the rendered
+    run-level `index.md` — not on file existence or the `Run Overview`
+    header string, which both pass even on a fully-broken render.
+    """
+
+    def test_run_index_has_per_item_card_anchors(self, tmp_path: Path) -> None:
+        """Every item — axiom, claim, query — appears as an anchored card."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_regression_fixture(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        assert 'id="card-A001"' in index, "axiom A001 card missing from run index"
+        assert 'id="card-C001"' in index, "claim C001 card missing from run index"
+        assert 'id="card-Q001"' in index, "query Q001 card missing from run index"
+
+    def test_run_index_has_full_analysis_links_for_claim_and_query(self, tmp_path: Path) -> None:
+        """Claim and query cards include a `[Full analysis](<slug>/index.md)` link."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_regression_fixture(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        # Slug format is `<id>-<first-chars-of-clarified>`. Anchor the
+        # assertion on the id-prefix segment so renderer slug tweaks
+        # don't break the test, but the presence of the full-analysis
+        # link itself is the thing under test.
+        assert "[Full analysis](C001-" in index, "claim C001 missing Full analysis link"
+        assert "[Full analysis](Q001-" in index, "query Q001 missing Full analysis link"
+
+    def test_run_index_toc_lists_all_three_type_sections(self, tmp_path: Path) -> None:
+        """TOC includes Axioms + Claims + Queries sections plus per-item entries."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_regression_fixture(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        assert "#sec-axioms" in index, "TOC missing Axioms section entry"
+        assert "#sec-claims" in index, "TOC missing Claims section entry"
+        assert "#sec-queries" in index, "TOC missing Queries section entry"
+        assert "#card-A001" in index, "TOC missing axiom A001 sub-entry"
+        assert "#card-C001" in index, "TOC missing claim C001 sub-entry"
+        assert "#card-Q001" in index, "TOC missing query Q001 sub-entry"
+
+    def test_run_index_renders_claim_verdict_and_query_answer(self, tmp_path: Path) -> None:
+        """Card bodies include the reports.json verdict/answer text, not just headings."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_regression_fixture(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        assert "Claim supported by evidence" in index, "claim verdict missing from card body"
+        assert "Query answered with caveats" in index, "query answer missing from card body"
+
+    def test_run_index_collection_statistics_counts_all_three_items(self, tmp_path: Path) -> None:
+        """`Items investigated` stats row reflects all three items, not a subset.
+
+        Catches the secondary 91bbc9c3 bug: the fallback at L363-367 only
+        unpacks `claims + queries` from the clarified JSON and omits
+        `axioms` entirely. A correct fix includes all three top-level
+        keys, so the stats row must equal 3.
+        """
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        _create_cli_format_regression_fixture(run_dir)
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        assert "Items investigated | 3" in index, (
+            "Collection Statistics row missing or undercounting — expected 'Items investigated | 3'"
+        )
