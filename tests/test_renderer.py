@@ -3553,8 +3553,7 @@ def _create_cli_format_realistic_run(run_dir: Path) -> None:
                     "results_found": 5,
                     "total_available": 5,
                     "results": [
-                        {"title": f"S1 Paper {i}", "url": f"https://ex.com/s1/{i}", "snippet": ""}
-                        for i in range(5)
+                        {"title": f"S1 Paper {i}", "url": f"https://ex.com/s1/{i}", "snippet": ""} for i in range(5)
                     ],
                 },
                 {
@@ -3565,8 +3564,7 @@ def _create_cli_format_realistic_run(run_dir: Path) -> None:
                     "results_found": 3,
                     "total_available": 3,
                     "results": [
-                        {"title": f"S2 Paper {i}", "url": f"https://ex.com/s2/{i}", "snippet": ""}
-                        for i in range(3)
+                        {"title": f"S2 Paper {i}", "url": f"https://ex.com/s2/{i}", "snippet": ""} for i in range(3)
                     ],
                 },
             ],
@@ -3821,9 +3819,7 @@ class TestSearchLogMdCliFormat:
         render_run(run_dir, run_dir)
 
         s01 = (_q001_dir(run_dir) / "searches" / "S01" / "search-log.md").read_text()
-        assert "**Target**: Statistical watermarking" in s01, (
-            "search-log.md missing Target line with theme text"
-        )
+        assert "**Target**: Statistical watermarking" in s01, "search-log.md missing Target line with theme text"
 
     def test_search_log_has_execution_summary_block(self, tmp_path: Path) -> None:
         """Execution Summary section with returned/selected/rejected counts."""
@@ -3974,7 +3970,8 @@ class TestAnswerSummaryCliFormat:
         )
 
     def test_per_item_index_renders_bottom_line_from_assessment_summary(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Per-item `index.md` `**Bottom Line:**` falls back to `assessment_summary.answer`."""
         run_dir = tmp_path / "run"

@@ -361,7 +361,8 @@ def _get_item_execution_log(search_results: dict[str, Any], item_id: str) -> lis
 
 
 def _get_item_disposition_index(
-    search_results: dict[str, Any], item_id: str,
+    search_results: dict[str, Any],
+    item_id: str,
 ) -> dict[str, dict[str, list[dict[str, Any]]]]:
     """Index CLI-format ``selected_sources`` / ``rejected_sources`` by search id.
 
