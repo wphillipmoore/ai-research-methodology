@@ -417,8 +417,29 @@ each item, assemble the final report from all prior steps. Write
 **Step 5j: Archive** — Combine all JSON outputs into `archive.json`
 with a timestamp and pipeline version.
 
-**Step 5k: Usage** — Record token usage, API call counts, and estimated
-costs. Write `usage.json` to the run group directory.
+**Step 5k: Usage** — Write `usage.json` to the run group directory.
+The file MUST conform to `src/diogenes/schemas/usage.schema.json`. Use
+the canonical `totals` + `per_call` structure so plugin-path and
+CLI-path runs are directly comparable.
+
+Claude Code does not expose per-API-call token counts, cache metrics,
+or per-call costs to skills. Set the fields you cannot observe to 0
+rather than omitting or inventing values:
+
+- `totals.input_tokens`, `totals.output_tokens`, `totals.total_tokens`,
+  `totals.estimated_cost_usd` — set to 0.
+- `totals.api_calls` — set to 0 unless you have an accurate count from
+  Python-side MCP calls.
+- `totals.web_search_requests` / `totals.web_fetch_requests` — set to
+  the accurate count tracked via `dio_search` / `dio_fetch` calls.
+- `per_call` — use an empty array `[]` if you do not have per-agent
+  token breakdowns.
+
+Plugin-specific extras (scoring distribution, verdict summaries, per-run
+stats, anything that does not fit the canonical shape) go under the
+optional top-level `plugin_metadata` key, free-form. Do NOT add new
+top-level keys — `additionalProperties: false` at the root will reject
+them.
 
 **Output files per run directory** (all JSON, no markdown):
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/wphillipmoore/ai-research-methodology/main/src/diogenes/schemas/usage.schema.json",
   "title": "Usage Report",
-  "description": "Token usage, cost estimates, and API call tracking for a research run.",
+  "description": "Token usage, cost estimates, and API call tracking for a research run. On the CLI path all fields are accurate. On the plugin path (inside Claude Code) token counts are not exposed to the skill and those fields are set to 0; plugin-specific statistics that don't fit the canonical shape go under `plugin_metadata`.",
   "type": "object",
   "required": ["totals", "per_call"],
   "properties": {
@@ -39,6 +39,11 @@
         },
         "additionalProperties": false
       }
+    },
+    "plugin_metadata": {
+      "type": "object",
+      "description": "Plugin-path-only extras that don't fit the canonical CLI shape. Examples: source scoring distribution, verdict summaries, per-run pipeline stats. The CLI path never sets this key. Free-form to avoid schema churn as the plugin surface evolves; the canonical `totals` and `per_call` structure remains authoritative for cross-path comparison.",
+      "additionalProperties": true
     }
   },
   "additionalProperties": false
