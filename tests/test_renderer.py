@@ -3984,3 +3984,96 @@ class TestAnswerSummaryCliFormat:
         assert "**Bottom Line:** Multiple watermarking techniques documented." in per_item, (
             "Per-item index.md missing **Bottom Line:** from assessment_summary.answer"
         )
+
+
+class TestSchemaHelpersDefensiveBranches:
+    """Direct unit tests for the #157 round-1 schema-resolution helpers.
+
+    Each helper has narrow defensive guards for malformed or unexpected
+    JSON shapes (non-dict item data, non-list themes, missing label
+    fields, etc.). Exercised here by unit-calling the helper with the
+    specific shape that triggers each branch. Keeping the assertions
+    behavioral — what the helper returns — rather than purely structural
+    (avoids the `# pragma: no branch` pattern called out in #157).
+    """
+
+    def test_execution_log_returns_empty_when_item_data_not_dict(self) -> None:
+        """CLI fallback returns [] when search_results[item_id] is non-dict."""
+        from diogenes.renderer import _get_item_execution_log
+
+        assert _get_item_execution_log({"Q001": "not a dict"}, "Q001") == []
+
+    def test_disposition_index_returns_empty_when_item_data_not_dict(self) -> None:
+        """CLI fallback returns {} when search_results[item_id] is non-dict."""
+        from diogenes.renderer import _get_item_disposition_index
+
+        assert _get_item_disposition_index({"Q001": 42}, "Q001") == {}
+
+    def test_disposition_index_skips_non_dict_entries_in_source_list(self) -> None:
+        """Non-dict entries inside selected_sources / rejected_sources are skipped."""
+        from diogenes.renderer import _get_item_disposition_index
+
+        search_results = {
+            "Q001": {
+                "selected_sources": [
+                    "not a dict",
+                    {"search_id": "S01", "url": "https://a"},
+                ],
+                "rejected_sources": [
+                    None,
+                    {"search_id": "S01", "url": "https://b"},
+                ],
+            },
+        }
+        index = _get_item_disposition_index(search_results, "Q001")
+        assert list(index.keys()) == ["S01"]
+        assert len(index["S01"]["selected"]) == 1
+        assert index["S01"]["selected"][0]["url"] == "https://a"
+        assert len(index["S01"]["rejected"]) == 1
+        assert index["S01"]["rejected"][0]["url"] == "https://b"
+
+    def test_resolve_search_theme_falls_through_when_themes_not_list(self) -> None:
+        """Non-list `search_themes` falls back to `target_hypothesis`."""
+        from diogenes.renderer import _resolve_search_theme
+
+        search = {"target_theme": "T1", "target_hypothesis": "H-fallback"}
+        hypotheses = {"search_themes": "not a list"}
+        assert _resolve_search_theme(search, hypotheses) == "H-fallback"
+
+    def test_resolve_search_theme_empty_themes_list_falls_through(self) -> None:
+        """Empty `search_themes` list never enters the loop, falls back."""
+        from diogenes.renderer import _resolve_search_theme
+
+        search = {"target_theme": "T1", "target_hypothesis": "H-fallback"}
+        hypotheses = {"search_themes": []}
+        assert _resolve_search_theme(search, hypotheses) == "H-fallback"
+
+    def test_resolve_search_theme_matching_id_but_no_label_continues(self) -> None:
+        """Matching id with no label/description continues the loop."""
+        from diogenes.renderer import _resolve_search_theme
+
+        search = {"target_theme": "T1"}
+        hypotheses = {
+            "search_themes": [
+                {"id": "T1"},  # match, but no label or description
+                {"id": "T1", "theme": "Recovered theme"},  # match with label
+            ],
+        }
+        assert _resolve_search_theme(search, hypotheses) == "Recovered theme"
+
+    def test_resolve_confidence_label_synthesis_not_dict_uses_report(self) -> None:
+        """Non-dict synthesis falls through to report.assessment_summary.confidence."""
+        from diogenes.renderer import _resolve_confidence_label
+
+        report = {"assessment_summary": {"confidence": "Medium"}}
+        # Pass a non-dict synthesis — the helper's type is dict[str, Any] but
+        # the `isinstance` guard defends against real-world malformed JSON.
+        assert _resolve_confidence_label(report, None) == "Medium"  # type: ignore[arg-type]
+
+    def test_resolve_confidence_label_assessment_not_dict_uses_report(self) -> None:
+        """Dict synthesis with non-dict assessment falls through to report."""
+        from diogenes.renderer import _resolve_confidence_label
+
+        report = {"assessment_summary": {"confidence": "High"}}
+        synthesis = {"assessment": "not a dict"}
+        assert _resolve_confidence_label(report, synthesis) == "High"
