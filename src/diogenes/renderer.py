@@ -357,13 +357,18 @@ def render_run(run_dir: Path, output_dir: Path) -> None:
     reports = _load_json(run_dir / "reports.json")
     pipeline_events = _load_json(run_dir / "pipeline-events.json")
 
-    # Extract items — handle both CLI format (claims/queries top-level keys)
-    # and plugin format (items list or dict-keyed-by-ID).
+    # Extract items — handle both CLI format (claims/queries/axioms
+    # top-level keys) and plugin format (items list or dict-keyed-by-ID).
+    # CLI-format items arrive without a `type` field (the grouping key
+    # conveys it), but `_write_run_index` filters by `type` to build
+    # card sections, so the fallback must attach it — and must include
+    # axioms as well as claims and queries.
     input_items = _unwrap_items(research_input)
     if not input_items:
         input_items = [
-            *research_input.get("claims", []),
-            *research_input.get("queries", []),
+            *({"type": "axiom", **item} for item in research_input.get("axioms", [])),
+            *({"type": "claim", **item} for item in research_input.get("claims", [])),
+            *({"type": "query", **item} for item in research_input.get("queries", [])),
         ]
     report_items = _unwrap_items(reports, key="reports")
 
