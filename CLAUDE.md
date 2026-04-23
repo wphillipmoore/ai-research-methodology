@@ -43,6 +43,72 @@ that is **exclusive to this repository's product**.
 in a different repository? If yes, it does not belong in memory — it
 belongs in shared documentation.
 
+## Parallel AI agent development
+
+This repository supports running multiple Claude Code agents in parallel via
+git worktrees. The convention keeps parallel agents' working trees isolated
+while preserving shared project memory (which Claude Code derives from the
+session's starting CWD).
+
+**Canonical spec:**
+[`standard-tooling/docs/specs/worktree-convention.md`](https://github.com/wphillipmoore/standard-tooling/blob/develop/docs/specs/worktree-convention.md)
+— full rationale, trust model, failure modes, and memory-path implications.
+The canonical text lives in `standard-tooling`; this section is the local
+on-ramp.
+
+### Structure
+
+```text
+~/dev/github/ai-research-methodology/     ← sessions ALWAYS start here
+  .git/
+  CLAUDE.md, src/, docs/, …               ← main worktree (usually `develop`)
+  .worktrees/                             ← container for parallel worktrees
+    issue-150-adopt-worktree-convention/  ← worktree on feature/150-...
+    …
+```
+
+### Rules
+
+1. **Sessions always start at the project root.**
+   `cd ~/dev/github/ai-research-methodology && claude` — never from inside
+   `.worktrees/<name>/`. This keeps the memory-path slug stable and shared.
+2. **Each parallel agent is assigned exactly one worktree.** The session
+   prompt names the worktree (see Agent prompt contract below).
+   - For Read / Edit / Write tools: use the worktree's absolute path.
+   - For Bash commands that touch files: `cd` into the worktree first,
+     or use absolute paths.
+3. **The main worktree is read-only.** All edits flow through a worktree
+   on a feature branch — the logical endpoint of the standing
+   "no direct commits to `develop`" policy.
+4. **One worktree per issue.** Don't stack in-flight issues. When a
+   branch lands, remove the worktree before starting the next.
+5. **Naming: `issue-<N>-<short-slug>`.** `<N>` is the GitHub issue
+   number; `<short-slug>` is 2–4 kebab-case tokens.
+
+### Agent prompt contract
+
+When launching a parallel-agent session, use this template (fill in the
+placeholders):
+
+```text
+You are working on issue #<N>: <issue title>.
+
+Your worktree is: /Users/pmoore/dev/github/ai-research-methodology/.worktrees/issue-<N>-<slug>/
+Your branch is:   feature/<N>-<slug>
+
+Rules for this session:
+- Do all git operations from inside your worktree:
+    cd <absolute-worktree-path> && git <command>
+- For Read / Edit / Write tools, use the absolute worktree path.
+- For Bash commands that touch files, cd into the worktree first
+  or use absolute paths.
+- Do not edit files at the project root. The main worktree is
+  read-only — all changes flow through your worktree on your
+  feature branch.
+```
+
+All fields are required.
+
 ## Project Overview
 
 `ai-research-methodology` is a unified research methodology for AI agents
