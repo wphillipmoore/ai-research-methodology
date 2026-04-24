@@ -272,6 +272,131 @@ PIPELINE_STEPS: list[StepDefinition] = [
 ]
 
 
+# Expected number of components after splitting a canonical step name
+# (``step``, two-digit number, logical suffix) on ``_`` with maxsplit=2.
+_CANONICAL_STEP_NAME_PARTS = 3
+
+
+def _logical_name(step_name: str) -> str:
+    """Strip the ``step_NN_`` prefix from a canonical step name.
+
+    Turns ``step_09_reports`` → ``reports``, ``step_06_evidence_packets`` →
+    ``evidence_packets``. Used by :func:`resolve_step_identifier` so
+    users can type short names on the command line.
+    """
+    # The canonical names match step_NN_<logical>. Split twice on "_":
+    # first pops "step", second pops the two-digit number.
+    parts = step_name.split("_", 2)
+    if len(parts) < _CANONICAL_STEP_NAME_PARTS:
+        return step_name
+    return parts[2]
+
+
+# Accepted short aliases beyond the derived logical names. These let the
+# common case ("rerun the reports step", "rerun the audit step") accept
+# singular/abbreviated forms without needing to remember whether the
+# canonical suffix is plural.
+_STEP_ALIASES: dict[str, str] = {
+    "clarify": "step_01_research_input_clarified",
+    "clarifier": "step_01_research_input_clarified",
+    "input": "step_01_research_input_clarified",
+    "hypothesis": "step_02_hypotheses",
+    "search_plan": "step_03_search_plans",
+    "plan": "step_03_search_plans",
+    "search": "step_04_search_results",
+    "score": "step_05_scorecards",
+    "scorecard": "step_05_scorecards",
+    "evidence": "step_06_evidence_packets",
+    "packets": "step_06_evidence_packets",
+    "synthesize": "step_07_synthesis",
+    "audit": "step_08_self_audit",
+    "report": "step_09_reports",
+    "events": "step_11_pipeline_events",
+}
+
+
+def _resolve_numeric_step(num: int) -> str:
+    """Resolve a 1-indexed pipeline step number to its canonical name."""
+    if num < 1 or num > len(PIPELINE_STEPS):
+        msg = f"--from-step {num} out of range. Valid step numbers: 1..{len(PIPELINE_STEPS)}."
+        raise ValueError(msg)
+    return PIPELINE_STEPS[num - 1].name
+
+
+def _resolve_named_step(key: str, original: str) -> str:
+    """Resolve a lowercased, non-numeric string to a canonical step name.
+
+    Checks canonical names, then logical suffixes, then short aliases.
+    Raises ValueError with a hint listing valid options if nothing matches.
+    """
+    for step in PIPELINE_STEPS:
+        if step.name.lower() == key:
+            return step.name
+    for step in PIPELINE_STEPS:
+        if _logical_name(step.name).lower() == key:
+            return step.name
+    if key in _STEP_ALIASES:
+        return _STEP_ALIASES[key]
+    msg = f"Unknown pipeline step: {original!r}. Valid options: {', '.join(describe_valid_step_identifiers())}."
+    raise ValueError(msg)
+
+
+def resolve_step_identifier(identifier: str | int) -> str:
+    """Resolve a user-supplied step identifier to a canonical step name.
+
+    Accepts:
+    - a 1-indexed integer matching a position in :data:`PIPELINE_STEPS`
+    - a canonical step name (``step_09_reports``)
+    - the logical suffix (``reports``, ``evidence_packets``)
+    - a short alias (``report``, ``audit``, ``score``) — see
+      :data:`_STEP_ALIASES`.
+
+    Case-insensitive for string forms. Strings containing only digits
+    are treated as integers.
+
+    Returns:
+        The canonical step name (e.g. ``step_09_reports``).
+
+    Raises:
+        ValueError: when the identifier does not match any known step.
+            The error message lists all valid options so the CLI can
+            surface a usable hint without additional work.
+        TypeError: when the identifier is neither int nor str.
+
+    """
+    if isinstance(identifier, bool):
+        # bool is a subclass of int — guard explicitly so a stray
+        # ``True`` doesn't resolve to step 1.
+        msg = f"Step identifier must be int or str, got {type(identifier).__name__}"
+        raise TypeError(msg)
+    if isinstance(identifier, int):
+        return _resolve_numeric_step(identifier)
+    if isinstance(identifier, str):
+        stripped = identifier.strip()
+        if not stripped:
+            msg = "--from-step requires a value; got empty string"
+            raise ValueError(msg)
+        if stripped.isdigit():
+            return _resolve_numeric_step(int(stripped))
+        return _resolve_named_step(stripped.lower(), identifier)
+    # Defensive: callers using typed APIs won't hit this, but a runtime
+    # caller (tests, REPL, unchecked user input) passing a float or
+    # other object should get a clear TypeError rather than an opaque
+    # attribute error deeper in the call chain.
+    msg = f"Step identifier must be int or str, got {type(identifier).__name__}"  # type: ignore[unreachable]
+    raise TypeError(msg)
+
+
+def describe_valid_step_identifiers() -> list[str]:
+    """Return a list of human-readable step identifiers.
+
+    Each entry reads like ``9 (reports)`` — the numeric position and
+    its logical name. Used in error messages when the user supplies
+    an invalid ``--from-step`` value.
+    """
+    return [f"{i} ({_logical_name(s.name)})" for i, s in enumerate(PIPELINE_STEPS, 1)]
+
+
 @dataclass
 class StepStatus:
     """Completion record for a single step."""
@@ -442,6 +567,35 @@ class PipelineState:
     def all_complete(self) -> bool:
         """Check if all pipeline steps have been completed."""
         return all(self.is_complete(s.name) for s in PIPELINE_STEPS)
+
+    def mark_step_and_later_incomplete(self, step_name: str) -> list[str]:
+        """Clear completion records for ``step_name`` and every later step.
+
+        Used by ``dio resume --from-step`` to force a step-level rerun.
+        The identifier must be a canonical step name (resolve via
+        :func:`resolve_step_identifier` first). Returns the list of step
+        names that were cleared, in pipeline order, so the caller can
+        delete the corresponding output files.
+
+        Raises:
+            ValueError: if ``step_name`` is not a canonical pipeline
+                step name. This is a programming error at the call site;
+                the CLI layer is expected to have resolved any
+                user-supplied identifier before calling this method.
+
+        """
+        names = [s.name for s in PIPELINE_STEPS]
+        if step_name not in names:
+            msg = f"Unknown pipeline step: {step_name!r}"
+            raise ValueError(msg)
+        idx = names.index(step_name)
+        cleared: list[str] = []
+        for later in names[idx:]:
+            if later in self._completed:
+                del self._completed[later]
+            cleared.append(later)
+        self._save()
+        return cleared
 
     def summary(self) -> dict[str, Any]:
         """Return a summary of pipeline progress."""

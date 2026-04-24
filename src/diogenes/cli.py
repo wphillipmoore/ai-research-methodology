@@ -3,7 +3,7 @@
 Usage:
     dio run <input-file> --output <dir>
     dio rerun --output <dir>
-    dio resume <instance-dir>
+    dio resume <instance-dir> [--from-step <N-or-name> --yes]
     dio fact-check <document> --output <dir>
     dio render <run-dir> --output <dir>
 """
@@ -58,6 +58,24 @@ def _build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument(
         "instance_dir",
         help="Path to the timestamped instance directory to resume",
+    )
+    resume_parser.add_argument(
+        "--from-step",
+        dest="from_step",
+        default=None,
+        help=(
+            "Force restart from the named step (regardless of prior completion). "
+            "Accepts a 1-indexed number (e.g. '9'), a canonical step name "
+            "('step_09_reports'), a logical suffix ('reports'), or a short "
+            "alias ('report', 'audit'). Outputs at and after this step are "
+            "deleted and the step list is reset. Requires --yes to proceed."
+        ),
+    )
+    resume_parser.add_argument(
+        "--yes",
+        dest="yes",
+        action="store_true",
+        help=("Acknowledge the destructive wipe performed by --from-step. Required when --from-step is given."),
     )
 
     # --- dio fact-check ---
@@ -118,7 +136,11 @@ def main() -> int:
     if args.command == "resume":
         from diogenes.commands.run import execute_resume
 
-        return execute_resume(args.instance_dir)
+        return execute_resume(
+            args.instance_dir,
+            from_step=args.from_step,
+            yes=args.yes,
+        )
 
     if args.command == "fact-check":
         print(f"dio fact-check: doc={args.document} output={args.output}")

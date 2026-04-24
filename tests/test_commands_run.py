@@ -1010,3 +1010,446 @@ class TestExecuteResume:
         # The interrupted step is the first one re-dispatched.
         dispatched = [c.args[0].name for c in mock_dispatch.call_args_list]
         assert dispatched[0] == "step_03_search_plans"
+
+
+def _seed_full_complete_instance(instance_dir: Path) -> None:
+    """Seed an instance with every step marked complete and its output file on disk.
+
+    Used by --from-step tests that need a "completed run" starting
+    point so the wipe + re-dispatch logic has something to operate on.
+    """
+    files: dict[str, dict[str, Any]] = {
+        "research-input-clarified.json": {"claims": [], "queries": [{"text": "t"}], "axioms": []},
+        "hypotheses.json": {"Q001": {"approach": "x"}},
+        "search-plans.json": {"Q001": {"plan": "y"}},
+        "search-results.json": {"Q001": []},
+        "scorecards.json": {"Q001": []},
+        "evidence-packets.json": {"Q001": {}},
+        "synthesis.json": {"verdict": "inconclusive"},
+        "self-audit.json": {"issues": []},
+        "reports.json": {"title": "t", "summary": "s"},
+        "archive.json": {"all": "steps"},
+        "pipeline-events.json": {"events": []},
+    }
+    _seed_instance(instance_dir, completed_step_files=files)
+
+
+class TestExecuteResumeFromStep:
+    """Tests for execute_resume's --from-step path."""
+
+    def test_from_step_without_yes_refuses(self, tmp_path: Path) -> None:
+        """Destructive path requires --yes; without it, exit 1 and leave state alone."""
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        # Capture state before
+        reports_before = (instance_dir / "reports.json").read_text()
+
+        rc = execute_resume(str(instance_dir), from_step="9", yes=False)
+        assert rc == 1
+
+        # Reports.json must still be on disk untouched.
+        assert (instance_dir / "reports.json").exists()
+        assert (instance_dir / "reports.json").read_text() == reports_before
+
+    def test_from_step_invalid_identifier_exits_1(self, tmp_path: Path) -> None:
+        """Unknown step name surfaces an error and returns 1 without touching outputs."""
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        rc = execute_resume(str(instance_dir), from_step="not-real", yes=True)
+        assert rc == 1
+        # All previously-present outputs must still be present.
+        assert (instance_dir / "reports.json").exists()
+        assert (instance_dir / "synthesis.json").exists()
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_from_step_numeric_reruns_from_target(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """--from-step 9 wipes steps 9-11 outputs and re-dispatches only those."""
+        mock_client = MagicMock(model="m")
+        mock_client.usage.to_dict.return_value = {
+            "totals": {
+                "api_calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "estimated_cost_usd": 0.0,
+                "web_search_requests": 0,
+                "web_fetch_requests": 0,
+            },
+            "per_call": [],
+        }
+        mock_api_cls.return_value = mock_client
+        mock_sp.return_value = MagicMock()
+
+        def dispatch_side_effect(
+            step_def: StepDefinition,
+            outputs: dict[str, Any],
+            client: object,
+            sp: object,
+            el: object,
+            rd: Path,
+        ) -> dict[str, Any]:
+            if step_def.name in ("step_10_archive", "step_11_pipeline_events"):
+                return {"_self_written": True}
+            return {"refreshed": step_def.name}
+
+        mock_dispatch.side_effect = dispatch_side_effect
+
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        rc = execute_resume(str(instance_dir), from_step="9", yes=True)
+        assert rc == 0
+
+        # Steps 9, 10, 11 are the only ones dispatched.
+        dispatched = [c.args[0].name for c in mock_dispatch.call_args_list]
+        assert dispatched == [
+            "step_09_reports",
+            "step_10_archive",
+            "step_11_pipeline_events",
+        ]
+
+        # reports.json was rewritten with the mocked refresh payload.
+        refreshed = json.loads((instance_dir / "reports.json").read_text())
+        assert refreshed == {"refreshed": "step_09_reports"}
+
+        # Earlier outputs preserved.
+        assert (instance_dir / "synthesis.json").exists()
+        assert json.loads((instance_dir / "synthesis.json").read_text()) == {
+            "verdict": "inconclusive",
+        }
+
+    @patch("diogenes.commands.run._dispatch_step")
+    @patch("diogenes.commands.run._create_search_provider")
+    @patch("diogenes.commands.run.APIClient")
+    def test_from_step_by_logical_name(
+        self,
+        mock_api_cls: MagicMock,
+        mock_sp: MagicMock,
+        mock_dispatch: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """--from-step report (alias) resolves to step 9 and restarts from there."""
+        mock_client = MagicMock(model="m")
+        mock_client.usage.to_dict.return_value = {
+            "totals": {
+                "api_calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "estimated_cost_usd": 0.0,
+                "web_search_requests": 0,
+                "web_fetch_requests": 0,
+            },
+            "per_call": [],
+        }
+        mock_api_cls.return_value = mock_client
+        mock_sp.return_value = MagicMock()
+        mock_dispatch.side_effect = lambda sd, *_a, **_k: (
+            {"_self_written": True} if sd.name in ("step_10_archive", "step_11_pipeline_events") else {"ok": 1}
+        )
+
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        rc = execute_resume(str(instance_dir), from_step="report", yes=True)
+        assert rc == 0
+
+        dispatched = [c.args[0].name for c in mock_dispatch.call_args_list]
+        assert dispatched[0] == "step_09_reports"
+
+    def test_from_step_all_complete_still_reruns(self, tmp_path: Path) -> None:
+        """Even when all steps are complete, --from-step bypasses the no-op guard."""
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        with (
+            patch("diogenes.commands.run.APIClient") as mock_api,
+            patch("diogenes.commands.run._create_search_provider") as mock_sp,
+            patch("diogenes.commands.run._dispatch_step") as mock_dispatch,
+        ):
+            mock_client = MagicMock(model="m")
+            mock_client.usage.to_dict.return_value = {
+                "totals": {
+                    "api_calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                    "web_search_requests": 0,
+                    "web_fetch_requests": 0,
+                },
+                "per_call": [],
+            }
+            mock_api.return_value = mock_client
+            mock_sp.return_value = MagicMock()
+            mock_dispatch.side_effect = lambda sd, *_a, **_k: (
+                {"_self_written": True} if sd.name in ("step_10_archive", "step_11_pipeline_events") else {"ok": 1}
+            )
+
+            rc = execute_resume(str(instance_dir), from_step="9", yes=True)
+
+        assert rc == 0
+        # Dispatch was called at least once — the no-op early-return
+        # path was bypassed by --from-step.
+        assert mock_dispatch.call_count >= 1
+
+    def test_from_step_emits_nondeterminism_warning_for_llm_step(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Clearing an LLM-backed step logs a non-determinism warning.
+
+        Read the progress.log file to verify — the diogenes logger is
+        propagate=False, so caplog (root logger) doesn't see it, but the
+        file handler attached by configure_progress_logger does.
+        """
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        with (
+            patch("diogenes.commands.run.APIClient") as mock_api,
+            patch("diogenes.commands.run._create_search_provider") as mock_sp,
+            patch("diogenes.commands.run._dispatch_step") as mock_dispatch,
+        ):
+            mock_client = MagicMock(model="m")
+            mock_client.usage.to_dict.return_value = {
+                "totals": {
+                    "api_calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                    "web_search_requests": 0,
+                    "web_fetch_requests": 0,
+                },
+                "per_call": [],
+            }
+            mock_api.return_value = mock_client
+            mock_sp.return_value = MagicMock()
+            mock_dispatch.side_effect = lambda sd, *_a, **_k: (
+                {"_self_written": True} if sd.name in ("step_10_archive", "step_11_pipeline_events") else {"ok": 1}
+            )
+
+            rc = execute_resume(str(instance_dir), from_step="9", yes=True)
+
+        assert rc == 0
+        progress_log = (instance_dir / "progress.log").read_text()
+        assert "LLM-backed" in progress_log
+
+    def test_from_step_no_warning_for_python_only_steps(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Clearing only python_only steps (step 10 onward) omits the LLM warning."""
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        with (
+            patch("diogenes.commands.run.APIClient") as mock_api,
+            patch("diogenes.commands.run._create_search_provider") as mock_sp,
+            patch("diogenes.commands.run._dispatch_step") as mock_dispatch,
+        ):
+            mock_client = MagicMock(model="m")
+            mock_client.usage.to_dict.return_value = {
+                "totals": {
+                    "api_calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                    "web_search_requests": 0,
+                    "web_fetch_requests": 0,
+                },
+                "per_call": [],
+            }
+            mock_api.return_value = mock_client
+            mock_sp.return_value = MagicMock()
+            mock_dispatch.side_effect = lambda _sd, *_a, **_k: {"_self_written": True}
+
+            # step 10 (archive) is python_only; step 11 is also python_only.
+            rc = execute_resume(str(instance_dir), from_step="10", yes=True)
+
+        assert rc == 0
+        progress_log = (instance_dir / "progress.log").read_text()
+        assert "LLM-backed" not in progress_log
+
+    def test_from_step_deletes_output_files_on_disk(self, tmp_path: Path) -> None:
+        """Output files for the target step and later are physically deleted."""
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        with (
+            patch("diogenes.commands.run.APIClient") as mock_api,
+            patch("diogenes.commands.run._create_search_provider") as mock_sp,
+            patch("diogenes.commands.run._dispatch_step") as mock_dispatch,
+        ):
+            mock_api.return_value = MagicMock(model="m")
+            mock_sp.return_value = MagicMock()
+            # Make dispatch fail immediately so we can observe the
+            # post-wipe state before any step rewrites a file.
+            mock_dispatch.return_value = None
+
+            execute_resume(str(instance_dir), from_step="9", yes=True)
+
+        # Steps 9 (reports.json), 10 (archive.json), 11 (pipeline-events.json)
+        # outputs should all be gone.
+        assert not (instance_dir / "reports.json").exists()
+        assert not (instance_dir / "archive.json").exists()
+        assert not (instance_dir / "pipeline-events.json").exists()
+        # Earlier outputs untouched.
+        assert (instance_dir / "synthesis.json").exists()
+
+    def test_from_step_invalid_before_api_client(self, tmp_path: Path) -> None:
+        """Invalid --from-step exits before we touch APIClient or search providers.
+
+        This guards against pointless initialization when we're going to
+        reject the request anyway.
+        """
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        with patch("diogenes.commands.run.APIClient") as mock_api:
+            rc = execute_resume(str(instance_dir), from_step="not-real", yes=True)
+        assert rc == 1
+        mock_api.assert_not_called()
+
+    def test_from_step_missing_yes_before_api_client(self, tmp_path: Path) -> None:
+        """Missing --yes exits before APIClient init — no side effects."""
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        with patch("diogenes.commands.run.APIClient") as mock_api:
+            rc = execute_resume(str(instance_dir), from_step="9", yes=False)
+        assert rc == 1
+        mock_api.assert_not_called()
+
+    def test_from_step_skips_missing_output_files(self, tmp_path: Path) -> None:
+        """A cleared step whose output file is already absent is skipped silently.
+
+        Covers the branch where out_path.exists() is False (user deleted
+        the file manually between runs).
+        """
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+        # Manually remove reports.json so the cleanup loop has to handle
+        # its absence.
+        (instance_dir / "reports.json").unlink()
+
+        with (
+            patch("diogenes.commands.run.APIClient") as mock_api,
+            patch("diogenes.commands.run._create_search_provider") as mock_sp,
+            patch("diogenes.commands.run._dispatch_step") as mock_dispatch,
+        ):
+            mock_api.return_value = MagicMock(model="m")
+            mock_sp.return_value = MagicMock()
+            mock_dispatch.return_value = None
+
+            execute_resume(str(instance_dir), from_step="9", yes=True)
+
+        # archive.json and pipeline-events.json are still removed even
+        # though reports.json was already gone.
+        assert not (instance_dir / "archive.json").exists()
+        assert not (instance_dir / "pipeline-events.json").exists()
+
+    def test_from_step_skips_step_with_no_output_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A cleared step with output_file=None is skipped without crashing.
+
+        No step in PIPELINE_STEPS today has output_file=None, but
+        StepDefinition allows it. Guard against a future step that
+        mutates existing artifacts instead of producing a new file.
+        """
+        from diogenes.state_machine import PIPELINE_STEPS as REAL_STEPS
+        from diogenes.state_machine import PipelineState, StepDefinition
+
+        # Replace the final step with one that has no output file.
+        fake_last = StepDefinition(
+            name="step_99_no_output",
+            display_name="Fake last step",
+            output_file=None,
+            category="python_only",
+        )
+        patched = [*REAL_STEPS[:-1], fake_last]
+        monkeypatch.setattr("diogenes.commands.run.PIPELINE_STEPS", patched)
+        monkeypatch.setattr("diogenes.state_machine.PIPELINE_STEPS", patched)
+
+        # Seed: everything up through step_10_archive complete with
+        # on-disk files, plus the new fake tail step marked complete.
+        instance_dir = tmp_path / "instance"
+        files: dict[str, dict[str, Any]] = {
+            "research-input-clarified.json": {"claims": [], "queries": [], "axioms": []},
+            "hypotheses.json": {},
+            "search-plans.json": {},
+            "search-results.json": {},
+            "scorecards.json": {},
+            "evidence-packets.json": {},
+            "synthesis.json": {},
+            "self-audit.json": {},
+            "reports.json": {},
+            "archive.json": {},
+        }
+        _seed_instance(instance_dir, completed_step_files=files)
+        state = PipelineState(instance_dir)
+        state.mark_complete("step_99_no_output")
+
+        with (
+            patch("diogenes.commands.run.APIClient") as mock_api,
+            patch("diogenes.commands.run._create_search_provider") as mock_sp,
+            patch("diogenes.commands.run._dispatch_step") as mock_dispatch,
+        ):
+            mock_api.return_value = MagicMock(model="m")
+            mock_sp.return_value = MagicMock()
+            mock_dispatch.return_value = None
+
+            # Wipe from step 10 onward — that includes the
+            # output_file=None fake step, exercising the guard branch.
+            execute_resume(str(instance_dir), from_step="10", yes=True)
+
+        # Normal step 10 (archive.json) still deleted.
+        assert not (instance_dir / "archive.json").exists()
+
+    def test_from_step_integer_value(self, tmp_path: Path) -> None:
+        """execute_resume accepts an integer from_step (direct API call)."""
+        instance_dir = tmp_path / "instance"
+        _seed_full_complete_instance(instance_dir)
+
+        with (
+            patch("diogenes.commands.run.APIClient") as mock_api,
+            patch("diogenes.commands.run._create_search_provider") as mock_sp,
+            patch("diogenes.commands.run._dispatch_step") as mock_dispatch,
+        ):
+            mock_client = MagicMock(model="m")
+            mock_client.usage.to_dict.return_value = {
+                "totals": {
+                    "api_calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                    "web_search_requests": 0,
+                    "web_fetch_requests": 0,
+                },
+                "per_call": [],
+            }
+            mock_api.return_value = mock_client
+            mock_sp.return_value = MagicMock()
+            mock_dispatch.side_effect = lambda sd, *_a, **_k: (
+                {"_self_written": True} if sd.name in ("step_10_archive", "step_11_pipeline_events") else {"ok": 1}
+            )
+
+            rc = execute_resume(str(instance_dir), from_step=9, yes=True)
+
+        assert rc == 0

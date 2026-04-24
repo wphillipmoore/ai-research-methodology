@@ -13,6 +13,9 @@ from diogenes.state_machine import (
     StepStatus,
     _compute_version,
     _git_metadata,
+    _logical_name,
+    describe_valid_step_identifiers,
+    resolve_step_identifier,
 )
 
 
@@ -417,3 +420,194 @@ class TestVersionInPipelineState:
         data = json.loads((run_dir / "pipeline-state.json").read_text())
         assert data["version"]["package_version"] == "0.0.1-pinned"
         assert data["version"]["git_commit"] == "abc123"
+
+
+class TestLogicalName:
+    """Tests for the _logical_name helper."""
+
+    def test_strips_step_prefix(self) -> None:
+        assert _logical_name("step_09_reports") == "reports"
+
+    def test_strips_multi_token_suffix(self) -> None:
+        assert _logical_name("step_06_evidence_packets") == "evidence_packets"
+
+    def test_leaves_non_canonical_name_unchanged(self) -> None:
+        """Strings without the step_NN_ shape pass through untouched."""
+        assert _logical_name("ad_hoc") == "ad_hoc"
+        assert _logical_name("plain") == "plain"
+
+
+class TestDescribeValidStepIdentifiers:
+    """Tests for describe_valid_step_identifiers."""
+
+    def test_lists_all_steps_numbered(self) -> None:
+        identifiers = describe_valid_step_identifiers()
+        assert len(identifiers) == len(PIPELINE_STEPS)
+        # First entry is "1 (...)"
+        assert identifiers[0].startswith("1 (")
+        # Report step is the 9th and uses the logical suffix
+        assert "9 (reports)" in identifiers
+
+
+class TestResolveStepIdentifier:
+    """Tests for resolve_step_identifier."""
+
+    def test_numeric_string(self) -> None:
+        assert resolve_step_identifier("9") == "step_09_reports"
+
+    def test_integer(self) -> None:
+        assert resolve_step_identifier(9) == "step_09_reports"
+
+    def test_canonical_name(self) -> None:
+        assert resolve_step_identifier("step_09_reports") == "step_09_reports"
+
+    def test_canonical_name_case_insensitive(self) -> None:
+        assert resolve_step_identifier("STEP_09_REPORTS") == "step_09_reports"
+
+    def test_logical_suffix(self) -> None:
+        assert resolve_step_identifier("reports") == "step_09_reports"
+
+    def test_logical_suffix_case_insensitive(self) -> None:
+        assert resolve_step_identifier("Reports") == "step_09_reports"
+
+    def test_multi_token_logical_suffix(self) -> None:
+        assert resolve_step_identifier("evidence_packets") == "step_06_evidence_packets"
+
+    def test_short_alias_report_singular(self) -> None:
+        """'report' (singular) maps to the reports step."""
+        assert resolve_step_identifier("report") == "step_09_reports"
+
+    def test_short_alias_audit(self) -> None:
+        assert resolve_step_identifier("audit") == "step_08_self_audit"
+
+    def test_short_alias_score(self) -> None:
+        assert resolve_step_identifier("score") == "step_05_scorecards"
+
+    def test_unknown_string_raises_with_hint(self) -> None:
+        with pytest.raises(ValueError, match=r"Unknown pipeline step"):
+            resolve_step_identifier("totally-made-up")
+
+    def test_error_lists_valid_options(self) -> None:
+        """The error message names valid steps so the user can retry."""
+        with pytest.raises(ValueError, match=r"Unknown pipeline step") as exc:
+            resolve_step_identifier("bogus")
+        # Mentions at least one of the canonical logical names
+        assert "reports" in str(exc.value)
+
+    def test_empty_string_raises(self) -> None:
+        with pytest.raises(ValueError, match=r"empty"):
+            resolve_step_identifier("")
+
+    def test_whitespace_only_raises(self) -> None:
+        with pytest.raises(ValueError, match=r"empty"):
+            resolve_step_identifier("   ")
+
+    def test_numeric_out_of_range_low(self) -> None:
+        with pytest.raises(ValueError, match=r"out of range"):
+            resolve_step_identifier(0)
+
+    def test_numeric_out_of_range_high(self) -> None:
+        with pytest.raises(ValueError, match=r"out of range"):
+            resolve_step_identifier(99)
+
+    def test_numeric_string_out_of_range(self) -> None:
+        with pytest.raises(ValueError, match=r"out of range"):
+            resolve_step_identifier("99")
+
+    def test_non_string_non_int_type_raises(self) -> None:
+        with pytest.raises(TypeError, match=r"int or str"):
+            resolve_step_identifier(3.14)  # type: ignore[arg-type]
+
+    def test_bool_is_rejected(self) -> None:
+        """``True`` is an int subclass — reject it explicitly rather than resolving to step 1.
+
+        Prevents a typo like ``from_step=True`` from silently succeeding.
+        The boolean positional args here are the whole point of the
+        test, so silence FBT003.
+        """
+        with pytest.raises(TypeError, match=r"int or str"):
+            resolve_step_identifier(True)  # noqa: FBT003
+        with pytest.raises(TypeError, match=r"int or str"):
+            resolve_step_identifier(False)  # noqa: FBT003
+
+    def test_whitespace_padded_numeric_is_parsed(self) -> None:
+        """'  9  ' (padding) still resolves — user shells occasionally pad values."""
+        assert resolve_step_identifier("  9  ") == "step_09_reports"
+
+
+class TestMarkStepAndLaterIncomplete:
+    """Tests for PipelineState.mark_step_and_later_incomplete."""
+
+    def test_clears_target_and_later_steps(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        # Mark all 11 steps complete
+        for step in PIPELINE_STEPS:
+            state.mark_complete(step.name, output_file=step.output_file)
+        assert state.all_complete()
+
+        cleared = state.mark_step_and_later_incomplete("step_09_reports")
+
+        # step_09 through step_11 (the last three) should be cleared;
+        # step_01..step_08 remain complete.
+        assert cleared == [
+            "step_09_reports",
+            "step_10_archive",
+            "step_11_pipeline_events",
+        ]
+        assert not state.is_complete("step_09_reports")
+        assert not state.is_complete("step_10_archive")
+        assert not state.is_complete("step_11_pipeline_events")
+        assert state.is_complete("step_08_self_audit")
+        assert state.is_complete("step_01_research_input_clarified")
+
+    def test_clears_from_first_step_wipes_all(self, tmp_path: Path) -> None:
+        """Clearing from step 1 resets every step."""
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        for step in PIPELINE_STEPS:
+            state.mark_complete(step.name)
+
+        cleared = state.mark_step_and_later_incomplete(
+            "step_01_research_input_clarified",
+        )
+        assert len(cleared) == len(PIPELINE_STEPS)
+        assert not state.all_complete()
+        # Every step now absent from _completed
+        for step in PIPELINE_STEPS:
+            assert not state.is_complete(step.name)
+
+    def test_clears_step_that_was_not_previously_recorded(self, tmp_path: Path) -> None:
+        """Clearing a step that hasn't been started is a no-op on that slot but still returns it."""
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        # Only step_01 complete; later steps never recorded.
+        state.mark_complete("step_01_research_input_clarified")
+
+        cleared = state.mark_step_and_later_incomplete("step_05_scorecards")
+        # Returned list is every step from 5 onward, regardless of prior presence.
+        assert cleared[0] == "step_05_scorecards"
+        assert "step_11_pipeline_events" in cleared
+        # step_01 untouched
+        assert state.is_complete("step_01_research_input_clarified")
+
+    def test_persists_cleared_state_to_disk(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        state.mark_complete("step_09_reports", output_file="reports.json")
+        state.mark_step_and_later_incomplete("step_09_reports")
+
+        # Reload from disk — the cleared record must not reappear.
+        reloaded = PipelineState(run_dir)
+        assert not reloaded.is_complete("step_09_reports")
+
+    def test_unknown_step_raises(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        state = PipelineState(run_dir)
+        with pytest.raises(ValueError, match=r"Unknown pipeline step"):
+            state.mark_step_and_later_incomplete("not_a_real_step")
