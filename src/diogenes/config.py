@@ -55,6 +55,54 @@ class DioConfig:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
 
 
+def _find_dotenv(cwd: Path, filename: str = ".env") -> Path | None:
+    """Search for a ``.env`` file starting at ``cwd`` and walking up parents.
+
+    The walk is bounded: it stops at the first directory that satisfies any
+    of these conditions, in order of precedence:
+
+    1. The directory contains ``filename`` — return that path.
+    2. The directory contains a ``.git`` entry (file or directory) —
+       treat it as the repo/workspace root and stop. If ``filename`` is
+       not present there, return ``None``. This prevents crossing repo
+       boundaries when dio is invoked from, say, a sibling repo under
+       ``~/dev/github/``.
+    3. The directory is the user's home directory — stop and return
+       ``None``. We never walk above ``$HOME``.
+    4. The directory is the filesystem root — stop and return ``None``.
+
+    The git-boundary stop is the primary bound: it matches the mental model
+    that a ``.env`` belongs to a specific checkout, and dio should not pick
+    up a parent directory's unrelated ``.env``.
+
+    Args:
+        cwd: Starting directory for the search.
+        filename: Name of the dotenv file to search for. Defaults to ``.env``.
+
+    Returns:
+        Absolute path to the nearest ``.env`` at or above ``cwd`` within the
+        bound, or ``None`` if none is found.
+
+    """
+    home = Path.home()
+    current = cwd.resolve()
+    while True:
+        candidate = current / filename
+        if candidate.exists():
+            return candidate
+        # Stop at git boundary (don't cross into a parent repo / user's ~).
+        if (current / ".git").exists():
+            return None
+        # Stop at the user's home directory.
+        if current == home:
+            return None
+        parent = current.parent
+        # Stop at the filesystem root.
+        if parent == current:
+            return None
+        current = parent
+
+
 def _parse_dotenv(path: Path) -> dict[str, str]:
     """Parse a .env file and return key-value pairs.
 
@@ -98,13 +146,22 @@ def load_config() -> DioConfig:
     Priority (highest to lowest):
 
     1. ``ANTHROPIC_API_KEY`` environment variable
-    2. ``ANTHROPIC_API_KEY`` from ``.env`` file in the current directory
+    2. ``ANTHROPIC_API_KEY`` from the nearest ``.env`` file, searched
+       from the current directory upward (see :func:`_find_dotenv` for
+       the bounds of this search — git boundary, ``$HOME``, or the
+       filesystem root).
     3. ``api.key`` in ``./.diorc`` (project-level config, current directory)
     4. ``api.key`` in ``~/.diorc`` (user-level config)
 
     The ``.env`` file follows standard Python convention (VS Code, Docker
     Compose, etc.): values are loaded as pseudo-environment variables and
     override config files, but real environment variables override ``.env``.
+
+    The upward-search behavior for ``.env`` (added for issue #155) lets
+    dio be invoked from any subdirectory of its dev tree — including
+    worktrees and nested subdirectories — without requiring ``cd`` to
+    the repo root. If ``[env] dotenv_path`` is set in ``.diorc`` to an
+    explicit path, that path is used as-is (no upward search).
 
     Returns:
         Resolved :class:`DioConfig` instance.
@@ -131,12 +188,20 @@ def load_config() -> DioConfig:
     model = str(api_sect.get("model", DEFAULT_MODEL))
     load_dotenv = bool(env_sect.get("load_dotenv", True))
 
-    # Load .env file (priority 2 — overrides .diorc but not env vars)
+    # Load .env file (priority 2 — overrides .diorc but not env vars).
+    # If [env] dotenv_path is explicitly configured, honor that path as-is
+    # (no upward search). Otherwise, search from cwd upward — see
+    # _find_dotenv for the bounds.
     dotenv_vars: dict[str, str] = {}
     if load_dotenv:
-        dotenv_name = str(env_sect.get("dotenv_path", ".env"))
-        dotenv_path = Path(dotenv_name)
-        if dotenv_path.exists():
+        explicit_path = env_sect.get("dotenv_path")
+        dotenv_path: Path | None
+        if explicit_path is not None:
+            candidate = Path(str(explicit_path))
+            dotenv_path = candidate if candidate.exists() else None
+        else:
+            dotenv_path = _find_dotenv(Path.cwd())
+        if dotenv_path is not None:
             dotenv_vars = _parse_dotenv(dotenv_path)
 
     # Priority 1: environment variable
