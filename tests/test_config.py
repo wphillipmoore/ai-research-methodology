@@ -9,6 +9,7 @@ from diogenes.config import (
     DEFAULT_MODEL,
     ConfigError,
     DioConfig,
+    _find_dotenv,
     _load_toml,
     _parse_dotenv,
     _section,
@@ -68,6 +69,103 @@ class TestParseDotenv:
         path = tmp_path / ".env"
         path.write_text("KEY=x\n")
         assert _parse_dotenv(path) == {"KEY": "x"}
+
+
+class TestFindDotenv:
+    """Tests for _find_dotenv upward-search behavior (issue #155)."""
+
+    def test_found_in_cwd(self, tmp_path: Path) -> None:
+        """.env present in the starting directory is returned immediately."""
+        dotenv = tmp_path / ".env"
+        dotenv.write_text("KEY=value\n")
+        result = _find_dotenv(tmp_path)
+        assert result == dotenv.resolve()
+
+    def test_found_in_ancestor(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """.env in a parent directory is found via upward walk."""
+        # Keep the walk away from $HOME / real repo boundaries by pinning
+        # $HOME to somewhere unrelated.
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        ancestor = tmp_path / "repo"
+        ancestor.mkdir()
+        dotenv = ancestor / ".env"
+        dotenv.write_text("KEY=value\n")
+        deep = ancestor / "a" / "b" / "c"
+        deep.mkdir(parents=True)
+        result = _find_dotenv(deep)
+        assert result == dotenv.resolve()
+
+    def test_stops_at_git_boundary(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """The walk stops at a .git directory and does not cross into parents."""
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        # .env lives in tmp_path (the "parent repo"), but our starting
+        # directory is inside a nested repo with its own .git.
+        (tmp_path / ".env").write_text("SHOULD_NOT_BE_FOUND=1\n")
+        nested_repo = tmp_path / "nested"
+        nested_repo.mkdir()
+        (nested_repo / ".git").mkdir()
+        deep = nested_repo / "a" / "b"
+        deep.mkdir(parents=True)
+        result = _find_dotenv(deep)
+        assert result is None
+
+    def test_git_file_also_stops_walk(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A .git FILE (worktree marker) also acts as a boundary."""
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        (tmp_path / ".env").write_text("SHOULD_NOT_BE_FOUND=1\n")
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+        # git worktrees have a .git FILE, not a directory.
+        (worktree / ".git").write_text("gitdir: /elsewhere\n")
+        result = _find_dotenv(worktree)
+        assert result is None
+
+    def test_found_at_git_boundary_itself(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """If .env sits next to .git in the repo root, it is found there."""
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        dotenv = repo / ".env"
+        dotenv.write_text("KEY=value\n")
+        deep = repo / "a" / "b"
+        deep.mkdir(parents=True)
+        result = _find_dotenv(deep)
+        assert result == dotenv.resolve()
+
+    def test_stops_at_home(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """The walk stops at $HOME and does not look above it."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+        # .env above $HOME should NOT be discovered.
+        (tmp_path / ".env").write_text("ABOVE_HOME=1\n")
+        deep = fake_home / "project" / "sub"
+        deep.mkdir(parents=True)
+        result = _find_dotenv(deep)
+        assert result is None
+
+    def test_not_found_at_all(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Returns None when no .env exists within the bounded walk."""
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        deep = tmp_path / "a" / "b" / "c"
+        deep.mkdir(parents=True)
+        result = _find_dotenv(deep)
+        assert result is None
+
+    def test_filesystem_root_stops_walk(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """When the walk reaches the filesystem root, it stops and returns None.
+
+        We fake this by pointing $HOME somewhere that will never be hit
+        (under tmp_path that doesn't exist) so the only stopping condition
+        available up the tree from tmp_path is eventually the filesystem
+        root.
+        """
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "does-not-exist")
+        deep = tmp_path / "x"
+        deep.mkdir()
+        # No .env, no .git, no home match -> walk must terminate at /.
+        assert _find_dotenv(deep) is None
 
 
 class TestLoadToml:
@@ -219,6 +317,78 @@ class TestLoadConfig:
         diorc.write_text('[api]\nbase_url = "https://custom.api.com"\n')
         cfg = load_config()
         assert cfg.base_url == "https://custom.api.com"
+
+    def test_dotenv_found_in_ancestor(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config() uses upward search to locate .env (issue #155)."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        for var in ("SERPER_API_KEY", "BRAVE_API_KEY", "GOOGLE_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        # .env sits two levels up from our cwd.
+        (tmp_path / ".env").write_text('ANTHROPIC_API_KEY="upward-key"\nSERPER_API_KEY="upward-serper"\n')
+        deep = tmp_path / "a" / "b"
+        deep.mkdir(parents=True)
+        monkeypatch.chdir(deep)
+        cfg = load_config()
+        assert cfg.api_key == "upward-key"
+        assert cfg.serper_api_key == "upward-serper"
+
+    def test_dotenv_blocked_by_git_boundary(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A .git boundary below the .env prevents discovery (issue #155)."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        for var in ("SERPER_API_KEY", "BRAVE_API_KEY", "GOOGLE_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        # A .env in the outer dir that SHOULD NOT be picked up:
+        (tmp_path / ".env").write_text('ANTHROPIC_API_KEY="outer-key"\n')
+        # An inner "repo" with its own .git — dio should not cross this boundary.
+        inner = tmp_path / "inner-repo"
+        inner.mkdir()
+        (inner / ".git").mkdir()
+        monkeypatch.chdir(inner)
+        with pytest.raises(ConfigError, match="No API key"):
+            load_config()
+
+    def test_explicit_dotenv_path_skips_upward_search(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Explicit [env] dotenv_path in .diorc is honored as-is (no upward search)."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        for var in ("SERPER_API_KEY", "BRAVE_API_KEY", "GOOGLE_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        # Put a misleading .env in the ancestor that would normally be found.
+        (tmp_path / ".env").write_text('ANTHROPIC_API_KEY="ancestor-key"\n')
+        # Working dir has a .diorc that points at a specific file.
+        workdir = tmp_path / "work"
+        workdir.mkdir()
+        explicit = workdir / "custom.env"
+        explicit.write_text('ANTHROPIC_API_KEY="explicit-key"\n')
+        diorc = workdir / ".diorc"
+        diorc.write_text(f'[env]\ndotenv_path = "{explicit}"\n')
+        monkeypatch.chdir(workdir)
+        cfg = load_config()
+        assert cfg.api_key == "explicit-key"
+
+    def test_explicit_dotenv_path_missing_falls_through(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """If the explicit dotenv_path does not exist, it is silently skipped.
+
+        We do not fall back to upward search in this case — the user asked
+        for an explicit path; missing it should not silently surface an
+        unrelated .env.
+        """
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        for var in ("SERPER_API_KEY", "BRAVE_API_KEY", "GOOGLE_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "nonexistent_home")
+        # An ancestor .env that MUST NOT be picked up because the user
+        # pointed us at an explicit (missing) path.
+        (tmp_path / ".env").write_text('ANTHROPIC_API_KEY="should-not-be-found"\n')
+        workdir = tmp_path / "work"
+        workdir.mkdir()
+        diorc = workdir / ".diorc"
+        diorc.write_text('[env]\ndotenv_path = "/nonexistent/custom.env"\n')
+        monkeypatch.chdir(workdir)
+        with pytest.raises(ConfigError, match="No API key"):
+            load_config()
 
 
 class TestPipelineConfig:
