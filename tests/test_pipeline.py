@@ -8,6 +8,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from diogenes.pipeline import (
+    REJECTION_REASON_BELOW_THRESHOLD,
+    REJECTION_REASON_DUPLICATE_URL,
+    REJECTION_REASON_SCORER_DID_NOT_SCORE,
+    REJECTION_REASONS,
+    _event_kind_for_reason,
     _extract_evidence_for_item,
     _extract_single_source,
     _fetch_single_source,
@@ -26,6 +31,7 @@ from diogenes.pipeline import (
     step10_report,
     step11_archive,
     steps678_synthesize_and_assess,
+    validate_search_results_dispositioning,
     write_step_output,
 )
 
@@ -326,10 +332,11 @@ class TestScoreResultsBatched:
         )
 
         item = {"id": "Q001", "clarified_text": "Test"}
-        results = _score_results_batched(item, [execution], mock_client, Path("/tmp/fake.md"))
-        assert len(results) == 1
-        assert results[0]["search_id"] == "S01"
-        assert results[0]["title"] == "T"
+        scored, unscored = _score_results_batched(item, [execution], mock_client, Path("/tmp/fake.md"))
+        assert len(scored) == 1
+        assert scored[0]["search_id"] == "S01"
+        assert scored[0]["title"] == "T"
+        assert unscored == []
 
 
 class TestStep5ScoreSources:
@@ -662,10 +669,14 @@ class TestPipelineBranchCoverage:
             total_results_available=1,
         )
         item = {"id": "Q001", "clarified_text": "Test"}
-        results = _score_results_batched(item, [execution], mock_client, Path("/tmp/fake.md"))
+        scored, unscored = _score_results_batched(item, [execution], mock_client, Path("/tmp/fake.md"))
         # Score entry should be present but without title/snippet enrichment
-        assert len(results) == 1
-        assert "title" not in results[0]
+        assert len(scored) == 1
+        assert "title" not in scored[0]
+        # The batch URL that the scorer didn't score must surface as an
+        # unscored reject so the invariant holds.
+        assert len(unscored) == 1
+        assert unscored[0]["url"] == "https://a.com"
 
     @patch("diogenes.pipeline._fetch_sources_for_scoring")
     def test_step5_source_without_content_extract(self, mock_fetch: MagicMock) -> None:
@@ -870,3 +881,518 @@ class TestReportsSchema:
         assert "60 character" in prompt_text or "60 char" in prompt_text, (
             "reports.md must state the 60-character hard cap so the LLM produces headings that fit on one TOC line"
         )
+
+
+class TestRejectionReasonEnum:
+    """Tests for the REJECTION_REASONS enum-like constant (issue #163)."""
+
+    def test_enum_contains_all_documented_reasons(self) -> None:
+        """Every reason exported as a module constant is in the enum set."""
+        assert REJECTION_REASON_BELOW_THRESHOLD in REJECTION_REASONS
+        assert REJECTION_REASON_DUPLICATE_URL in REJECTION_REASONS
+        assert REJECTION_REASON_SCORER_DID_NOT_SCORE in REJECTION_REASONS
+
+    def test_enum_values_are_machine_readable_strings(self) -> None:
+        """Reasons must be ASCII-safe snake_case strings so downstream tooling can filter."""
+        for reason in REJECTION_REASONS:
+            assert isinstance(reason, str)
+            assert reason == reason.lower()
+            assert " " not in reason
+
+    def test_event_kind_for_known_reason(self) -> None:
+        """Known reasons map to distinct event kinds — one per reason."""
+        kinds = {_event_kind_for_reason(r) for r in REJECTION_REASONS}
+        assert len(kinds) == len(REJECTION_REASONS), (
+            "each rejection reason must get a distinct event.kind so Step 8 "
+            "self-audit can filter events by bucket without string parsing"
+        )
+
+    def test_event_kind_for_unknown_reason_falls_back(self) -> None:
+        """Unknown reasons fall back to a generic kind rather than raising."""
+        assert _event_kind_for_reason("not_a_real_reason") == "rejected"
+
+
+class TestScoreResultsBatchedScorerOmission:
+    """Regression: scorer omissions (issue #163) surface as unscored rejects."""
+
+    def _client_with_defaults(self) -> MagicMock:
+        """Mock APIClient whose .pipeline uses the real dataclass defaults.
+
+        Without real PipelineConfig, ``batch_size`` comes back as a
+        MagicMock and ``range(0, n, MagicMock)`` loops unpredictably —
+        which masks the invariant behavior the test is trying to pin down.
+        """
+        from diogenes.config import PipelineConfig
+
+        client = MagicMock()
+        client.pipeline = PipelineConfig()
+        client.model_for.return_value = "claude-sonnet-4-6"
+        return client
+
+    def test_scorer_returns_no_scores_all_unscored(self) -> None:
+        """Every unscored batch URL surfaces as an unscored reject.
+
+        When the scorer returns an empty scores list, every URL in the
+        batch must surface as an unscored reject — the R0063/Q001/S01 case
+        in miniature.
+        """
+        from diogenes.search import SearchExecution, SearchResult
+
+        mock_client = self._client_with_defaults()
+        mock_client.call_sub_agent.return_value = {"scores": []}
+        execution = SearchExecution(
+            search_id="S01",
+            terms=["test"],
+            provider="mock",
+            date="2026-01-01",
+            results=[
+                SearchResult(title="T1", url="https://a.com", snippet="S1"),
+                SearchResult(title="T2", url="https://b.com", snippet="S2"),
+            ],
+            total_results_available=2,
+        )
+        scored, unscored = _score_results_batched(
+            {"id": "Q001", "clarified_text": "test"},
+            [execution],
+            mock_client,
+            Path("/tmp/fake.md"),
+        )
+        assert scored == []
+        assert len(unscored) == 2
+        assert {u["url"] for u in unscored} == {"https://a.com", "https://b.com"}
+        for u in unscored:
+            assert u["reason"] == REJECTION_REASON_SCORER_DID_NOT_SCORE
+            assert u["search_id"] == "S01"
+            assert u["relevance_score"] is None
+
+    def test_scorer_returns_partial_scores_unscored_accounted(self) -> None:
+        """Mirror of R0063/Q001/S01: 5 returned, scorer returns 4, 1 unscored."""
+        from diogenes.search import SearchExecution, SearchResult
+
+        mock_client = self._client_with_defaults()
+        # Scorer returns 4 of 5 — exactly the R0063 shape.
+        mock_client.call_sub_agent.return_value = {
+            "scores": [
+                {"url": "https://arxiv.org/html/2602.13962v1", "relevance_score": 8, "rationale": "r1"},
+                {"url": "https://www.sciencedirect.com/s", "relevance_score": 7, "rationale": "r2"},
+                {"url": "https://arxiv.org/html/2504.04372v1", "relevance_score": 6, "rationale": "r3"},
+                {"url": "https://xiaoningdu.github.io/assets/pdf/format.pdf", "relevance_score": 5, "rationale": "r4"},
+            ],
+        }
+        # The fifth URL — the springer link that went missing in R0063 —
+        # must land in unscored_rejects so the invariant holds.
+        results = [
+            SearchResult(title="T1", url="https://arxiv.org/html/2602.13962v1", snippet="s1"),
+            SearchResult(title="T2", url="https://www.sciencedirect.com/s", snippet="s2"),
+            SearchResult(title="T3", url="https://arxiv.org/html/2504.04372v1", snippet="s3"),
+            SearchResult(
+                title="T4",
+                url="https://link.springer.com/article/10.1007/s10664-026-10858-8",
+                snippet="s4",
+            ),
+            SearchResult(title="T5", url="https://xiaoningdu.github.io/assets/pdf/format.pdf", snippet="s5"),
+        ]
+        execution = SearchExecution(
+            search_id="S01",
+            terms=["test"],
+            provider="mock",
+            date="2026-01-01",
+            results=results,
+            total_results_available=5,
+        )
+        scored, unscored = _score_results_batched(
+            {"id": "Q001", "clarified_text": "test"},
+            [execution],
+            mock_client,
+            Path("/tmp/fake.md"),
+        )
+        assert len(scored) == 4
+        assert len(unscored) == 1
+        assert unscored[0]["url"] == "https://link.springer.com/article/10.1007/s10664-026-10858-8"
+        assert unscored[0]["reason"] == REJECTION_REASON_SCORER_DID_NOT_SCORE
+        assert "did not return" in unscored[0]["rationale"].lower()
+
+
+class TestFilterAndDeduplicateReasons:
+    """Tests that _filter_and_deduplicate records structured reasons (issue #163)."""
+
+    def test_below_threshold_records_reason(self) -> None:
+        results = [{"url": "https://a.com", "relevance_score": 2, "search_id": "S01"}]
+        selected, rejected = _filter_and_deduplicate(results, threshold=5)
+        assert selected == []
+        assert len(rejected) == 1
+        assert rejected[0]["reason"] == REJECTION_REASON_BELOW_THRESHOLD
+
+    def test_duplicate_url_recorded_as_rejected(self) -> None:
+        """Dedupe must produce a rejected entry for the loser, not drop it."""
+        results = [
+            {"url": "https://a.com", "relevance_score": 9, "search_id": "S01", "title": "first"},
+            {"url": "https://a.com", "relevance_score": 7, "search_id": "S02", "title": "second"},
+        ]
+        selected, rejected = _filter_and_deduplicate(results, threshold=5)
+        assert len(selected) == 1
+        assert selected[0]["relevance_score"] == 9
+        assert len(rejected) == 1
+        assert rejected[0]["reason"] == REJECTION_REASON_DUPLICATE_URL
+        # The loser keeps its own search_id so the per-search invariant holds.
+        assert rejected[0]["search_id"] == "S02"
+        assert "duplicate" in rejected[0]["rationale"].lower()
+
+    def test_none_score_treated_as_lowest(self) -> None:
+        """A None relevance_score must not crash sorting.
+
+        An unscored_reject accidentally fed through with
+        ``relevance_score=None`` must not raise a TypeError when sorting,
+        and must be treated as below any real threshold.
+        """
+        results: list[dict[str, Any]] = [
+            {"url": "https://real.com", "relevance_score": 8, "search_id": "S01"},
+            {"url": "https://unscored.com", "relevance_score": None, "search_id": "S01"},
+        ]
+        selected, rejected = _filter_and_deduplicate(results, threshold=5)
+        assert len(selected) == 1
+        assert selected[0]["url"] == "https://real.com"
+        # The None-score entry lands in rejected with below_threshold reason
+        # (since None is normalized to 0 for comparison).
+        assert len(rejected) == 1
+        assert rejected[0]["reason"] == REJECTION_REASON_BELOW_THRESHOLD
+
+    def test_preserves_existing_reason_on_pass_through(self) -> None:
+        """Pre-stamped reasons survive the threshold check.
+
+        If the caller pre-stamped a reason (e.g., scorer_did_not_score),
+        the threshold check must not overwrite it.
+        """
+        # Simulate an entry that somehow made it through with a pre-stamped
+        # reason and a low score — the reason must stick.
+        results = [
+            {
+                "url": "https://x.com",
+                "relevance_score": 1,
+                "search_id": "S01",
+                "reason": REJECTION_REASON_SCORER_DID_NOT_SCORE,
+            },
+        ]
+        _selected, rejected = _filter_and_deduplicate(results, threshold=5)
+        assert len(rejected) == 1
+        assert rejected[0]["reason"] == REJECTION_REASON_SCORER_DID_NOT_SCORE
+
+
+class TestValidateSearchResultsDispositioning:
+    """Tests for the invariant validator (issue #163)."""
+
+    def test_invariant_holds_returns_empty(self) -> None:
+        """Validator returns [] when selected + rejected == total_returned per search_id."""
+        search_results = {
+            "Q001": {
+                "id": "Q001",
+                "searches_executed": [
+                    {"search_id": "S01", "results": [{"url": "a"}, {"url": "b"}]},
+                ],
+                "selected_sources": [{"url": "a", "search_id": "S01"}],
+                "rejected_sources": [{"url": "b", "search_id": "S01", "reason": "below_relevance_threshold"}],
+            },
+        }
+        violations = validate_search_results_dispositioning(search_results)
+        assert violations == []
+
+    def test_invariant_violation_r0063_q001_s01_shape(self) -> None:
+        """Flags the exact R0063 Q001/S01 silent-drop case.
+
+        Reproduces the shape that triggered #163: 5 returned, 4 selected,
+        0 rejected, 1 unaccounted — must be flagged by the validator.
+        """
+        search_results = {
+            "Q001": {
+                "id": "Q001",
+                "searches_executed": [
+                    {
+                        "search_id": "S01",
+                        "results": [
+                            {"url": "https://arxiv.org/html/2602.13962v1"},
+                            {"url": "https://www.sciencedirect.com/article"},
+                            {"url": "https://arxiv.org/html/2504.04372v1"},
+                            {"url": "https://link.springer.com/article/10.1007/s10664-026-10858-8"},
+                            {"url": "https://xiaoningdu.github.io/assets/pdf/format.pdf"},
+                        ],
+                    },
+                ],
+                "selected_sources": [
+                    {"url": "https://arxiv.org/html/2602.13962v1", "search_id": "S01"},
+                    {"url": "https://www.sciencedirect.com/article", "search_id": "S01"},
+                    {"url": "https://arxiv.org/html/2504.04372v1", "search_id": "S01"},
+                    {"url": "https://xiaoningdu.github.io/assets/pdf/format.pdf", "search_id": "S01"},
+                ],
+                "rejected_sources": [],
+            },
+        }
+        violations = validate_search_results_dispositioning(search_results)
+        assert len(violations) == 1
+        v = violations[0]
+        assert v["item_id"] == "Q001"
+        assert v["search_id"] == "S01"
+        assert v["total_returned"] == 5
+        assert v["selected"] == 4
+        assert v["rejected"] == 0
+        assert v["unaccounted"] == 1
+
+    def test_invariant_violation_logs_event(self) -> None:
+        """Violations write dispositioning_invariant_violated events.
+
+        So Step 8 self-audit can surface them in the final report.
+        """
+        from diogenes.events import EventLogger
+
+        search_results = {
+            "Q001": {
+                "id": "Q001",
+                "searches_executed": [
+                    {"search_id": "S01", "results": [{"url": "a"}, {"url": "b"}]},
+                ],
+                "selected_sources": [],
+                "rejected_sources": [],
+            },
+        }
+        event_logger = EventLogger(run_id="test")
+        violations = validate_search_results_dispositioning(search_results, event_logger=event_logger)
+        assert len(violations) == 1
+        # Event must carry the specific kind so consumers can filter.
+        events = [e for e in event_logger.events if e["kind"] == "dispositioning_invariant_violated"]
+        assert len(events) == 1
+        assert events[0]["item_id"] == "Q001"
+        assert events[0]["count"] == 2  # 2 unaccounted
+        assert "Q001/S01" in events[0]["detail"]
+
+    def test_invariant_multiple_searches_multiple_violations(self) -> None:
+        """Each (item, search) pair is checked independently."""
+        search_results = {
+            "Q001": {
+                "id": "Q001",
+                "searches_executed": [
+                    {"search_id": "S01", "results": [{"url": "a"}]},
+                    {"search_id": "S02", "results": [{"url": "b"}, {"url": "c"}]},
+                ],
+                "selected_sources": [{"url": "a", "search_id": "S01"}],
+                # S02 has two URLs returned but nothing dispositioned — a violation.
+                "rejected_sources": [],
+            },
+        }
+        violations = validate_search_results_dispositioning(search_results)
+        assert len(violations) == 1
+        assert violations[0]["search_id"] == "S02"
+
+    def test_invariant_skips_non_dict_item_data(self) -> None:
+        """Validator ignores non-dict entries in search_results.
+
+        A leftover summary blob or similar top-level scalar must be
+        ignored rather than crashing the validator.
+        """
+        search_results = {
+            "Q001": "not a dict",
+            "Q002": {
+                "id": "Q002",
+                "searches_executed": [{"search_id": "S01", "results": []}],
+                "selected_sources": [],
+                "rejected_sources": [],
+            },
+        }
+        # Must not raise; Q001 is skipped, Q002 is clean.
+        violations = validate_search_results_dispositioning(search_results)
+        assert violations == []
+
+    def test_invariant_handles_missing_fields(self) -> None:
+        """Missing fields default cleanly to empty — no KeyError or TypeError.
+
+        Covers the case where an item has no ``searches_executed`` /
+        ``selected_sources`` / ``rejected_sources`` at all.
+        """
+        search_results = {"Q001": {"id": "Q001"}}
+        violations = validate_search_results_dispositioning(search_results)
+        assert violations == []
+
+    def test_invariant_logger_warning_on_violations(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A summary warning is logged when violations are present.
+
+        So operators see the violation count without parsing the events
+        file.
+        """
+        search_results = {
+            "Q001": {
+                "id": "Q001",
+                "searches_executed": [{"search_id": "S01", "results": [{"url": "a"}]}],
+                "selected_sources": [],
+                "rejected_sources": [],
+            },
+        }
+        with caplog.at_level("INFO", logger="diogenes.pipeline"):
+            validate_search_results_dispositioning(search_results)
+        assert "dispositioning invariant" in caplog.text.lower()
+
+
+class TestStep4ExecuteSearchesEndToEndInvariant:
+    """Integration: step4_execute_searches produces invariant-holding output (issue #163)."""
+
+    def _client_with_defaults(self) -> MagicMock:
+        from diogenes.config import PipelineConfig
+
+        client = MagicMock()
+        client.pipeline = PipelineConfig()
+        client.model_for.return_value = "claude-sonnet-4-6"
+        return client
+
+    @patch("diogenes.pipeline.execute_search_plan")
+    def test_scorer_omission_surfaces_as_rejected(self, mock_exec: MagicMock) -> None:
+        """R0063-shape regression: 5 results in, scorer returns 4, invariant holds."""
+        from diogenes.search import SearchExecution, SearchResult
+
+        # Five raw results
+        results = [SearchResult(title=f"T{i}", url=f"https://r{i}.com", snippet=f"s{i}") for i in range(5)]
+        mock_exec.return_value = [
+            SearchExecution(
+                search_id="S01",
+                terms=["test"],
+                provider="mock",
+                date="2026-01-01",
+                results=results,
+                total_results_available=5,
+            )
+        ]
+
+        mock_client = self._client_with_defaults()
+        # Scorer returns only 4 of the 5
+        mock_client.call_sub_agent.return_value = {
+            "scores": [
+                {"url": "https://r0.com", "relevance_score": 8, "rationale": "r"},
+                {"url": "https://r1.com", "relevance_score": 7, "rationale": "r"},
+                {"url": "https://r2.com", "relevance_score": 6, "rationale": "r"},
+                {"url": "https://r3.com", "relevance_score": 5, "rationale": "r"},
+                # https://r4.com is omitted — the R0063 bug shape
+            ],
+        }
+        mock_provider = MagicMock()
+        mock_provider.name = "mock"
+
+        research_input = {"claims": [], "queries": [{"id": "Q001", "clarified_text": "t"}]}
+        search_plans = {"Q001": {"searches": [{"id": "S01", "terms": ["t"]}]}}
+
+        result = step4_execute_searches(research_input, search_plans, mock_client, mock_provider)
+
+        q001 = result["Q001"]
+        selected_s01 = [s for s in q001["selected_sources"] if s.get("search_id") == "S01"]
+        rejected_s01 = [s for s in q001["rejected_sources"] if s.get("search_id") == "S01"]
+        # Invariant: selected + rejected == total_returned.
+        total_returned = len(q001["searches_executed"][0]["results"])
+        assert len(selected_s01) + len(rejected_s01) == total_returned, (
+            "step4_execute_searches must produce output that satisfies the "
+            "per-search dispositioning invariant even when the LLM scorer "
+            "omits URLs — the R0063 regression"
+        )
+        # The unscored URL must be in rejected with the scorer_did_not_score reason.
+        unscored = [s for s in rejected_s01 if s["reason"] == REJECTION_REASON_SCORER_DID_NOT_SCORE]
+        assert len(unscored) == 1
+        assert unscored[0]["url"] == "https://r4.com"
+
+    @patch("diogenes.pipeline.execute_search_plan")
+    def test_duplicate_urls_produce_duplicate_url_reason(self, mock_exec: MagicMock) -> None:
+        """Same URL in two searches → first wins; second is a structured dedupe reject.
+
+        The duplicate-url reject must land in ``rejected_sources`` with
+        ``reason`` = ``duplicate_url`` rather than being silently dropped.
+        """
+        from diogenes.search import SearchExecution, SearchResult
+
+        # Same URL in two searches
+        mock_exec.return_value = [
+            SearchExecution(
+                search_id="S01",
+                terms=["a"],
+                provider="mock",
+                date="2026-01-01",
+                results=[SearchResult(title="T", url="https://dup.com", snippet="s")],
+                total_results_available=1,
+            ),
+            SearchExecution(
+                search_id="S02",
+                terms=["b"],
+                provider="mock",
+                date="2026-01-01",
+                results=[SearchResult(title="T", url="https://dup.com", snippet="s")],
+                total_results_available=1,
+            ),
+        ]
+
+        mock_client = self._client_with_defaults()
+        mock_client.call_sub_agent.side_effect = [
+            {"scores": [{"url": "https://dup.com", "relevance_score": 9, "rationale": "a"}]},
+            {"scores": [{"url": "https://dup.com", "relevance_score": 6, "rationale": "b"}]},
+        ]
+        mock_provider = MagicMock()
+        mock_provider.name = "mock"
+
+        research_input = {"claims": [], "queries": [{"id": "Q001", "clarified_text": "t"}]}
+        search_plans = {"Q001": {"searches": [{"id": "S01", "terms": ["a"]}, {"id": "S02", "terms": ["b"]}]}}
+
+        result = step4_execute_searches(research_input, search_plans, mock_client, mock_provider)
+
+        q001 = result["Q001"]
+        dup_rejects = [s for s in q001["rejected_sources"] if s.get("reason") == REJECTION_REASON_DUPLICATE_URL]
+        assert len(dup_rejects) == 1
+        # The lower-scored duplicate keeps its own search_id so the per-search
+        # invariant holds on each search.
+        assert dup_rejects[0]["search_id"] == "S02"
+        assert dup_rejects[0]["url"] == "https://dup.com"
+
+    @patch("diogenes.pipeline.execute_search_plan")
+    def test_invariant_holds_end_to_end(self, mock_exec: MagicMock) -> None:
+        """All rejection paths exercised together; invariant validator reports zero violations."""
+        from diogenes.events import EventLogger
+        from diogenes.search import SearchExecution, SearchResult
+
+        mock_exec.return_value = [
+            SearchExecution(
+                search_id="S01",
+                terms=["a"],
+                provider="mock",
+                date="2026-01-01",
+                results=[
+                    SearchResult(title="T1", url="https://hit.com", snippet="s"),
+                    SearchResult(title="T2", url="https://miss.com", snippet="s"),
+                    SearchResult(title="T3", url="https://omitted.com", snippet="s"),
+                ],
+                total_results_available=3,
+            )
+        ]
+        mock_client = self._client_with_defaults()
+        mock_client.call_sub_agent.return_value = {
+            "scores": [
+                {"url": "https://hit.com", "relevance_score": 9, "rationale": "good"},
+                {"url": "https://miss.com", "relevance_score": 2, "rationale": "bad"},
+                # https://omitted.com not scored
+            ],
+        }
+        mock_provider = MagicMock()
+        mock_provider.name = "mock"
+
+        event_logger = EventLogger(run_id="test")
+        research_input = {"claims": [], "queries": [{"id": "Q001", "clarified_text": "t"}]}
+        search_plans = {"Q001": {"searches": [{"id": "S01", "terms": ["a"]}]}}
+
+        result = step4_execute_searches(
+            research_input, search_plans, mock_client, mock_provider, event_logger
+        )
+
+        # Validator should see no violations.
+        violations = validate_search_results_dispositioning(result)
+        assert violations == []
+
+        # No dispositioning_invariant_violated events should have been
+        # emitted by step4's internal validator call either.
+        violated_events = [
+            e for e in event_logger.events if e["kind"] == "dispositioning_invariant_violated"
+        ]
+        assert violated_events == []
+
+        # Rejected bucket should contain both kinds of reasons.
+        reasons = {s["reason"] for s in result["Q001"]["rejected_sources"]}
+        assert REJECTION_REASON_BELOW_THRESHOLD in reasons
+        assert REJECTION_REASON_SCORER_DID_NOT_SCORE in reasons
