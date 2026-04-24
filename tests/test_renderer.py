@@ -569,6 +569,65 @@ class TestCardHeadingFor:
         item = {"id": "C003"}
         assert _card_heading_for(item, {}) == "C003"
 
+    def test_qualifier_falls_back_to_assessment_summary_confidence(self) -> None:
+        """Issue #161: pipeline emits confidence nested under `assessment_summary`.
+
+        When the top-level `confidence`/`verdict` fields are absent, the heading
+        must still pick up the nested qualifier so the TOC stays readable.
+        """
+        item = {"id": "Q001"}
+        report = {
+            "title": "LLM watermarking techniques",
+            "assessment_summary": {"confidence": "Medium (55-80%)"},
+        }
+        assert _card_heading_for(item, report) == "Q001 — LLM watermarking techniques — Medium (55-80%)"
+
+    def test_qualifier_falls_back_to_assessment_summary_verdict(self) -> None:
+        """Claim-mode reports: nested `assessment_summary.verdict` feeds the qualifier."""
+        item = {"id": "C001"}
+        report = {
+            "title": "Homophily in AI safety ethics",
+            "assessment_summary": {"verdict": "Likely (55-80%)"},
+        }
+        assert _card_heading_for(item, report) == "C001 — Homophily in AI safety ethics — Likely (55-80%)"
+
+    def test_title_missing_renders_id_only_for_backwards_compatibility(self) -> None:
+        """Older runs lacking `title` must still render without crashing (issue #161).
+
+        Older run JSONs (R0063 and earlier) do not carry `title`. The
+        renderer must degrade to id-only rather than raise — there is no
+        way to re-run those old LLM calls cheaply until #162 ships.
+        """
+        item = {"id": "Q001"}
+        report = {"assessment_summary": {"confidence": "High"}}
+        # No title → id plus nested qualifier only, no crash
+        assert _card_heading_for(item, report) == "Q001 — High"
+
+    def test_top_level_overrides_nested_qualifier(self) -> None:
+        """Top-level `verdict`/`confidence` win when present (forward compatibility)."""
+        item = {"id": "C001"}
+        report = {
+            "title": "Topic",
+            "verdict": "Strongly supported",
+            "assessment_summary": {"verdict": "ignored"},
+        }
+        assert _card_heading_for(item, report) == "C001 — Topic — Strongly supported"
+
+    def test_nested_qualifier_non_string_is_ignored(self) -> None:
+        """Defensive: a non-string nested verdict/confidence does not crash or leak.
+
+        Guards against malformed older run JSONs where the nested
+        `assessment_summary.verdict` might be something structured (a
+        dict/list) instead of a plain string.
+        """
+        item = {"id": "Q001"}
+        report = {
+            "title": "Topic",
+            # Non-string nested values — the helper must fall through to id+topic only.
+            "assessment_summary": {"verdict": {"unexpected": "shape"}},
+        }
+        assert _card_heading_for(item, report) == "Q001 — Topic"
+
 
 class TestAddToc:
     """Tests for _add_toc."""
@@ -3469,6 +3528,135 @@ class TestRunIndexCliFormatRegression:
         assert "Items investigated | 3" in index, (
             "Collection Statistics row missing or undercounting — expected 'Items investigated | 3'"
         )
+
+
+class TestRunIndexTitleHeadingRegression:
+    """Regression tests for issue #161.
+
+    Pre-fix behavior (R0063): the per-query cards in the run-level
+    `index.md` collapsed to bare `### Q001`, `### Q002`, … because the
+    pipeline's report-generation step did not emit a `title` field.
+    With 8+ queries the TOC became an opaque list of ids.
+
+    These tests assert that once `title` is populated at the report
+    level and the qualifier falls back to `assessment_summary` when
+    needed, the rendered run-level `index.md` carries the full
+    `### Q001 — <title> — <qualifier>` three-part heading format.
+    """
+
+    def test_run_index_card_heading_is_three_part_for_query(self, tmp_path: Path) -> None:
+        """Query card heading includes id, title, and nested confidence qualifier."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        clarified = {
+            "claims": [],
+            "queries": [
+                {
+                    "id": "Q001",
+                    "original_text": "Query text",
+                    "clarified_text": "Clarified query",
+                },
+            ],
+            "axioms": [],
+        }
+        (run_dir / "research-input-clarified.json").write_text(json.dumps(clarified))
+        reports = {
+            "Q001": {
+                "id": "Q001",
+                "mode": "query",
+                "title": "LLM watermarking techniques survey",
+                "assessment_summary": {
+                    "answer": "Several techniques documented.",
+                    "confidence": "Medium (55-80%)",
+                },
+            },
+        }
+        (run_dir / "reports.json").write_text(json.dumps(reports))
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        assert "### Q001 — LLM watermarking techniques survey — Medium (55-80%)" in index, (
+            "run-level index card heading missing three-part format from issue #161 fix"
+        )
+
+    def test_run_index_card_heading_is_three_part_for_claim(self, tmp_path: Path) -> None:
+        """Claim card heading uses nested `assessment_summary.verdict` as qualifier."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        clarified = {
+            "claims": [
+                {
+                    "id": "C001",
+                    "original_text": "Claim text",
+                    "clarified_text": "Clarified claim",
+                },
+            ],
+            "queries": [],
+            "axioms": [],
+        }
+        (run_dir / "research-input-clarified.json").write_text(json.dumps(clarified))
+        reports = {
+            "C001": {
+                "id": "C001",
+                "mode": "claim",
+                "title": "AI safety ethics homophily",
+                "assessment_summary": {
+                    "verdict": "Likely (55-80%)",
+                    "confidence": "Medium",
+                },
+            },
+        }
+        (run_dir / "reports.json").write_text(json.dumps(reports))
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        # The R0058-era target format from the issue
+        assert "### C001 — AI safety ethics homophily — Likely (55-80%)" in index, (
+            "run-level index claim heading missing three-part format from issue #161 fix"
+        )
+
+    def test_run_index_toc_entry_includes_title(self, tmp_path: Path) -> None:
+        """TOC sub-entries carry the topic title, not just bare ids.
+
+        This is the observable bug from R0063: an 8-query TOC rendered as
+        an opaque list of `Q001 … Q008` with no context. Post-fix, every
+        TOC entry carries its topic.
+        """
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        clarified = {
+            "claims": [],
+            "queries": [
+                {"id": "Q001", "clarified_text": "q1"},
+                {"id": "Q002", "clarified_text": "q2"},
+            ],
+            "axioms": [],
+        }
+        (run_dir / "research-input-clarified.json").write_text(json.dumps(clarified))
+        reports = {
+            "Q001": {
+                "id": "Q001",
+                "mode": "query",
+                "title": "Topic one",
+                "assessment_summary": {"confidence": "High"},
+            },
+            "Q002": {
+                "id": "Q002",
+                "mode": "query",
+                "title": "Topic two",
+                "assessment_summary": {"confidence": "Low"},
+            },
+        }
+        (run_dir / "reports.json").write_text(json.dumps(reports))
+
+        render_run(run_dir, run_dir)
+
+        index = (run_dir / "index.md").read_text()
+        # TOC lines are `    - [<heading>](#card-<id>)`; assert topic appears in the link text
+        assert "Topic one" in index, "TOC missing title `Topic one` for Q001"
+        assert "Topic two" in index, "TOC missing title `Topic two` for Q002"
 
 
 def _create_cli_format_realistic_run(run_dir: Path) -> None:

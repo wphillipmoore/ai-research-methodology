@@ -193,10 +193,25 @@ def _pipeline_notes_section(events: dict[str, Any]) -> list[str]:
 
 
 def _card_heading_for(item: dict[str, Any], report: dict[str, Any]) -> str:
-    """Build '{id} — {topic} — {qualifier}' heading string used across pages."""
+    """Build '{id} — {topic} — {qualifier}' heading string used across pages.
+
+    Reads `title`, `verdict`, and `confidence` at the report top level.
+    Falls back to `assessment_summary.{verdict,confidence}` for the
+    qualifier — the pipeline emits those nested, and the top-level
+    position is reserved for future simplification. Missing pieces
+    degrade gracefully: an id-only heading is still valid output so
+    older runs (produced before `title` became required) render without
+    crashing.
+    """
     iid = item.get("id", "?")
     topic = report.get("title", "").strip()
     qualifier = (report.get("verdict") or report.get("confidence") or "").strip()
+    if not qualifier:
+        assess = report.get("assessment_summary")
+        if isinstance(assess, dict):
+            nested = assess.get("verdict") or assess.get("confidence") or ""
+            if isinstance(nested, str):
+                qualifier = nested.strip()
     parts = [iid]
     if topic:
         parts.append(topic)
