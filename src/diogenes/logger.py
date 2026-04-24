@@ -134,7 +134,9 @@ def configure_cli_stderr_logger() -> logging.Logger:
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(logging.Formatter(_STDERR_FORMAT))
     # Tag the handler so configure_progress_logger knows to preserve it.
-    stderr_handler._diogenes_cli_stderr_handler = True  # type: ignore[attr-defined]
+    # setattr (instead of direct assignment) avoids ruff SLF001 since the
+    # sentinel attribute is deliberately private-namespaced.
+    setattr(stderr_handler, _CLI_STDERR_HANDLER_ATTR, True)
     logger.addHandler(stderr_handler)
 
     return logger

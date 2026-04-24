@@ -118,7 +118,7 @@ class TestMainErrorSurfacing:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """dio rerun against a nonexistent --output prints a clear error."""
+        """Dio rerun against a nonexistent --output prints a clear error."""
         missing = tmp_path / "does_not_exist"
         with patch("sys.argv", ["dio", "rerun", "--output", str(missing)]):
             rc = main()
@@ -133,7 +133,7 @@ class TestMainErrorSurfacing:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """dio rerun against an empty dir names the missing source input."""
+        """Dio rerun against an empty dir names the missing source input."""
         output = tmp_path / "empty"
         output.mkdir()
         with patch("sys.argv", ["dio", "rerun", "--output", str(output)]):
@@ -147,7 +147,7 @@ class TestMainErrorSurfacing:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """dio run with a missing input file says so on stderr."""
+        """Dio run with a missing input file says so on stderr."""
         missing = tmp_path / "nonexistent.md"
         output = tmp_path / "out"
         with patch("sys.argv", ["dio", "run", str(missing), "--output", str(output)]):
@@ -161,7 +161,7 @@ class TestMainErrorSurfacing:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """dio run refuses a non-empty output dir with a specific message."""
+        """Dio run refuses a non-empty output dir with a specific message."""
         input_file = tmp_path / "input.json"
         input_file.write_text('{"claims": [], "queries": [{"text": "t"}]}')
         output = tmp_path / "output"
@@ -180,7 +180,7 @@ class TestMainErrorSurfacing:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """dio resume against a nonexistent instance dir says so on stderr."""
+        """Dio resume against a nonexistent instance dir says so on stderr."""
         missing = tmp_path / "nope"
         with patch("sys.argv", ["dio", "resume", str(missing)]):
             rc = main()
@@ -194,7 +194,7 @@ class TestMainErrorSurfacing:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """dio resume on an instance dir without pipeline-state.json errors out."""
+        """Dio resume on an instance dir without pipeline-state.json errors out."""
         instance = tmp_path / "instance"
         instance.mkdir()
         with patch("sys.argv", ["dio", "resume", str(instance)]):
@@ -209,7 +209,7 @@ class TestMainErrorSurfacing:
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """dio rerun with no API key anywhere surfaces the exact config error.
+        """Dio rerun with no API key anywhere surfaces the exact config error.
 
         This is the original reproducer from issue #154: no API key, no
         .env, no .diorc, running `dio rerun` with an empty output dir.
@@ -236,7 +236,7 @@ class TestMainErrorSurfacing:
         self,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """argparse's own error path already writes to stderr — make sure we don't regress it.
+        """Argparse's own error path already writes to stderr — make sure we don't regress it.
 
         Unlike the other branches, this one is handled by argparse before
         our dispatch fires. The stderr check here guards against a future
