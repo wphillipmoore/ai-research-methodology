@@ -25,6 +25,39 @@ logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts" / "sub-agents"
 
+
+# Structured, machine-readable disposition reasons for ``rejected_sources``
+# entries produced by Step 4. Every raw result returned by the search
+# provider must end up either in ``selected_sources`` or in
+# ``rejected_sources`` with one of these reasons — dropping a result
+# silently breaks the PRISMA accountability invariant that downstream
+# reporting and reconciliation rely on.
+#
+# The enum is intentionally small; when a new drop path is introduced, add
+# its reason code here alongside the code that emits it. The allowed-values
+# docstring is the single source of truth — search-results.schema.json
+# references these reasons by name when validating persisted outputs.
+REJECTION_REASON_BELOW_THRESHOLD = "below_relevance_threshold"
+"""Result was scored by the LLM relevance scorer but fell below the
+configured relevance threshold."""
+
+REJECTION_REASON_DUPLICATE_URL = "duplicate_url"
+"""Result URL already appeared in a higher-scored entry; the pipeline
+deduplicates by URL and keeps only the first occurrence."""
+
+REJECTION_REASON_SCORER_DID_NOT_SCORE = "scorer_did_not_score"
+"""The LLM relevance scorer did not return a score for this URL, even
+though it was in the scorer's input batch. Tracked so that scorer
+under-reporting is visible rather than silently dropping results."""
+
+REJECTION_REASONS: frozenset[str] = frozenset(
+    {
+        REJECTION_REASON_BELOW_THRESHOLD,
+        REJECTION_REASON_DUPLICATE_URL,
+        REJECTION_REASON_SCORER_DID_NOT_SCORE,
+    }
+)
+
 # Per-sub-agent model overrides are now configurable via .diorc under
 # [pipeline.model_overrides]. Each call site uses client.model_for("<name>")
 # to resolve: override if configured, default model otherwise. Historical
@@ -224,24 +257,38 @@ def step4_execute_searches(
         total_results = sum(len(e.results) for e in executions)
         logger.info(f"    {total_results} raw results from {len(executions)} searches")
 
-        # Phase 4B: LLM scores relevance in batches
-        all_scored = _score_results_batched(
+        # Phase 4B: LLM scores relevance in batches. Scorer omissions
+        # (URLs in the batch the scorer didn't score) come back as
+        # pre-built rejected entries with reason = scorer_did_not_score.
+        all_scored, unscored_rejects = _score_results_batched(
             item,
             executions,
             client,
             scorer_prompt,
         )
 
-        # Phase 4C: Python filters and deduplicates
-        selected, rejected = _filter_and_deduplicate(all_scored, threshold=threshold)
-        logger.info(f"    {len(selected)} sources selected (score >= {threshold}), {len(rejected)} below threshold")
+        # Phase 4C: Python filters and deduplicates. Threshold rejects get
+        # reason = below_relevance_threshold; dedupe drops get reason =
+        # duplicate_url. Merging unscored_rejects in at the end keeps all
+        # rejection paths in one list with structured reasons.
+        selected, filter_rejected = _filter_and_deduplicate(all_scored, threshold=threshold)
+        rejected = filter_rejected + unscored_rejects
+        logger.info(
+            f"    {len(selected)} sources selected (score >= {threshold}), "
+            f"{len(rejected)} rejected ({len(filter_rejected)} by threshold/dedupe, "
+            f"{len(unscored_rejects)} unscored)"
+        )
 
-        if event_logger and rejected:
+        if event_logger:
             for rej in rejected:
+                reason = rej.get("reason", "unknown")
                 event_logger.log(
                     step="step4_execute_searches",
-                    kind="below_threshold",
-                    detail=f"Relevance score {rej.get('relevance_score', '?')}/10 below threshold {threshold}",
+                    kind=_event_kind_for_reason(reason),
+                    detail=(
+                        f"Result rejected with reason={reason}: "
+                        f"score={rej.get('relevance_score', '?')}, threshold={threshold}"
+                    ),
                     url=rej.get("url", ""),
                     item_id=item_id,
                     score=rej.get("relevance_score"),
@@ -263,6 +310,13 @@ def step4_execute_searches(
             },
         }
 
+    # Run the dispositioning invariant after all items are processed.
+    # Violations become structured events the Step 8 self-audit picks
+    # up. We do not hard-fail the pipeline — previous silent drops would
+    # have made R0063 unverifiable even with perfect-looking outputs, so
+    # visibility is the upgrade; stricter enforcement can follow.
+    validate_search_results_dispositioning(results, event_logger=event_logger)
+
     return results
 
 
@@ -271,9 +325,23 @@ def _score_results_batched(
     executions: list[Any],
     client: APIClient,
     scorer_prompt: Path,
-) -> list[dict[str, Any]]:
-    """Score all search results in batches via the relevance-scorer sub-agent."""
-    all_scored: list[dict[str, Any]] = []
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Score all search results in batches via the relevance-scorer sub-agent.
+
+    Returns two lists:
+
+    - ``scored``: entries the scorer returned, enriched with metadata from
+      the original search result (title, snippet, search_id, page_age) and
+      a ``relevance_score``. These feed the threshold/dedupe filter.
+    - ``unscored_rejects``: entries the scorer did NOT return scores for —
+      e.g., the model returned fewer score entries than the batch size, or
+      returned a URL not present in the batch (leaving some batch URLs
+      unscored). Each has ``reason`` = ``scorer_did_not_score`` and a
+      placeholder ``rationale``. This keeps the PRISMA dispositioning
+      invariant intact rather than silently dropping scorer omissions.
+    """
+    scored: list[dict[str, Any]] = []
+    unscored_rejects: list[dict[str, Any]] = []
     batch_size = client.pipeline.scoring_batch_size
     terms_per_query = client.pipeline.search_terms_per_query
 
@@ -302,6 +370,8 @@ def _score_results_batched(
                 model=client.model_for("relevance_scorer"),
             )
 
+            scored_urls_in_batch: set[str] = set()
+
             # Enrich scores with metadata from original results
             for score_entry in response.get("scores", []):
                 score_entry["search_id"] = search_id
@@ -312,9 +382,30 @@ def _score_results_batched(
                         score_entry["snippet"] = r.snippet
                         score_entry["page_age"] = r.page_age
                         break
-                all_scored.append(score_entry)
+                scored_urls_in_batch.add(score_entry.get("url", ""))
+                scored.append(score_entry)
 
-    return all_scored
+            # Any URL in the batch that the scorer didn't return becomes a
+            # rejected entry with a structured reason. Silent omission is
+            # exactly the invariant-violating behavior this function was
+            # changed to stop producing.
+            for r in batch:
+                if r.url in scored_urls_in_batch:
+                    continue
+                unscored_rejects.append(
+                    {
+                        "url": r.url,
+                        "title": r.title,
+                        "snippet": r.snippet,
+                        "page_age": r.page_age,
+                        "search_id": search_id,
+                        "relevance_score": None,
+                        "reason": REJECTION_REASON_SCORER_DID_NOT_SCORE,
+                        "rationale": ("Relevance scorer did not return a score for this URL in its batch response."),
+                    }
+                )
+
+    return scored, unscored_rejects
 
 
 def _filter_and_deduplicate(
@@ -322,9 +413,21 @@ def _filter_and_deduplicate(
     *,
     threshold: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Filter by relevance threshold and deduplicate by URL."""
-    # Sort by score descending
-    scored_results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+    """Filter by relevance threshold and deduplicate by URL.
+
+    Sorts scored results by relevance_score descending, then walks the
+    list. The first occurrence of each URL is bucketed by threshold —
+    ``selected`` if ``score >= threshold``, else ``rejected`` with
+    ``reason`` = ``below_relevance_threshold``. Subsequent occurrences of
+    the same URL are recorded in ``rejected`` with ``reason`` =
+    ``duplicate_url``, preserving the invariant that every input entry is
+    accounted for in exactly one output bucket.
+    """
+    # Sort by score descending; tie-break by url so ordering is stable
+    # across Python implementations when duplicate URLs arrive with
+    # identical scores. None scores (from scorer_did_not_score fallbacks)
+    # must not raise TypeError against real ints — treat as -1.
+    scored_results.sort(key=lambda x: (x.get("relevance_score") or -1, x.get("url", "")), reverse=True)
 
     seen_urls: set[str] = set()
     selected: list[dict[str, Any]] = []
@@ -332,18 +435,148 @@ def _filter_and_deduplicate(
 
     for result in scored_results:
         url = result.get("url", "")
-        score = result.get("relevance_score", 0)
+        score = result.get("relevance_score") or 0
 
         if url in seen_urls:
+            # Preserve the duplicate as a rejected entry with a structured
+            # reason rather than dropping it silently. The first occurrence
+            # (higher-scored, since we sorted) stays in selected/rejected
+            # under its own disposition; this lower-ranked copy is marked
+            # as a dedupe loser.
+            dup_entry = dict(result)
+            dup_entry["reason"] = REJECTION_REASON_DUPLICATE_URL
+            existing_rationale = dup_entry.get("rationale") or ""
+            dup_entry["rationale"] = (
+                f"Duplicate URL dropped by deduplication; a higher-scored copy of {url} was kept. " + existing_rationale
+            ).strip()
+            rejected.append(dup_entry)
             continue
         seen_urls.add(url)
 
         if score >= threshold:
             selected.append(result)
         else:
-            rejected.append(result)
+            # Make the threshold reason explicit on the persisted entry.
+            # Prior behavior relied on the *bucket* (rejected) to imply
+            # the reason, which meant downstream filters couldn't tell a
+            # below-threshold reject from a deduped or scorer-omission
+            # reject.
+            reject_entry = dict(result)
+            reject_entry.setdefault("reason", REJECTION_REASON_BELOW_THRESHOLD)
+            rejected.append(reject_entry)
 
     return selected, rejected
+
+
+# Map each rejection reason to a structured event ``kind`` so downstream
+# tooling (Step 8 self-audit, the reconciler) can filter events by bucket
+# without inspecting free-text detail strings. Reasons not listed fall
+# back to a generic ``rejected`` kind — the reason field itself still
+# carries the specific cause.
+_REASON_EVENT_KINDS: dict[str, str] = {
+    REJECTION_REASON_BELOW_THRESHOLD: "below_threshold",
+    REJECTION_REASON_DUPLICATE_URL: "duplicate_url",
+    REJECTION_REASON_SCORER_DID_NOT_SCORE: "scorer_did_not_score",
+}
+
+
+def _event_kind_for_reason(reason: str) -> str:
+    """Return the event-log ``kind`` corresponding to a rejection reason."""
+    return _REASON_EVENT_KINDS.get(reason, "rejected")
+
+
+def validate_search_results_dispositioning(
+    search_results: dict[str, Any],
+    *,
+    event_logger: EventLogger | None = None,
+) -> list[dict[str, Any]]:
+    """Verify the PRISMA dispositioning invariant for Step 4 output.
+
+    For every (item_id, search_id) pair, the number of raw results
+    returned by the provider must equal the number of entries bucketed
+    into ``selected_sources`` + ``rejected_sources`` filtered to that
+    search_id. Anything else is a silent drop — the R0063/Q001/S01 case
+    (5 returned, 4 selected, 0 rejected, 1 unaccounted) is exactly the
+    shape this check catches.
+
+    Violations are appended to ``event_logger`` as
+    ``kind=dispositioning_invariant_violated`` events so the Step 8
+    self-audit can surface them in the final report. The returned list
+    contains one dict per violation so callers (and tests) can assert
+    against the specific missing counts.
+
+    This validator does **not** raise — silent drops have been shipping
+    long enough that failing hard on first sight would block every
+    in-progress run. Visibility is the upgrade; hard enforcement is a
+    follow-up once historical runs are drained.
+
+    Args:
+        search_results: The dict returned by ``step4_execute_searches``
+            (keyed by item_id).
+        event_logger: Optional event logger to record violations.
+
+    Returns:
+        A list of violation dicts; empty if the invariant holds.
+
+    """
+    violations: list[dict[str, Any]] = []
+
+    for item_id, item_data in search_results.items():
+        if not isinstance(item_data, dict):
+            continue
+
+        # Count selected/rejected by search_id in O(n) per item.
+        selected_by_sid: dict[str, int] = {}
+        rejected_by_sid: dict[str, int] = {}
+        for src in item_data.get("selected_sources", []) or []:
+            sid = src.get("search_id", "")
+            selected_by_sid[sid] = selected_by_sid.get(sid, 0) + 1
+        for src in item_data.get("rejected_sources", []) or []:
+            sid = src.get("search_id", "")
+            rejected_by_sid[sid] = rejected_by_sid.get(sid, 0) + 1
+
+        for execution in item_data.get("searches_executed", []) or []:
+            sid = execution.get("search_id", "")
+            total_returned = len(execution.get("results", []) or [])
+            n_sel = selected_by_sid.get(sid, 0)
+            n_rej = rejected_by_sid.get(sid, 0)
+            accounted = n_sel + n_rej
+            if accounted == total_returned:
+                continue
+
+            missing = total_returned - accounted
+            violation = {
+                "item_id": item_id,
+                "search_id": sid,
+                "total_returned": total_returned,
+                "selected": n_sel,
+                "rejected": n_rej,
+                "unaccounted": missing,
+            }
+            violations.append(violation)
+
+            if event_logger is not None:
+                event_logger.log(
+                    step="step4_execute_searches",
+                    kind="dispositioning_invariant_violated",
+                    detail=(
+                        f"Dispositioning invariant violated for {item_id}/{sid}: "
+                        f"{total_returned} results returned but only "
+                        f"{n_sel} selected + {n_rej} rejected = {accounted} "
+                        f"accounted ({missing} unaccounted)."
+                    ),
+                    item_id=item_id,
+                    count=missing,
+                    layer="pipeline",
+                )
+
+    if violations:
+        logger.info(
+            "    WARNING: %d dispositioning invariant violation(s) detected in search results.",
+            len(violations),
+        )
+
+    return violations
 
 
 _SCORING_BATCH_SIZE = 1
