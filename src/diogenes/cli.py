@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from diogenes.logger import configure_cli_stderr_logger
+
 
 def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser with subcommands."""
@@ -93,6 +95,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     """Entry point for the dio/diogenes CLI."""
+    # Attach a stderr handler to the diogenes logger BEFORE dispatch so every
+    # ``logger.info("ERROR: ...")`` in the pre-pipeline / pipeline code
+    # surfaces to the caller. Without this, any failure before
+    # configure_progress_logger() runs (missing API key, missing input,
+    # non-empty --output, etc.) exits 1 with zero bytes on stderr. See #154.
+    configure_cli_stderr_logger()
+
     parser = _build_parser()
     args = parser.parse_args()
 
