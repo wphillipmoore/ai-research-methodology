@@ -1377,9 +1377,7 @@ class TestStep4ExecuteSearchesEndToEndInvariant:
         research_input = {"claims": [], "queries": [{"id": "Q001", "clarified_text": "t"}]}
         search_plans = {"Q001": {"searches": [{"id": "S01", "terms": ["a"]}]}}
 
-        result = step4_execute_searches(
-            research_input, search_plans, mock_client, mock_provider, event_logger
-        )
+        result = step4_execute_searches(research_input, search_plans, mock_client, mock_provider, event_logger)
 
         # Validator should see no violations.
         violations = validate_search_results_dispositioning(result)
@@ -1387,9 +1385,7 @@ class TestStep4ExecuteSearchesEndToEndInvariant:
 
         # No dispositioning_invariant_violated events should have been
         # emitted by step4's internal validator call either.
-        violated_events = [
-            e for e in event_logger.events if e["kind"] == "dispositioning_invariant_violated"
-        ]
+        violated_events = [e for e in event_logger.events if e["kind"] == "dispositioning_invariant_violated"]
         assert violated_events == []
 
         # Rejected bucket should contain both kinds of reasons.

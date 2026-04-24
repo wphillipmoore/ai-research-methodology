@@ -401,10 +401,7 @@ def _score_results_batched(
                         "search_id": search_id,
                         "relevance_score": None,
                         "reason": REJECTION_REASON_SCORER_DID_NOT_SCORE,
-                        "rationale": (
-                            "Relevance scorer did not return a score for this "
-                            "URL in its batch response."
-                        ),
+                        "rationale": ("Relevance scorer did not return a score for this URL in its batch response."),
                     }
                 )
 
@@ -450,8 +447,7 @@ def _filter_and_deduplicate(
             dup_entry["reason"] = REJECTION_REASON_DUPLICATE_URL
             existing_rationale = dup_entry.get("rationale") or ""
             dup_entry["rationale"] = (
-                f"Duplicate URL dropped by deduplication; a higher-scored copy "
-                f"of {url} was kept. " + existing_rationale
+                f"Duplicate URL dropped by deduplication; a higher-scored copy of {url} was kept. " + existing_rationale
             ).strip()
             rejected.append(dup_entry)
             continue
