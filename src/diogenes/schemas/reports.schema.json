@@ -7,6 +7,7 @@
   "required": [
     "id",
     "mode",
+    "title",
     "input_summary",
     "assessment_summary",
     "evidence_summary",
@@ -26,6 +27,12 @@
         "claim",
         "query"
       ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Short human-readable topic label for this claim/query, used in run-level index cards and per-item page titles. Target 8-10 words, hard cap 60 characters. Generated from the clarified text plus the assessment answer so TOC entries are meaningful without opening each card.",
+      "minLength": 1,
+      "maxLength": 60
     },
     "input_summary": {
       "type": "object",

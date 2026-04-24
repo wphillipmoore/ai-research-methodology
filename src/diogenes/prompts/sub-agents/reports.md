@@ -34,6 +34,23 @@ purposes only; do not attempt to re-interpret the sources yourself.
 Produce the final report. Every claim must be sourced. Every judgment
 must be distinguished from fact. Every reasoning chain must be explicit.
 
+### Topic title (mandatory)
+
+Emit a top-level `title` field: a short, human-readable topic label
+for this item. It is read by the renderer into run-level index cards
+and per-item page titles, so it must be informative enough that a
+table-of-contents entry like `Q001 — <title>` conveys what the query
+is about without opening the card.
+
+- Target length: 8–10 words.
+- Hard cap: 60 characters.
+- Style: noun phrase, title case or sentence case — no trailing period.
+- Content: derive from the clarified input text plus the final
+  assessment answer. Prefer concrete domain terms over generic filler
+  ("LLM watermarking techniques" over "A study of AI text").
+- Do not duplicate the verdict or confidence label here. The renderer
+  already appends those separately.
+
 ### Claim mode report structure
 
 1. Claim as received and clarified

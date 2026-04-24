@@ -760,6 +760,7 @@ class TestStep10Report:
     def test_generates_report(self) -> None:
         mock_client = MagicMock()
         mock_client.call_sub_agent.return_value = {
+            "title": "Sample topic label",
             "assessment_summary": {"verdict": "Supported", "answer": "Yes"},
         }
 
@@ -778,3 +779,94 @@ class TestStep10Report:
         )
         assert "C001" in result
         assert "Q001" in result
+
+    def test_uses_reports_schema(self) -> None:
+        """step10_report passes reports.schema.json to the sub-agent (issue #161)."""
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "title": "Topic",
+            "assessment_summary": {"verdict": "Supported"},
+        }
+        research_input = {"claims": [{"id": "C001", "clarified_text": "Test"}], "queries": []}
+
+        step10_report(
+            research_input,
+            {"C001": {}},
+            {"C001": {}},
+            {"C001": {"scorecards": []}},
+            {"C001": {}},
+            {"C001": {}},
+            mock_client,
+        )
+
+        _args, kwargs = mock_client.call_sub_agent.call_args
+        assert kwargs["output_schema"] == "reports.schema.json", (
+            "step10_report must declare the reports schema so constrained decoding "
+            "enforces the new required `title` field from issue #161"
+        )
+
+    def test_preserves_title_field_from_agent_response(self) -> None:
+        """The `title` field round-trips from the sub-agent response into results (issue #161).
+
+        The renderer's run-level index cards read `report.title` to build
+        their heading. If step10_report ever drops or rewrites the field,
+        the index collapses to bare ids — the exact regression #161 fixes.
+        """
+        mock_client = MagicMock()
+        mock_client.call_sub_agent.return_value = {
+            "title": "LLM watermarking techniques survey",
+            "assessment_summary": {"verdict": "Supported", "confidence": "High (80-95%)"},
+        }
+
+        research_input = {"claims": [{"id": "C001", "clarified_text": "Test claim"}], "queries": []}
+        result = step10_report(
+            research_input,
+            {"C001": {}},
+            {"C001": {}},
+            {"C001": {"scorecards": []}},
+            {"C001": {}},
+            {"C001": {}},
+            mock_client,
+        )
+
+        assert result["C001"]["title"] == "LLM watermarking techniques survey", (
+            "step10_report must surface the agent's `title` field verbatim so the "
+            "renderer can build run-level index card headings"
+        )
+
+
+class TestReportsSchema:
+    """Schema-level tests for reports.schema.json (issue #161)."""
+
+    def test_schema_requires_top_level_title(self) -> None:
+        """`title` is a required top-level field on every report.
+
+        The renderer's `_card_heading_for` reads it to build headings like
+        `### Q001 — <topic> — <qualifier>`. Missing `title` collapsed R0063's
+        run-level index to bare `### Q001` cards (issue #161). Making the
+        field required here means constrained-decoding catches the regression
+        at the API boundary, not at render time.
+        """
+        import json as _json
+        from pathlib import Path as _Path
+
+        schema_path = _Path(__file__).parent.parent / "src" / "diogenes" / "schemas" / "reports.schema.json"
+        schema = _json.loads(schema_path.read_text())
+        assert "title" in schema["required"], (
+            "reports.schema.json must list `title` as required so constrained "
+            "decoding rejects outputs that would collapse the run-level index"
+        )
+        assert schema["properties"]["title"]["type"] == "string"
+        # Hard cap matches the issue spec (~60 chars, ~8-10 words)
+        assert schema["properties"]["title"].get("maxLength") == 60
+
+    def test_reports_prompt_describes_title_field(self) -> None:
+        """reports.md tells the LLM to produce the `title` field (issue #161)."""
+        from pathlib import Path as _Path
+
+        prompt_path = _Path(__file__).parent.parent / "src" / "diogenes" / "prompts" / "sub-agents" / "reports.md"
+        prompt_text = prompt_path.read_text()
+        assert "title" in prompt_text.lower(), "reports.md must instruct the LLM to emit `title`"
+        assert "60 character" in prompt_text or "60 char" in prompt_text, (
+            "reports.md must state the 60-character hard cap so the LLM produces headings that fit on one TOC line"
+        )
