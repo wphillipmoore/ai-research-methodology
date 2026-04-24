@@ -29,6 +29,24 @@ class TestBuildParser:
         args = parser.parse_args(["resume", "/path/to/research/2026-04-22-120000"])
         assert args.command == "resume"
         assert args.instance_dir == "/path/to/research/2026-04-22-120000"
+        # Defaults: from-step is None, yes is False — preserving the
+        # existing zero-arg resume behavior.
+        assert args.from_step is None
+        assert args.yes is False
+
+    def test_resume_with_from_step_numeric(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["resume", "/path/instance", "--from-step", "9", "--yes"])
+        assert args.from_step == "9"
+        assert args.yes is True
+
+    def test_resume_with_from_step_name(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["resume", "/path/instance", "--from-step", "report", "--yes"],
+        )
+        assert args.from_step == "report"
+        assert args.yes is True
 
     def test_factcheck_subcommand(self) -> None:
         parser = _build_parser()
@@ -62,10 +80,41 @@ class TestMain:
     @patch("diogenes.commands.run.execute_resume")
     @patch("diogenes.cli.argparse.ArgumentParser.parse_args")
     def test_resume_delegates(self, mock_parse: MagicMock, mock_resume: MagicMock) -> None:
-        mock_parse.return_value = MagicMock(command="resume", instance_dir="/dir/2026-04-22-120000")
+        mock_parse.return_value = MagicMock(
+            command="resume",
+            instance_dir="/dir/2026-04-22-120000",
+            from_step=None,
+            yes=False,
+        )
         mock_resume.return_value = 0
         assert main() == 0
-        mock_resume.assert_called_once_with("/dir/2026-04-22-120000")
+        mock_resume.assert_called_once_with(
+            "/dir/2026-04-22-120000",
+            from_step=None,
+            yes=False,
+        )
+
+    @patch("diogenes.commands.run.execute_resume")
+    @patch("diogenes.cli.argparse.ArgumentParser.parse_args")
+    def test_resume_delegates_with_from_step_and_yes(
+        self,
+        mock_parse: MagicMock,
+        mock_resume: MagicMock,
+    ) -> None:
+        """--from-step and --yes are forwarded to execute_resume."""
+        mock_parse.return_value = MagicMock(
+            command="resume",
+            instance_dir="/dir/2026-04-22-120000",
+            from_step="9",
+            yes=True,
+        )
+        mock_resume.return_value = 0
+        assert main() == 0
+        mock_resume.assert_called_once_with(
+            "/dir/2026-04-22-120000",
+            from_step="9",
+            yes=True,
+        )
 
     @patch("diogenes.cli.argparse.ArgumentParser.parse_args")
     def test_factcheck_not_implemented(self, mock_parse: MagicMock) -> None:
@@ -231,6 +280,45 @@ class TestMainErrorSurfacing:
         captured = capsys.readouterr()
         assert rc == 1
         assert "No API key found" in captured.err
+
+    def test_resume_from_step_invalid_surfaces_valid_options(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Invalid --from-step values exit 1 with a message listing valid steps on stderr."""
+        instance = tmp_path / "instance"
+        instance.mkdir()
+        (instance / "pipeline-state.json").write_text('{"steps": []}')
+        with patch(
+            "sys.argv",
+            ["dio", "resume", str(instance), "--from-step", "not-a-step", "--yes"],
+        ):
+            rc = main()
+        captured = capsys.readouterr()
+        assert rc == 1
+        # The error lists the canonical set of step numbers so the user
+        # can retry with a valid value — not just "invalid".
+        assert "not-a-step" in captured.err
+        assert "reports" in captured.err
+
+    def test_resume_from_step_without_yes_refuses(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--from-step without --yes refuses the destructive wipe."""
+        instance = tmp_path / "instance"
+        instance.mkdir()
+        (instance / "pipeline-state.json").write_text('{"steps": []}')
+        with patch(
+            "sys.argv",
+            ["dio", "resume", str(instance), "--from-step", "9"],
+        ):
+            rc = main()
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "--yes" in captured.err
 
     def test_argparse_unknown_subcommand_exits_nonzero(
         self,

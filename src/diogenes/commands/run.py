@@ -28,7 +28,11 @@ from diogenes.pipeline import (
 )
 from diogenes.schema_validator import ValidationError, parse_input_file, validate_research_input
 from diogenes.search_providers import BraveSearchProvider, GoogleSearchProvider, SerperSearchProvider
-from diogenes.state_machine import PIPELINE_STEPS, PipelineState
+from diogenes.state_machine import (
+    PIPELINE_STEPS,
+    PipelineState,
+    resolve_step_identifier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -384,7 +388,62 @@ def _load_prior_outputs(instance_dir: Path, state: PipelineState) -> dict[str, A
     return outputs
 
 
-def _resume_pipeline(instance_dir: Path) -> int:
+def _apply_from_step(
+    instance_dir: Path,
+    state: PipelineState,
+    from_step: str | int,
+    *,
+    yes: bool,
+) -> int | None:
+    """Resolve, validate, and apply a ``--from-step`` directive.
+
+    On success, marks the target step and every later step as
+    incomplete, deletes their output files from disk, and emits a
+    non-determinism warning if any cleared step is LLM-backed. On
+    failure (invalid identifier, missing ``--yes``) logs an error and
+    returns a non-zero exit code.
+
+    Returns:
+        None on success (caller continues with the normal resume path),
+        or a non-zero exit code that should be propagated to the CLI.
+
+    """
+    try:
+        target_name = resolve_step_identifier(from_step)
+    except ValueError as e:
+        logger.info(f"ERROR: {e}")
+        return 1
+
+    if not yes:
+        logger.info("ERROR: --from-step deletes completed step outputs. Re-run with --yes to acknowledge.")
+        return 1
+
+    # Map canonical names → StepDefinition objects for convenience
+    defs_by_name = {s.name: s for s in PIPELINE_STEPS}
+    cleared = state.mark_step_and_later_incomplete(target_name)
+
+    logger.info(f"--from-step {from_step}: resetting from {target_name} onward.")
+    for name in cleared:
+        step_def = defs_by_name[name]
+        if step_def.output_file:
+            out_path = instance_dir / step_def.output_file
+            if out_path.exists():
+                out_path.unlink()
+                logger.info(f"  Deleted: {out_path.name}")
+
+    # Non-determinism disclosure for LLM-backed steps that will re-run.
+    llm_reruns = [i + 1 for i, s in enumerate(PIPELINE_STEPS) if s.name in cleared and s.category in ("llm", "hybrid")]
+    if llm_reruns:
+        logger.info(f"  Steps {llm_reruns} re-run LLM-backed operations; output will differ from the prior run.")
+    return None
+
+
+def _resume_pipeline(
+    instance_dir: Path,
+    *,
+    from_step: str | int | None = None,
+    yes: bool = False,
+) -> int:
     """Execute the pipeline loop against an existing instance directory.
 
     Reads pipeline-state.json to determine which steps are already complete,
@@ -392,6 +451,12 @@ def _resume_pipeline(instance_dir: Path) -> int:
     runs the remainder of the state-machine loop. Any step in ``running``
     or ``failed`` status is retried — partial output files from the prior
     attempt, if any, are overwritten when the step completes.
+
+    When ``from_step`` is supplied, the normal "earliest incomplete"
+    logic is bypassed: the target step and every later step are marked
+    incomplete and their output files deleted, forcing re-execution
+    from that point. This requires ``yes=True`` to proceed; without
+    it the command exits 1 before touching any files.
 
     Assumes the previous process for this instance is no longer running.
     No PID or heartbeat check — if the user resumes over a live run, that
@@ -411,7 +476,12 @@ def _resume_pipeline(instance_dir: Path) -> int:
     logger.info(f"Resuming: {instance_dir}")
 
     state = PipelineState(instance_dir)
-    if state.all_complete():
+
+    if from_step is not None:
+        rc = _apply_from_step(instance_dir, state, from_step, yes=yes)
+        if rc is not None:
+            return rc
+    elif state.all_complete():
         logger.info("All steps already complete. Nothing to do.")
         return 0
 
@@ -587,7 +657,12 @@ def execute_rerun(output: str) -> int:
     return _run_pipeline(parent_dir, input_path)
 
 
-def execute_resume(instance_dir: str) -> int:
+def execute_resume(
+    instance_dir: str,
+    *,
+    from_step: str | int | None = None,
+    yes: bool = False,
+) -> int:
     """Execute the ``dio resume`` command — finish a previously interrupted instance.
 
     Points at a specific timestamped instance directory (not the parent
@@ -603,9 +678,19 @@ def execute_resume(instance_dir: str) -> int:
         instance_dir: Path to an instance directory (the timestamped
             subdirectory under the research container) containing a
             pipeline-state.json from a prior run.
+        from_step: Optional forced starting step. When supplied, the
+            named step and every later step are marked incomplete and
+            their output files deleted. Accepts a 1-indexed integer
+            position, a canonical step name
+            (``step_09_reports``), a logical suffix (``reports``), or
+            a short alias (``report``). Requires ``yes=True``.
+        yes: Required acknowledgement flag when ``from_step`` is used.
+            Without it the command refuses to perform the destructive
+            wipe and exits non-zero. Has no effect when ``from_step``
+            is None.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
 
     """
-    return _resume_pipeline(Path(instance_dir))
+    return _resume_pipeline(Path(instance_dir), from_step=from_step, yes=yes)
