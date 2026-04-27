@@ -161,14 +161,14 @@ Inside the dev container, `uv run st-validate-local` resolves against
 commands (`st-commit`, `st-submit-pr`, etc.) come from the `uv tool install`
 above.
 
-### Three-Tier CI Model
+### Two-Tier CI Model
 
-Testing is split across three tiers with increasing scope and cost:
+Testing is split across two tiers with increasing scope and cost:
 
 **Tier 1 — Local pre-commit (seconds):** The single entry point
 `st-docker-run -- uv run st-validate-local` runs everything (lint,
-typecheck, tests, audit, custom checks) inside one dev container. Run
-before every commit.
+typecheck, tests, audit, custom checks) inside one dev container.
+Enforced via the `.githooks` pre-commit gate on every commit.
 
 ```bash
 st-docker-run -- uv run st-validate-local
@@ -178,13 +178,12 @@ Repo-specific customization (the 100% coverage threshold, license
 allowlist, version validation) lives in `scripts/dev/*.sh`, which
 `st-validate-local` invokes from inside the container.
 
-**Tier 2 — Push CI (~3-5 min):** Triggers automatically on push to
-`feature/**`, `bugfix/**`, `hotfix/**`, `chore/**`. Single Python version
-(3.14), no security scanners or release gates.
-
-**Tier 3 — PR CI (~8-10 min):** Triggers on `pull_request`. Full Python
+**Tier 2 — PR CI (~8-10 min):** Triggers on `pull_request`. Full Python
 matrix (3.12, 3.13, 3.14), security scanners (CodeQL, Trivy, Semgrep),
 standards compliance, and release gates.
+
+Push-CI was retired once `st-validate-local` reached parity with PR-CI.
+See wphillipmoore/standard-actions#176 for the parity audit and rationale.
 
 ### Testing
 
