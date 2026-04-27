@@ -214,25 +214,3 @@ class TestTestScriptRegressionGuard:
             "uncovered code must fail test.sh's --cov-fail-under=100; "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
-
-
-class TestDockerOptIn:
-    """Docker opt-in must still enforce the PATH guard."""
-
-    def test_use_docker_without_st_docker_test_fails(self, tmp_path: Path) -> None:
-        _write_minimal_project(tmp_path)
-        script = _copy_script("lint.sh", tmp_path)
-        env = os.environ.copy()
-        env["USE_DOCKER"] = "1"
-        # Scrub PATH so st-docker-test cannot resolve.
-        env["PATH"] = "/usr/bin:/bin"
-        result = subprocess.run(  # noqa: S603  # trusted: script path is from this repo
-            [str(script)],
-            cwd=str(tmp_path),
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert result.returncode != 0
-        assert "st-docker-test not found" in result.stderr

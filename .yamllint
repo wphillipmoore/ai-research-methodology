@@ -1,0 +1,50 @@
+# Canonical yamllint config for this repo.
+#
+# Read by both `st-validate-local` (via the new yamllint check in
+# `validate_local_common_container.py`) and the plugin's
+# `validate-on-edit` hook (yamllint auto-discovers `.yamllint` in the
+# project root). Keeps both layers aligned. Issue #302.
+#
+# Tuned for GitHub Actions workflow files and project YAML (mkdocs,
+# markdownlint, issue templates). Stricter rules would flag
+# pre-existing-and-fine content (e.g., GHA `on:` keys, long lines
+# carrying URLs or python-c expressions in workflow `run:` blocks),
+# turning every edit into a yak-shave. Where rules are relaxed below,
+# rationale is in-line.
+
+extends: default
+
+rules:
+  # GHA workflow files don't lead with `---`. Disabling rather than
+  # fighting the convention.
+  document-start: disable
+
+  # GHA's `on:` key is YAML's truthy-value (it parses as `True`). The
+  # default rule flags it; we exclude it. Other unintentional truthy
+  # values (yes/no/on/off) still flagged.
+  truthy:
+    allowed-values:
+      - "true"
+      - "false"
+    check-keys: false
+
+  # 80 chars is too tight for workflow `run:` blocks that carry shell
+  # commands and URLs. 120 is generous enough for the legitimate cases
+  # we have on develop today, except for `.github/workflows/`, which
+  # carries inline `python3 -c "..."` expressions as composite-action
+  # inputs (an unavoidable GHA pattern — input values must be single
+  # strings, can't be split across lines). For workflow files,
+  # disabling line-length entirely.
+  # Per-rule ignore for `.github/workflows/`: workflows carry inline
+  # `python3 -c "..."` expressions as composite-action inputs (an
+  # unavoidable GHA pattern — input values must be single strings,
+  # can't be split across lines). The glob form matches both absolute
+  # and relative path invocations.
+  line-length:
+    max: 120
+    level: error
+    ignore: |
+      **/.github/workflows/**
+      .github/workflows/**
+
+  # Default trailing-spaces / empty-lines / etc. settings are fine.

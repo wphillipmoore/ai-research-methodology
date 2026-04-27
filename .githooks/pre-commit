@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# pre-commit gate — admits st-commit-driven commits and legitimate
+# derived-commit workflows; rejects raw `git commit`.
+#
+# Source-of-truth contract: standard-tooling docs/specs/host-level-tool.md
+# "Git hooks". Companion: standard-tooling sets ST_COMMIT_CONTEXT=1
+# before invoking `git commit`.
+#
+# TODO(plugin#87): the "See ..." pointer below references
+# docs/repository-standards.md (markdown). When standard-tooling-plugin
+# #87's structured config (st-config.{yml,toml}) lands, update this
+# pointer to the new config doc.
+
+# Admit st-commit-driven commits. Print a diagnostic so the admission
+# is visible — this branch is also the documented escape hatch
+# (`ST_COMMIT_CONTEXT=1 git commit ...`) and any silent admit would
+# make manual workarounds invisible in the commit output.
+if [[ "${ST_COMMIT_CONTEXT:-}" == "1" ]]; then
+	echo "pre-commit gate: admitted (ST_COMMIT_CONTEXT=1)" >&2
+	exit 0
+fi
+
+# Admit derived-commit workflows that legitimately invoke `git commit`
+# without going through st-commit (amend, rebase, cherry-pick, revert,
+# merge-conflict resolution). GIT_REFLOG_ACTION is set by git itself.
+case "${GIT_REFLOG_ACTION:-}" in
+amend | cherry-pick | revert | rebase* | merge*)
+	echo "pre-commit gate: admitted (GIT_REFLOG_ACTION=${GIT_REFLOG_ACTION})" >&2
+	exit 0
+	;;
+esac
+
+echo "ERROR: raw 'git commit' is blocked. Use 'st-commit' instead." >&2
+echo "See docs/repository-standards.md" >&2
+exit 1

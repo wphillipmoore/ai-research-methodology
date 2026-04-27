@@ -16,7 +16,7 @@
 - Before modifying any files, check the current branch with `git status -sb`.
 - If on `develop`, create a short-lived `feature/*` branch or ask for explicit approval to proceed on `develop`.
 - If approval is granted to work on `develop`, call it out in the response and proceed only for that user-approved scope.
-- Enable repository git hooks before committing: `git config core.hooksPath ../standard-tooling/scripts/lib/git-hooks`.
+- Enable repository git hooks before committing: `git config core.hooksPath .githooks`.
 
 ## AI co-authors
 

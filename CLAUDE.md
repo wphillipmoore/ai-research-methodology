@@ -135,33 +135,48 @@ https://github.com/wphillipmoore/standards-and-conventions
 
 ### Standard Tooling
 
+`standard-tooling` is distributed as a host-level developer tool plus a
+project dev dep. See
+https://github.com/wphillipmoore/standard-tooling/blob/develop/docs/specs/host-level-tool.md
+for the canonical spec.
+
+One-time host install (puts `st-docker-run`, `st-commit`, `st-submit-pr`,
+`st-prepare-release`, `st-finalize-repo` on PATH):
+
 ```bash
-git config core.hooksPath ../standard-tooling/scripts/lib/git-hooks  # Enable git hooks
+uv tool install 'standard-tooling @ git+https://github.com/wphillipmoore/standard-tooling@v1.3'
 ```
 
-Standard-tooling CLI tools (`st-commit`, `st-validate-local`, etc.) are
-pre-installed in the dev container images. No local setup required.
-
-### Environment Setup
+Per-clone setup:
 
 ```bash
-# Install dependencies and sync environment
-uv sync --group dev
+git config core.hooksPath .githooks   # Enable the pre-commit gate
+uv sync --group dev                   # Install runtime + dev deps,
+                                      # including standard-tooling
+                                      # pinned via [tool.uv.sources]
 ```
+
+Inside the dev container, `uv run st-validate-local` resolves against
+`.venv/bin/st-*` (the pinned version), not the image's pre-bake. Host
+commands (`st-commit`, `st-submit-pr`, etc.) come from the `uv tool install`
+above.
 
 ### Three-Tier CI Model
 
 Testing is split across three tiers with increasing scope and cost:
 
-**Tier 1 — Local pre-commit (seconds):** Fast smoke tests in a single
-container. Run before every commit.
+**Tier 1 — Local pre-commit (seconds):** The single entry point
+`st-docker-run -- uv run st-validate-local` runs everything (lint,
+typecheck, tests, audit, custom checks) inside one dev container. Run
+before every commit.
 
 ```bash
-./scripts/dev/test.sh        # Unit tests in dev-python:3.14
-./scripts/dev/lint.sh        # Ruff check + format in dev-python:3.14
-./scripts/dev/typecheck.sh   # mypy in dev-python:3.14
-./scripts/dev/audit.sh       # pip-audit in dev-python:3.14
+st-docker-run -- uv run st-validate-local
 ```
+
+Repo-specific customization (the 100% coverage threshold, license
+allowlist, version validation) lives in `scripts/dev/*.sh`, which
+`st-validate-local` invokes from inside the container.
 
 **Tier 2 — Push CI (~3-5 min):** Triggers automatically on push to
 `feature/**`, `bugfix/**`, `hotfix/**`, `chore/**`. Single Python version
@@ -171,16 +186,6 @@ container. Run before every commit.
 matrix (3.12, 3.13, 3.14), security scanners (CodeQL, Trivy, Semgrep),
 standards compliance, and release gates.
 
-### Validation
-
-```bash
-# Quick local validation (without standard-tooling)
-uv run ruff check
-uv run ruff format --check .
-uv run mypy src/
-uv run pytest -v
-```
-
 ### Testing
 
 ```bash
@@ -188,7 +193,7 @@ uv run pytest -v
 uv run pytest -v
 
 # Run tests with coverage
-uv run pytest --cov=ai_research_methodology --cov-report=term-missing --cov-branch
+uv run pytest --cov=diogenes --cov-report=term-missing --cov-branch
 
 # Run integration tests (requires ANTHROPIC_API_KEY)
 AI_RESEARCH_RUN_INTEGRATION=1 uv run pytest -m integration
@@ -207,7 +212,7 @@ uv run ruff format --check .
 uv run ruff format .
 
 # Run mypy type checker
-uv run mypy src/
+uv run mypy src tests
 ```
 
 ## Architecture
