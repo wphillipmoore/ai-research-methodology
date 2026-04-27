@@ -66,7 +66,11 @@ dev = [
     "pip-audit",
     "pip-licenses",
     "mcp>=1.27.0",
+    "standard-tooling",
 ]
+
+[tool.uv.sources]
+standard-tooling = { git = "https://github.com/wphillipmoore/standard-tooling", tag = "v1.3" }
 
 [tool.setuptools]
 package-dir = {"" = "src"}

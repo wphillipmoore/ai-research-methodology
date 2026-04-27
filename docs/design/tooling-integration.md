@@ -39,8 +39,12 @@ Clone the standard pattern:
 ### 3. Git hooks
 
 ```bash
-git config core.hooksPath ../standard-tooling/scripts/lib/git-hooks
+git config core.hooksPath .githooks
 ```
+
+The repo vendors `.githooks/pre-commit` (the canonical pre-commit gate
+from the host-level-tool spec). See
+https://github.com/wphillipmoore/standard-tooling/blob/develop/docs/specs/host-level-tool.md.
 
 ### 4. Repository standards docs
 
