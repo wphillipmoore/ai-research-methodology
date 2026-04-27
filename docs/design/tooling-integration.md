@@ -18,7 +18,6 @@ Clone from mq-rest-admin-python and adapt:
 | Workflow | Source | Adaptations |
 |----------|--------|-------------|
 | ci.yml | mq-rest-admin-python | Remove MQ-specific integration tests, keep matrix + security |
-| ci-push.yml | mq-rest-admin-python | Minimal changes — single Python, no security |
 | publish.yml | mq-rest-admin-python | Change package name, remove MQ-specific gates |
 | add-to-project.yml | mq-rest-admin-python | Update project ID |
 
@@ -94,7 +93,7 @@ Generate:
 2. Dev scripts (enables Tier 1 local testing)
 3. Repository standards docs (required by CI)
 4. CLAUDE.md + AGENTS.md (AI agent config)
-5. GitHub Actions workflows (enables Tier 2 + 3)
+5. GitHub Actions workflows (enables Tier 2 PR-CI)
 6. Changelog infrastructure
 7. License compliance
 8. uv lock file generation
