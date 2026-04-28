@@ -70,7 +70,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-standard-tooling = { git = "https://github.com/wphillipmoore/standard-tooling", tag = "v1.3" }
+standard-tooling = { git = "https://github.com/wphillipmoore/standard-tooling", tag = "v1.4" }
 
 [tool.setuptools]
 package-dir = {"" = "src"}
