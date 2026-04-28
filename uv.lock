@@ -386,7 +386,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
-    { name = "standard-tooling", git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.3" },
+    { name = "standard-tooling", git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.4" },
     { name = "types-jsonschema" },
     { name = "types-requests" },
 ]
@@ -1347,8 +1347,8 @@ wheels = [
 
 [[package]]
 name = "standard-tooling"
-version = "1.3.4"
-source = { git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.3#66dfe8c3bd17fc23c2700a81f8952129f8f31924" }
+version = "1.4.0"
+source = { git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.4#2fefb73112989011ec0cf4f34123baba04ca0877" }
 
 [[package]]
 name = "starlette"

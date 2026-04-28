@@ -6,8 +6,9 @@ This repository follows documented standards. Consult these on demand
 when the work requires it — do not attempt to preload and memorize them.
 
 - **Repository-specific**: `docs/repository-standards.md`
-- **Canonical**: `../standards-and-conventions` (local, preferred) or
-  https://github.com/wphillipmoore/standards-and-conventions (remote)
+- **Standards reference**: https://github.com/wphillipmoore/standards-and-conventions
+  — historical reference; active standards documentation lives in the
+  standard-tooling repository under `docs/`.
 
 ## User Overrides (Optional)
 
@@ -17,11 +18,8 @@ briefly and continue.
 
 ## Shared Skills
 
-If `../standards-and-conventions` is available locally:
-- Load skills from: `../standards-and-conventions/skills/**/SKILL.md`
-- Treat every skill found under that directory as available and active.
-
-If not available, skip shared skills and continue.
+None. Skills are delivered via the standard-tooling-plugin; see
+`.claude/settings.json`.
 
 ## Local Overrides
 

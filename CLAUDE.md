@@ -12,8 +12,9 @@ requires it.
 - **Repository-specific standards**: `docs/repository-standards.md` —
   pre-flight checklist, branching, merge strategy, commit format, AI
   co-authors, linting policy
-- **Canonical standards**: `../standards-and-conventions` (local) or
-  https://github.com/wphillipmoore/standards-and-conventions (remote)
+- **Standards reference**: https://github.com/wphillipmoore/standards-and-conventions
+  — historical reference; active standards documentation lives in the
+  standard-tooling repository under `docs/`.
 
 Read these documents when:
 - Setting up the development environment
@@ -36,7 +37,7 @@ that is **exclusive to this repository's product**.
 - Workarounds for standard-tooling, standard-actions, or GitHub Actions
   (those go in the tooling repo's docs or issues)
 - Behavioral corrections that should apply across all repos (those go
-  in standards-and-conventions or shared CLAUDE.md patterns)
+  in standard-tooling docs or shared CLAUDE.md patterns)
 - Fixes for cross-repo tools (git hooks, CI workflows, Docker images)
 
 **The test:** Would this memory entry be wrong or misleading if applied
@@ -127,9 +128,9 @@ The repository contains:
 
 **Status**: Pre-Alpha (plugin is functional; Python coordinator is in design)
 
-**Canonical Standards**: This repository follows standards at
-https://github.com/wphillipmoore/standards-and-conventions
-(local path: `../standards-and-conventions` if available)
+**Standards reference**: https://github.com/wphillipmoore/standards-and-conventions
+— historical reference; active standards documentation lives in the
+standard-tooling repository under `docs/`.
 
 ## Development Commands
 
@@ -144,7 +145,7 @@ One-time host install (puts `st-docker-run`, `st-commit`, `st-submit-pr`,
 `st-prepare-release`, `st-finalize-repo` on PATH):
 
 ```bash
-uv tool install 'standard-tooling @ git+https://github.com/wphillipmoore/standard-tooling@v1.3'
+uv tool install 'standard-tooling @ git+https://github.com/wphillipmoore/standard-tooling@v1.4'
 ```
 
 Per-clone setup:
