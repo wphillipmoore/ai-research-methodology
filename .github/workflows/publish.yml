@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   publish:
-    uses: wphillipmoore/standard-actions/.github/workflows/publish-release.yml@v1.3
+    uses: wphillipmoore/standard-actions/.github/workflows/publish-release.yml@v1.4
     permissions:
       attestations: write
       contents: write
