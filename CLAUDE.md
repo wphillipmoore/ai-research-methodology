@@ -22,27 +22,19 @@ Read these documents when:
 - Unsure about commit message format or PR conventions
 - Validating repository structure or compliance
 
-## Memory policy
+## Memory management
 
-Memory is available but scoped. Only use project memory for information
-that is **exclusive to this repository's product**.
+Memory is allowed with human approval. The authoritative policy is in
+the user's global `~/.claude/CLAUDE.md` — agents must propose memory
+writes and suggest a destination (repo memory, global CLAUDE.md, or
+plugin/skill issue) before writing. See that file for the full
+workflow.
 
-**Use memory for:**
-- Design decisions about the AI Research Methodology (architecture,
-  JSON schemas, sub-agent design, workflow choices)
-- User preferences for working in this repo
-- Project status and planning context for future sessions
-
-**Do NOT use memory for:**
-- Workarounds for standard-tooling, standard-actions, or GitHub Actions
-  (those go in the tooling repo's docs or issues)
-- Behavioral corrections that should apply across all repos (those go
-  in standard-tooling docs or shared CLAUDE.md patterns)
-- Fixes for cross-repo tools (git hooks, CI workflows, Docker images)
-
-**The test:** Would this memory entry be wrong or misleading if applied
-in a different repository? If yes, it does not belong in memory — it
-belongs in shared documentation.
+Available skills:
+- `/standard-tooling:memory-init` — set up or update the policy header
+  in a project's `MEMORY.md`.
+- `/standard-tooling:memory-audit` — structured collaborative review
+  of memory files.
 
 ## Parallel AI agent development
 
