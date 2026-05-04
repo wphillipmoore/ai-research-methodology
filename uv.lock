@@ -1347,8 +1347,8 @@ wheels = [
 
 [[package]]
 name = "standard-tooling"
-version = "1.4.0"
-source = { git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.4#2fefb73112989011ec0cf4f34123baba04ca0877" }
+version = "1.4.13"
+source = { git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.4#eba8f830a0a4ed664132ea6393ee68ed2012a659" }
 
 [[package]]
 name = "starlette"
