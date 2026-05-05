@@ -128,8 +128,9 @@ standard-tooling repository under `docs/`.
 
 ### Standard Tooling
 
-`standard-tooling` is distributed as a host-level developer tool plus a
-project dev dep. See
+`standard-tooling` is distributed as a host-level developer tool and
+provided inside the dev container via the Docker image. It is not a Python
+dev dependency. See
 https://github.com/wphillipmoore/standard-tooling/blob/develop/docs/specs/host-level-tool.md
 for the canonical spec.
 
@@ -144,15 +145,12 @@ Per-clone setup:
 
 ```bash
 git config core.hooksPath .githooks   # Enable the pre-commit gate
-uv sync --group dev                   # Install runtime + dev deps,
-                                      # including standard-tooling
-                                      # pinned via [tool.uv.sources]
+uv sync --group dev                   # Install runtime + dev deps
 ```
 
-Inside the dev container, `uv run st-validate-local` resolves against
-`.venv/bin/st-*` (the pinned version), not the image's pre-bake. Host
-commands (`st-commit`, `st-submit-pr`, etc.) come from the `uv tool install`
-above.
+Inside the dev container, `st-validate-local` is provided by the Docker
+image. Host commands (`st-commit`, `st-submit-pr`, etc.) come from the
+`uv tool install` above.
 
 ### Two-Tier CI Model
 

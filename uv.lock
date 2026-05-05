@@ -360,7 +360,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
-    { name = "standard-tooling" },
     { name = "types-jsonschema" },
     { name = "types-requests" },
 ]
@@ -386,7 +385,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
-    { name = "standard-tooling", git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.4" },
     { name = "types-jsonschema" },
     { name = "types-requests" },
 ]
@@ -1344,11 +1342,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/26/8c/f9290339ef6d79bad
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/7f/3de5402f39890ac5660b86bcf5c03f9d855dad5c4ed764866d7b592b46fd/sse_starlette-3.3.4-py3-none-any.whl", hash = "sha256:84bb06e58939a8b38d8341f1bc9792f06c2b53f48c608dd207582b664fc8f3c1", size = 14330, upload-time = "2026-03-29T09:00:21.846Z" },
 ]
-
-[[package]]
-name = "standard-tooling"
-version = "1.4.13"
-source = { git = "https://github.com/wphillipmoore/standard-tooling?tag=v1.4#eba8f830a0a4ed664132ea6393ee68ed2012a659" }
 
 [[package]]
 name = "starlette"
