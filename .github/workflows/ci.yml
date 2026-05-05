@@ -4,15 +4,12 @@ on:
   pull_request:
   workflow_call:
     inputs:
-      python-versions:
-        type: string
-        default: '["3.14"]'
       run-security:
-        type: string
-        default: 'true'
-      run-release-gates:
-        type: string
-        default: 'true'
+        type: boolean
+        default: true
+      run-release:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -24,32 +21,53 @@ concurrency:
 jobs:
 
   # ---------------------------------------------------------------------------
-  # Security and standards (shared reusable workflow)
+  # Quality
   # ---------------------------------------------------------------------------
 
-  security-and-standards:
-    uses: wphillipmoore/standard-actions/.github/workflows/ci-security.yml@v1.4
-    permissions:
-      contents: read
-      security-events: write
+  quality:
+    uses: wphillipmoore/standard-actions/.github/workflows/ci-quality.yml@v1.5
     with:
       language: python
-      run-standards: ${{ inputs.run-release-gates || 'true' }}
-      run-security: ${{ inputs.run-security || 'true' }}
+      versions: '["3.14"]'
 
-  # ---------------------------------------------------------------------------
-  # Quality: unit tests, linting, type-checking, dependency audit
-  # ---------------------------------------------------------------------------
-
-  unit-tests:
-    name: "test: unit (${{ matrix.python-version }})"
+  lint:
+    name: "quality / lint / 3.14"
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ${{ fromJSON(inputs.python-versions || '["3.14"]') }}
     container:
-      image: ghcr.io/wphillipmoore/dev-python:${{ matrix.python-version }}
+      image: ghcr.io/wphillipmoore/dev-python:3.14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+  typecheck:
+    name: "quality / typecheck / 3.14"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/wphillipmoore/dev-python:3.14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Type check
+        run: uv run mypy src tests
+
+  test:
+    name: "test / unit / 3.14"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/wphillipmoore/dev-python:3.14
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -57,26 +75,10 @@ jobs:
       - name: Mark workspace safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Fetch base branch for version checks
-        if: github.event_name == 'pull_request'
-        run: git fetch origin ${{ github.base_ref }} --depth=1
-
-      - name: Validate version string policy
-        run: python3 scripts/dev/validate_version.py
-
-      - name: Verify uv.lock sync
-        run: uv lock --check
-
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
-      - name: Run ruff check
-        run: uv run ruff check
-
-      - name: Run ruff format check
-        run: uv run ruff format --check .
-
-      - name: Run tests with coverage
+      - name: Tests
         run: |
           uv run pytest \
             --cov=diogenes \
@@ -84,8 +86,8 @@ jobs:
             --cov-branch \
             --cov-fail-under=100
 
-  type-check:
-    name: "ci: type-check"
+  audit:
+    name: "audit / dependencies / 3.14"
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/wphillipmoore/dev-python:3.14
@@ -93,39 +95,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
-      - name: Run mypy
-        run: uv run mypy src tests
-
-  dependency-audit:
-    name: "ci: dependency-audit"
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/wphillipmoore/dev-python:3.14
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
-      - name: Run pip-audit (fail on any vulnerability)
-        run: uv run pip-audit -r requirements.txt -r requirements-dev.txt
-
-      - name: Run pip-licenses (license compliance)
-        run: >-
-          uv run pip-licenses
-          --allow-only="$(grep -v '^#' .pip-licenses-allowlist | grep -v '^$' | paste -sd ';' -)"
+      - name: Check lockfile integrity
+        run: uv lock --check
 
   # ---------------------------------------------------------------------------
-  # Release gates (PR only)
+  # Security and standards
   # ---------------------------------------------------------------------------
 
-  release-gates:
-    name: "release: gates"
-    if: ${{ inputs.run-release-gates != 'false' }}
+  security:
+    uses: wphillipmoore/standard-actions/.github/workflows/ci-security.yml@v1.5
+    with:
+      language: python
+      run-standards: ${{ inputs.run-release || true }}
+      run-security: ${{ inputs.run-security || true }}
+    permissions:
+      contents: read
+      security-events: write
+
+  # ---------------------------------------------------------------------------
+  # Release
+  # ---------------------------------------------------------------------------
+
+  release:
+    name: "release / version-bump"
+    if: ${{ inputs.run-release != false }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/wphillipmoore/dev-python:3.14
@@ -144,13 +137,9 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Changelog version gate (PRs targeting main)
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
-        run: python3 scripts/dev/validate_changelog.py
-
       - name: Version divergence gate (PRs targeting develop)
         if: github.event_name == 'pull_request' && github.base_ref == 'develop'
-        uses: wphillipmoore/standard-actions/actions/release-gates/version-divergence@v1.4
+        uses: wphillipmoore/standard-actions/actions/release-gates/version-divergence@v1.5
         with:
           head-version-command: python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text())['project']['version'])"
           main-version-command: git show origin/main:pyproject.toml | python3 -c "import sys, tomllib; print(tomllib.loads(sys.stdin.read())['project']['version'])"
