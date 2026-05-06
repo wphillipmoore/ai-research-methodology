@@ -516,7 +516,7 @@ class TestResolveStepIdentifier:
 
     def test_non_string_non_int_type_raises(self) -> None:
         with pytest.raises(TypeError, match=r"int or str"):
-            resolve_step_identifier(3.14)  # type: ignore[arg-type]
+            resolve_step_identifier(3.14)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
     def test_bool_is_rejected(self) -> None:
         """``True`` is an int subclass — reject it explicitly rather than resolving to step 1.

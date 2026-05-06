@@ -1875,12 +1875,12 @@ class TestCollectHypothesisRatingsEdgeCases:
 
     def test_non_dict_report(self) -> None:
         """Covers 322->333: isinstance(report, dict) is False."""
-        result = _collect_hypothesis_ratings("not a dict", {})  # type: ignore[arg-type]
+        result = _collect_hypothesis_ratings("not a dict", {})  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
         assert result == {}
 
     def test_non_dict_synthesis(self) -> None:
         """Covers the False path for synthesis being non-dict."""
-        result = _collect_hypothesis_ratings({}, "not a dict")  # type: ignore[arg-type]
+        result = _collect_hypothesis_ratings({}, "not a dict")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
         assert result == {}
 
     def test_non_dict_assessment_in_report(self) -> None:
@@ -3281,7 +3281,7 @@ class TestRendererDefensiveGuards:
         """Cover outer isinstance(synthesis, dict) False via direct call."""
         from diogenes.renderer import _collect_hypothesis_ratings
 
-        result = _collect_hypothesis_ratings({}, None)  # type: ignore[arg-type]
+        result = _collect_hypothesis_ratings({}, None)  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
         assert result == {}
 
     def test_collect_ratings_synthesis_assessment_non_dict(self) -> None:
@@ -4256,7 +4256,7 @@ class TestSchemaHelpersDefensiveBranches:
         report = {"assessment_summary": {"confidence": "Medium"}}
         # Pass a non-dict synthesis — the helper's type is dict[str, Any] but
         # the `isinstance` guard defends against real-world malformed JSON.
-        assert _resolve_confidence_label(report, None) == "Medium"  # type: ignore[arg-type]
+        assert _resolve_confidence_label(report, None) == "Medium"  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
 
     def test_resolve_confidence_label_assessment_not_dict_uses_report(self) -> None:
         """Dict synthesis with non-dict assessment falls through to report."""

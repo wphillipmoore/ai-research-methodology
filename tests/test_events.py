@@ -163,7 +163,7 @@ class TestIterItems:
 class TestReconcileRun:
     """Tests for reconcile_run."""
 
-    def _create_run_dir(self, tmp_path: Path) -> pytest.TempPathFactory:
+    def _create_run_dir(self, tmp_path: Path) -> Path:
         """Create a minimal run directory with expected files."""
         run_dir = tmp_path / "run-1"
         run_dir.mkdir()
@@ -213,12 +213,12 @@ class TestReconcileRun:
         ):
             (run_dir / fname).write_text("{}")
 
-        return run_dir  # type: ignore[return-value]
+        return run_dir
 
     def test_basic_reconciliation(self, tmp_path: Path) -> None:
         run_dir = self._create_run_dir(tmp_path)
         logger = EventLogger(run_id="test")
-        coverage = reconcile_run(run_dir, logger)  # type: ignore[arg-type]
+        coverage = reconcile_run(run_dir, logger)
         assert coverage["sources_selected"] == 3
         assert coverage["sources_scored"] == 2
         assert coverage["packets_claimed"] == 10
@@ -281,7 +281,7 @@ class TestReconcileRun:
         logger = EventLogger(run_id="test")
         # Pre-log a fetch failure
         logger.log(step="step5", kind="fetch_failed", detail="timeout", layer="mcp", url="https://c.com")
-        coverage = reconcile_run(run_dir, logger)  # type: ignore[arg-type]
+        coverage = reconcile_run(run_dir, logger)
         # 2 scored + 1 fetch failure = 3 attempted, matching 3 selected
         assert coverage["sources_attempted"] == 3
         assert coverage["sources_capped"] == 0
@@ -291,7 +291,7 @@ class TestReconcileRun:
         logger = EventLogger(run_id="test")
         # No fetch failures logged, so attempted = scored = 2, but selected = 3
         # That means 1 was capped
-        coverage = reconcile_run(run_dir, logger)  # type: ignore[arg-type]
+        coverage = reconcile_run(run_dir, logger)
         assert coverage["sources_capped"] == 1
         capped_events = [e for e in logger.events if e["kind"] == "source_capped"]
         assert len(capped_events) == 1

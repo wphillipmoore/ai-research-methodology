@@ -118,7 +118,7 @@ def _extract_pdf(url: str, body: bytes) -> str:
     try:
         reader = pypdf.PdfReader(io.BytesIO(body))
         pages = [page.extract_text() or "" for page in reader.pages]
-    except (pypdf.errors.PdfReadError, ValueError, OSError) as exc:
+    except (pypdf.errors.PdfReadError, ValueError, OSError) as exc:  # ty: ignore[possibly-missing-submodule]
         msg = f"pypdf failed to parse PDF from {url}: {exc}"
         raise FetchError(msg) from exc
 
