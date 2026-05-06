@@ -58,6 +58,7 @@ dio-mcp = "diogenes.mcp_server:main"
 [dependency-groups]
 dev = [
     "ruff",
+    "ty",
     "mypy",
     "types-jsonschema",
     "types-requests",

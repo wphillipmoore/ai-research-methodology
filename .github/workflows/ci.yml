@@ -30,73 +30,17 @@ jobs:
       language: python
       versions: '["3.14"]'
 
-  lint:
-    name: "quality / lint / 3.14"
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/wphillipmoore/dev-python:3.14
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
-      - name: Lint
-        run: uv run ruff check
-
-      - name: Format check
-        run: uv run ruff format --check .
-
-  typecheck:
-    name: "quality / typecheck / 3.14"
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/wphillipmoore/dev-python:3.14
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
-      - name: Type check
-        run: uv run mypy src tests
-
   test:
-    name: "test / unit / 3.14"
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/wphillipmoore/dev-python:3.14
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Mark workspace safe for git
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
-      - name: Tests
-        run: |
-          uv run pytest \
-            --cov=diogenes \
-            --cov-report=term-missing \
-            --cov-branch \
-            --cov-fail-under=100
+    uses: wphillipmoore/standard-actions/.github/workflows/ci-test.yml@v1.5
+    with:
+      language: python
+      versions: '["3.14"]'
 
   audit:
-    name: "audit / dependencies / 3.14"
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/wphillipmoore/dev-python:3.14
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Check lockfile integrity
-        run: uv lock --check
+    uses: wphillipmoore/standard-actions/.github/workflows/ci-audit.yml@v1.5
+    with:
+      language: python
+      versions: '["3.14"]'
 
   # ---------------------------------------------------------------------------
   # Security and standards
@@ -117,29 +61,7 @@ jobs:
   # ---------------------------------------------------------------------------
 
   release:
-    name: "release / version-bump"
-    if: ${{ inputs.run-release != false }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/wphillipmoore/dev-python:3.14
-    steps:
-      - name: Skip on non-PR events
-        if: github.event_name != 'pull_request'
-        run: echo "Not a pull request; skipping release gates."
-
-      - name: Checkout code
-        if: github.event_name == 'pull_request'
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Mark workspace safe for git
-        if: github.event_name == 'pull_request'
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - name: Version divergence gate (PRs targeting develop)
-        if: github.event_name == 'pull_request' && github.base_ref == 'develop'
-        uses: wphillipmoore/standard-actions/actions/release-gates/version-divergence@v1.5
-        with:
-          head-version-command: python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('pyproject.toml').read_text())['project']['version'])"
-          main-version-command: git show origin/main:pyproject.toml | python3 -c "import sys, tomllib; print(tomllib.loads(sys.stdin.read())['project']['version'])"
+    uses: wphillipmoore/standard-actions/.github/workflows/ci-release.yml@v1.5
+    with:
+      language: python
+      run-release: ${{ inputs.run-release != false }}
